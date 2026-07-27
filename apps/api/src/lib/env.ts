@@ -12,4 +12,12 @@ export const env = {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),
+  /** Seeded account passwords. Dev gets defaults; in production the accounts
+   * are only created when a password is explicitly provided via env — a
+   * known default admin password must never exist on a public deployment. */
+  adminPassword:
+    process.env.ADMIN_PASSWORD ??
+    (process.env.NODE_ENV === 'production' ? null : 'admin1234'),
+  demoPassword:
+    process.env.DEMO_PASSWORD ?? (process.env.NODE_ENV === 'production' ? null : 'demo1234'),
 } as const;

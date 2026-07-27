@@ -29,6 +29,39 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX sessions_user_id_idx ON sessions(user_id);
     `,
   },
+  {
+    id: '002_notifications_admin',
+    sql: `
+      -- In-app notifications (email delivery can hook in later via a provider).
+      CREATE TABLE notifications (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type       text NOT NULL,
+        title      text NOT NULL,
+        body       text NOT NULL DEFAULT '',
+        read       boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX notifications_user_idx ON notifications(user_id, read);
+
+      -- When an admin masquerades as a user, the session records who is really
+      -- behind it — impersonation is never invisible.
+      ALTER TABLE sessions
+        ADD COLUMN impersonator_user_id uuid REFERENCES users(id) ON DELETE SET NULL;
+
+      -- Append-only trail of sensitive actions (impersonation, role changes, …).
+      CREATE TABLE audit_log (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        actor_id    uuid REFERENCES users(id) ON DELETE SET NULL,
+        action      text NOT NULL,
+        target_type text NOT NULL,
+        target_id   text NOT NULL,
+        detail      jsonb NOT NULL DEFAULT '{}',
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX audit_log_actor_idx ON audit_log(actor_id, created_at);
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

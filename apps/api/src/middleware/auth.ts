@@ -1,25 +1,32 @@
 import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { AuthUser } from '@arcadia/shared';
-import { getUserForToken } from '../lib/session';
+import { getSessionForToken } from '../lib/session';
 
 export const SESSION_COOKIE = 'arcadia_session';
 
 export type AppEnv = {
   Variables: {
     user: AuthUser | null;
+    /** Admin user id when this session is a masquerade, else null. */
+    impersonatorId: string | null;
   };
 };
+
+export function extractToken(c: {
+  req: { header: (name: string) => string | undefined };
+}): string | undefined {
+  const bearer = (c.req.header('Authorization') ?? '').trim();
+  return bearer.startsWith('Bearer ') ? bearer.slice('Bearer '.length) : undefined;
+}
 
 /** Reads the session token (cookie for browsers, Bearer header for the native
  * app) and attaches the user — or null — to the request context. */
 export const sessionMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const bearer = c.req.header('Authorization');
-  const token =
-    getCookie(c, SESSION_COOKIE) ??
-    (bearer?.startsWith('Bearer ') ? bearer.slice('Bearer '.length) : undefined);
-
-  c.set('user', token ? await getUserForToken(token) : null);
+  const token = getCookie(c, SESSION_COOKIE) ?? extractToken(c);
+  const session = token ? await getSessionForToken(token) : null;
+  c.set('user', session?.user ?? null);
+  c.set('impersonatorId', session?.impersonatorId ?? null);
   await next();
 };
 

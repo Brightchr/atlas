@@ -4,6 +4,12 @@ import { query } from '../db/pool';
 
 const SESSION_DAYS = 30;
 
+export interface SessionInfo {
+  user: AuthUser;
+  /** Set when an admin is masquerading as this user — never invisible. */
+  impersonatorId: string | null;
+}
+
 /** The raw token goes to the client once; only its SHA-256 lands in the DB.
  * (Unlike passwords, session tokens are high-entropy random values, so a fast
  * hash is appropriate — there is nothing to brute-force.) */
@@ -11,26 +17,29 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export async function createSession(userId: string): Promise<{ token: string; expiresAt: Date }> {
+export async function createSession(
+  userId: string,
+  impersonatorId?: string,
+): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  await query('INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', [
-    userId,
-    hashToken(token),
-    expiresAt,
-  ]);
+  await query(
+    'INSERT INTO sessions (user_id, token_hash, expires_at, impersonator_user_id) VALUES ($1, $2, $3, $4)',
+    [userId, hashToken(token), expiresAt, impersonatorId ?? null],
+  );
   return { token, expiresAt };
 }
 
-export async function getUserForToken(token: string): Promise<AuthUser | null> {
+export async function getSessionForToken(token: string): Promise<SessionInfo | null> {
   const rows = await query<{
     id: string;
     email: string;
     username: string;
     role: AuthUser['role'];
     created_at: string;
+    impersonator_user_id: string | null;
   }>(
-    `SELECT u.id, u.email, u.username, u.role, u.created_at
+    `SELECT u.id, u.email, u.username, u.role, u.created_at, s.impersonator_user_id
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [hashToken(token)],
@@ -38,11 +47,14 @@ export async function getUserForToken(token: string): Promise<AuthUser | null> {
   const row = rows[0];
   if (!row) return null;
   return {
-    id: row.id,
-    email: row.email,
-    username: row.username,
-    role: row.role,
-    createdAt: row.created_at,
+    user: {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      role: row.role,
+      createdAt: row.created_at,
+    },
+    impersonatorId: row.impersonator_user_id,
   };
 }
 
