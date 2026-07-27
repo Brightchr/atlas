@@ -24,7 +24,8 @@
     "wger:up": "node scripts/wger.mjs up",
     "wger:down": "node scripts/wger.mjs down",
     "wger:logs": "node scripts/wger.mjs logs",
-    "wger:status": "node scripts/wger.mjs status"
+    "wger:status": "node scripts/wger.mjs status",
+    "wger:images": "node scripts/wger.mjs images"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

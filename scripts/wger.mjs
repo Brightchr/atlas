@@ -32,10 +32,12 @@ const extra = {
   down: ['down'],
   logs: ['logs', '-f', 'web'],
   status: ['ps'],
+  // Exercise images are fetched from wger.de; rerun this when online if any are missing.
+  images: ['exec', '-T', 'web', 'python3', 'manage.py', 'download-exercise-images'],
 }[command];
 
 if (!extra) {
-  console.error(`Unknown command "${command}". Use: up | down | logs | status`);
+  console.error(`Unknown command "${command}". Use: up | down | logs | status | images`);
   process.exit(1);
 }
 
