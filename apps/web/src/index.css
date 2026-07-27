@@ -1,0 +1,101 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Design tokens. Every color in the app goes through these semantic variables;
+   themes swap the variables, components never change. Utilities are mapped in
+   @theme inline below (bg-surface, text-ink, border-line, bg-accent, …).
+   Themes: aurora (light, default) · mint (light) · midnight (dark) · carbon (dark)
+--------------------------------------------------------------------------- */
+
+:root,
+:root[data-theme='aurora'] {
+  color-scheme: light;
+  --bg: #f4f5fb;
+  --surface: #ffffff;
+  --elev: #eef0f8;
+  --line: #e3e5f0;
+  --ink: #171a2e;
+  --muted: #646a86;
+  --accent: #4f46e5;
+  --accent-2: #8b5cf6;
+  --accent-ink: #ffffff;
+  --accent-soft: #e9e8fd;
+}
+
+:root[data-theme='mint'] {
+  color-scheme: light;
+  --bg: #f2f7f4;
+  --surface: #ffffff;
+  --elev: #eaf2ee;
+  --line: #dde8e2;
+  --ink: #142019;
+  --muted: #5d7168;
+  --accent: #0d9488;
+  --accent-2: #34d399;
+  --accent-ink: #ffffff;
+  --accent-soft: #d7efe9;
+}
+
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+  --bg: #0b0d17;
+  --surface: #121524;
+  --elev: #1a1e33;
+  --line: #242946;
+  --ink: #e9ebf8;
+  --muted: #8c92b6;
+  --accent: #818cf8;
+  --accent-2: #c084fc;
+  --accent-ink: #0b0d17;
+  --accent-soft: #262b4e;
+}
+
+:root[data-theme='carbon'] {
+  color-scheme: dark;
+  --bg: #0a0a0c;
+  --surface: #121215;
+  --elev: #1a1a1f;
+  --line: #26262d;
+  --ink: #f2f2f4;
+  --muted: #8e8e9c;
+  --accent: #a3e635;
+  --accent-2: #34d399;
+  --accent-ink: #0a0a0c;
+  --accent-soft: #1e2513;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-elev: var(--elev);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Inter Variable', ui-sans-serif, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg font-sans text-ink antialiased;
+  /* Keep content clear of the Android status bar when running in Capacitor
+     (the bottom inset is handled by the mobile tab bar itself) */
+  padding-top: env(safe-area-inset-top);
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+}
