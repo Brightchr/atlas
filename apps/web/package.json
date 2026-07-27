@@ -1,0 +1,43 @@
+{
+  "name": "@arcadia/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copy-sql-wasm.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-sql-wasm.mjs",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "typecheck": "tsc -b",
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync",
+    "cap:android": "npm run build && cap sync android && cap open android"
+  },
+  "dependencies": {
+    "@arcadia/shared": "*",
+    "@capacitor-community/sqlite": "^8.1.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@tanstack/react-query": "^5.101.4",
+    "jeep-sqlite": "^2.8.0",
+    "lucide-react": "^1.27.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router": "^7.18.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "oxlint": "^1.71.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}
