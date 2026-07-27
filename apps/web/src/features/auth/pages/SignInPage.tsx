@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Mountain } from 'lucide-react';
+import type { AuthUser } from '@arcadia/shared';
+import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 import { useLogin, useRegister } from '../api';
 
 type Mode = 'signin' | 'register';
@@ -17,11 +20,27 @@ export function SignInPage() {
 
   const login = useLogin();
   const register = useRegister();
+  const queryClient = useQueryClient();
   const active = mode === 'signin' ? login : register;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const onSuccess = () => navigate('/');
+    const onSuccess = async (data: { user: AuthUser }) => {
+      // The demo account arrives "fully loaded": populate the local database
+      // once. Time-boxed so a slow/unavailable seed never blocks sign-in.
+      if (data.user.username === 'demo') {
+        try {
+          await Promise.race([
+            seedDemoLocalData(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+          ]);
+          await queryClient.invalidateQueries();
+        } catch (err) {
+          console.warn('Demo data seeding skipped:', err);
+        }
+      }
+      navigate('/');
+    };
     if (mode === 'signin') {
       login.mutate({ email, password }, { onSuccess });
     } else {
