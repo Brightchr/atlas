@@ -56,7 +56,11 @@ async function openDatabase(): Promise<SQLiteDBConnection> {
     const { defineCustomElements } = await import('jeep-sqlite/loader');
     defineCustomElements(window);
     if (!document.querySelector('jeep-sqlite')) {
-      document.body.appendChild(document.createElement('jeep-sqlite'));
+      const el = document.createElement('jeep-sqlite');
+      // Versioned wasm URL (see scripts/copy-sql-wasm.mjs) — immune to stale
+      // caches. Note: jeep-sqlite registers the attribute as "wasmpath".
+      el.setAttribute('wasmpath', `/assets/sqljs/${__SQL_JS_VERSION__}`);
+      document.body.appendChild(el);
     }
     await withTimeout(customElements.whenDefined('jeep-sqlite'), 'SQLite component load');
     await withTimeout(sqlite.initWebStore(), 'SQLite web store init');
