@@ -25,19 +25,13 @@ export function SignInPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const onSuccess = async (data: { user: AuthUser }) => {
-      // The demo account arrives "fully loaded": populate the local database
-      // once. Time-boxed so a slow/unavailable seed never blocks sign-in.
+    const onSuccess = (data: { user: AuthUser }) => {
+      // The demo account arrives "fully loaded". Seeding runs in the background
+      // so sign-in is never delayed; the dashboard fills in as data lands.
       if (data.user.username === 'demo') {
-        try {
-          await Promise.race([
-            seedDemoLocalData(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-          ]);
-          await queryClient.invalidateQueries();
-        } catch (err) {
-          console.warn('Demo data seeding skipped:', err);
-        }
+        void seedDemoLocalData()
+          .then(() => queryClient.invalidateQueries())
+          .catch((err: unknown) => console.warn('Demo data seeding skipped:', err));
       }
       navigate('/');
     };
