@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { THEMES, useTheme } from '@/app/theme';
 import { useCurrentUser, useLogout } from '@/features/auth/api';
+import { useMarkAllRead, useNotifications } from '@/features/notifications/api';
 
 type MenuId = 'theme' | 'notifications' | 'messages' | 'profile';
 
@@ -208,24 +209,61 @@ function ThemeMenu({ open, onToggle }: { open: boolean; onToggle: () => void }) 
 }
 
 function NotificationsMenu({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { data: user } = useCurrentUser();
+  const notifications = useNotifications(Boolean(user));
+  const markAllRead = useMarkAllRead();
+
   return (
     <div className="relative">
-      <IconButton label="Notifications" open={open} onClick={onToggle} badge={1}>
+      <IconButton
+        label="Notifications"
+        open={open}
+        onClick={onToggle}
+        badge={notifications.data?.unread ?? 0}
+      >
         <Bell size={18} strokeWidth={1.8} aria-hidden />
       </IconButton>
       {open && (
         <Panel title="Notifications">
-          <div className="flex items-start gap-3 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-elev">
-            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Sparkles size={15} strokeWidth={1.8} aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Welcome to Arcadia Atlas</p>
-              <p className="text-xs text-muted">
-                Set up your first workout to start tracking progress.
-              </p>
+          {!user && (
+            <EmptyState
+              Icon={Bell}
+              title="Sign in for notifications"
+              hint="Activity and community updates will show up here."
+            />
+          )}
+          {user && notifications.data?.notifications.length === 0 && (
+            <EmptyState Icon={Bell} title="All caught up" hint="Nothing new right now." />
+          )}
+          {notifications.data?.notifications.map((n) => (
+            <div
+              key={n.id}
+              className="flex items-start gap-3 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-elev"
+            >
+              <span
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                  n.read ? 'bg-elev text-muted' : 'bg-accent-soft text-accent'
+                }`}
+              >
+                <Sparkles size={15} strokeWidth={1.8} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className={`text-sm ${n.read ? 'font-normal text-muted' : 'font-medium'}`}>
+                  {n.title}
+                </p>
+                {n.body && <p className="text-xs text-muted">{n.body}</p>}
+              </div>
             </div>
-          </div>
+          ))}
+          {(notifications.data?.unread ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={() => markAllRead.mutate()}
+              className="mt-1 w-full rounded-xl px-2.5 py-2 text-left text-xs font-medium text-accent transition-colors hover:bg-elev"
+            >
+              Mark all as read
+            </button>
+          )}
         </Panel>
       )}
     </div>
