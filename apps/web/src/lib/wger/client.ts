@@ -60,6 +60,17 @@ export async function fetchAllExercises(): Promise<Exercise[]> {
   return all;
 }
 
+// TODO(step 1a): Define and export an ExerciseFilters interface here:
+//   muscleIds: number[]       — selected primary-muscle ids (empty = no muscle filter)
+//   equipmentIds: number[]    — selected equipment ids (empty = no equipment filter)
+//   categoryId: number | null — selected category (null = no category filter)
+//
+// TODO(step 1b): Change filterExercises to accept a third parameter `filters: ExerciseFilters`
+// and apply them IN ADDITION to the text term. Semantics (industry standard for faceted search):
+//   - WITHIN one facet: OR   (muscle "Chest" or "Triceps" → either matches)
+//   - ACROSS facets:    AND  (muscle match AND equipment match AND category match AND text match)
+// Hints: `filters.muscleIds.length === 0 || exercise.primaryMuscles.some(...)` per facet,
+// and an empty term should now mean "no text filter" instead of "return []".
 /** Case-insensitive name/category/muscle match, name-prefix hits first. */
 export function filterExercises(all: Exercise[], term: string): Exercise[] {
   const q = term.trim().toLowerCase();

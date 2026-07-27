@@ -2,6 +2,19 @@ import { useState } from 'react';
 import { useExercisePage, useExerciseSearch } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 
+// TODO(step 4a): Add filter state here (the page owns it, FilterBar just displays it):
+//   const [filters, setFilters] = useState<ExerciseFilters>({ muscleIds: [], equipmentIds: [], categoryId: null });
+//
+// TODO(step 4b): Call your useExerciseCatalog() hook and render <FilterBar> under the header,
+// passing catalog data (?? []), filters, and setFilters.
+//
+// TODO(step 4c): Replace `searching` with: term >= 2 chars OR any filter active — and use
+// your new useFilteredExercises(term, filters) for the results.
+//
+// TODO(step 4d): Above the results, show a count when filtering: "{n} exercise{s} found".
+//
+// TODO(step 5): When it all works: npm run build, test in the browser (search + each facet +
+// combinations + clear all), then commit with a message describing the FEATURE, not the files.
 export function ExerciseListPage() {
   const [term, setTerm] = useState('');
   const [page, setPage] = useState(0);

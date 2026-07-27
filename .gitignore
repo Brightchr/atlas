@@ -24,6 +24,7 @@ yarn-error.log*
 .vscode/
 .idea/
 .claude/
+.todo/
 .DS_Store
 
 # Misc

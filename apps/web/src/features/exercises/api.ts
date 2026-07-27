@@ -11,6 +11,15 @@ export function useExercisePage(page: number) {
   });
 }
 
+// TODO(step 2a): Add a `useExerciseCatalog()` hook: same queryKey ['exercises', 'all'] and
+// queryFn fetchAllExercises, but always enabled (no `enabled` option). The FilterBar needs the
+// catalog to derive which muscles/equipment/categories exist. Because the queryKey is identical,
+// TanStack Query fetches ONCE and both hooks share the cache — that's the point of query keys.
+//
+// TODO(step 2b): Rework this hook into `useFilteredExercises(term: string, filters: ExerciseFilters)`:
+//   - enabled when there's a term (>= 2 chars) OR any filter is active
+//   - select: (all) => filterExercises(all, term, filters)
+// Then delete the old useExerciseSearch.
 /** Loads the full catalog once (cached), filters client-side per keystroke. */
 export function useExerciseSearch(term: string) {
   return useQuery({
