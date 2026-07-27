@@ -1,4 +1,23 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      # Dev-only credentials — Railway injects its own DATABASE_URL in production.
+      POSTGRES_USER: arcadia
+      POSTGRES_PASSWORD: arcadia
+      POSTGRES_DB: arcadia
+    ports:
+      # High host port: this machine has a native Postgres on 5432 and a
+      # WSL-relayed service on 5433 — 55432 avoids both.
+      - '55432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U arcadia -d arcadia']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build:
       context: .
@@ -7,6 +26,11 @@ services:
       - '3000:3000'
     environment:
       - NODE_ENV=production
+      - DATABASE_URL=postgresql://arcadia:arcadia@db:5432/arcadia
+      - CORS_ORIGINS=http://localhost:8080,http://localhost:5173
+    depends_on:
+      db:
+        condition: service_healthy
 
   web:
     build:
@@ -19,3 +43,6 @@ services:
       - '8080:80'
     depends_on:
       - api
+
+volumes:
+  pgdata:
