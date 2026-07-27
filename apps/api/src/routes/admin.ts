@@ -1,0 +1,152 @@
+import { Hono, type Context } from 'hono';
+import { getCookie, setCookie } from 'hono/cookie';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import { query } from '../db/pool';
+import { logAudit } from '../lib/audit';
+import { env } from '../lib/env';
+import { createSession, deleteSession } from '../lib/session';
+import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
+
+function setSessionCookie(c: Context, token: string, expiresAt: Date) {
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: env.isProd,
+    sameSite: 'Lax',
+    path: '/',
+    expires: expiresAt,
+  });
+}
+
+export const adminRoutes = new Hono<AppEnv>();
+
+/** Ending a masquerade must work for the *impersonated* (non-admin) session,
+ * so it only requires auth — everything else below requires the admin role. */
+adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
+  const impersonatorId = c.get('impersonatorId');
+  if (!impersonatorId) {
+    return c.json({ error: 'Not impersonating' }, 400);
+  }
+  const token = getCookie(c, SESSION_COOKIE) ?? extractToken(c);
+  if (token) await deleteSession(token);
+
+  // Hand the admin a fresh session of their own so they land back seamlessly.
+  const { token: adminToken, expiresAt } = await createSession(impersonatorId);
+  setSessionCookie(c, adminToken, expiresAt);
+  const rows = await query<{ id: string; email: string; username: string; role: string; created_at: string }>(
+    'SELECT id, email, username, role, created_at FROM users WHERE id = $1',
+    [impersonatorId],
+  );
+  return c.json({ user: rows[0] ?? null, token: adminToken });
+});
+
+adminRoutes.use('*', requireRole('admin'));
+
+adminRoutes.get('/stats', async (c) => {
+  const [stats] = await query<{
+    users: string;
+    active_sessions: string;
+    signups_7d: string;
+    notifications: string;
+  }>(
+    `SELECT
+       (SELECT count(*) FROM users) AS users,
+       (SELECT count(*) FROM sessions WHERE expires_at > now()) AS active_sessions,
+       (SELECT count(*) FROM users WHERE created_at > now() - interval '7 days') AS signups_7d,
+       (SELECT count(*) FROM notifications) AS notifications`,
+  );
+  return c.json({
+    users: Number(stats!.users),
+    activeSessions: Number(stats!.active_sessions),
+    signups7d: Number(stats!.signups_7d),
+    notifications: Number(stats!.notifications),
+  });
+});
+
+adminRoutes.get('/users', async (c) => {
+  const q = c.req.query('q')?.trim() ?? '';
+  const users = await query<{
+    id: string;
+    email: string;
+    username: string;
+    role: string;
+    created_at: string;
+    active_sessions: string;
+    last_login: string | null;
+  }>(
+    `SELECT u.id, u.email, u.username, u.role, u.created_at,
+            count(s.id) FILTER (WHERE s.expires_at > now()) AS active_sessions,
+            max(s.created_at) AS last_login
+       FROM users u
+       LEFT JOIN sessions s ON s.user_id = u.id
+      WHERE $1 = '' OR u.email ILIKE '%' || $1 || '%' OR u.username ILIKE '%' || $1 || '%'
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+      LIMIT 100`,
+    [q],
+  );
+  return c.json({
+    users: users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      role: u.role,
+      createdAt: u.created_at,
+      activeSessions: Number(u.active_sessions),
+      lastLogin: u.last_login,
+    })),
+  });
+});
+
+adminRoutes.post('/users/:id/impersonate', async (c) => {
+  const admin = c.get('user')!;
+  const targetId = c.req.param('id');
+
+  const rows = await query<{ id: string; email: string; username: string; role: string; created_at: string }>(
+    'SELECT id, email, username, role, created_at FROM users WHERE id = $1',
+    [targetId],
+  );
+  const target = rows[0];
+  if (!target) return c.json({ error: 'User not found' }, 404);
+  // Admins cannot masquerade as other admins — limits blast radius of one
+  // compromised admin account.
+  if (target.role === 'admin') return c.json({ error: 'Cannot impersonate an admin' }, 403);
+
+  await logAudit(admin.id, 'impersonate', 'user', target.id, { username: target.username });
+  const { token, expiresAt } = await createSession(target.id, admin.id);
+  setSessionCookie(c, token, expiresAt);
+  return c.json({ user: target, token });
+});
+
+const roleSchema = z.object({ role: z.enum(['user', 'moderator', 'admin']) });
+
+adminRoutes.patch('/users/:id/role', zValidator('json', roleSchema), async (c) => {
+  const admin = c.get('user')!;
+  const targetId = c.req.param('id');
+  const { role } = c.req.valid('json');
+
+  if (targetId === admin.id) {
+    return c.json({ error: 'You cannot change your own role' }, 400);
+  }
+  const rows = await query<{ id: string; role: string }>(
+    'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, role',
+    [role, targetId],
+  );
+  if (rows.length === 0) return c.json({ error: 'User not found' }, 404);
+
+  await logAudit(admin.id, 'set_role', 'user', targetId, { role });
+  return c.json({ ok: true, role: rows[0]!.role });
+});
+
+adminRoutes.get('/audit', async (c) => {
+  const entries = await query<{
+    id: string;
+    actor_id: string | null;
+    action: string;
+    target_type: string;
+    target_id: string;
+    detail: unknown;
+    created_at: string;
+  }>('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100');
+  return c.json({ entries });
+});

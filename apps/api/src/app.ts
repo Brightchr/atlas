@@ -3,8 +3,10 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { env } from './lib/env';
 import { sessionMiddleware, type AppEnv } from './middleware/auth';
+import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
 import { healthRoutes } from './routes/health';
+import { notificationRoutes } from './routes/notifications';
 
 /** App is split from the server entry (index.ts) so route handlers can be
  * tested without binding a port. */
@@ -23,6 +25,8 @@ app.use('*', sessionMiddleware);
 
 app.route('/health', healthRoutes);
 app.route('/v1/auth', authRoutes);
+app.route('/v1/notifications', notificationRoutes);
+app.route('/v1/admin', adminRoutes);
 
 // Future route groups (community workouts, votes, comments, moderation) mount here.
 
