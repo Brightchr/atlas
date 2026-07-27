@@ -1,0 +1,14 @@
+# Arcadia's overrides on top of the official wger stack (infra/wger/docker-compose.yml).
+# The upstream repo stays untouched so `git pull` in infra/wger always works;
+# everything we customize lives here and is merged by docker compose -f ... -f ...
+services:
+  nginx:
+    # Publish on 8001 instead of 80 (our web app uses 8080, api uses 3000).
+    ports: !override
+      - '8001:80'
+
+  web:
+    environment:
+      # Keep absolute URLs and CSRF checks consistent with the published port.
+      - SITE_URL=http://localhost:8001
+      - CSRF_TRUSTED_ORIGINS=http://localhost:8001
