@@ -12,6 +12,18 @@
     <script>
       // Apply the stored theme before first paint to avoid a flash of the default.
       document.documentElement.dataset.theme = localStorage.getItem('arcadia-theme') || 'aurora';
+
+      // Browsers never fire requestAnimationFrame in hidden/background tabs, but
+      // jeep-sqlite (our browser SQLite) renders via rAF and would stall forever.
+      // Fall back to a timer while the tab is hidden so the database still opens.
+      (function () {
+        var nativeRaf = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = function (cb) {
+          return document.hidden
+            ? setTimeout(function () { cb(performance.now()); }, 32)
+            : nativeRaf(cb);
+        };
+      })();
     </script>
   </head>
   <body>
