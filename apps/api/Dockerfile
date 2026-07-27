@@ -16,7 +16,11 @@ RUN npm run build -w @arcadia/api
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
-# tsup (noExternal in tsup.config.ts) bundles all deps into dist — no node_modules needed
+# Runtime deps (pg, argon2, hono, …) — prod-only install, no build tooling
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+RUN npm ci --omit=dev --workspace @arcadia/api --include-workspace-root && npm cache clean --force
 COPY --from=build /repo/apps/api/dist ./dist
 EXPOSE 3000
 USER node

@@ -5,6 +5,8 @@ export default defineConfig({
   format: ['esm'],
   target: 'node20',
   clean: true,
-  // Bundle every dependency into dist so the Docker runtime image needs no node_modules.
-  noExternal: [/.*/],
+  // Workspace code (@arcadia/shared) is bundled; npm dependencies stay external
+  // and are installed in the runtime image — required for native modules like
+  // @node-rs/argon2, which cannot be bundled.
+  noExternal: ['@arcadia/shared'],
 });
