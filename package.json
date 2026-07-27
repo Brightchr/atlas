@@ -1,0 +1,33 @@
+{
+  "name": "arcadia-atlas",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Workout platform: exercise lookup, workout & diet plans, calorie tracking, shopping lists",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @arcadia/web",
+    "dev:api": "npm run dev -w @arcadia/api",
+    "build": "npm run build -w @arcadia/shared -w @arcadia/api -w @arcadia/web",
+    "build:web": "npm run build -w @arcadia/web",
+    "build:api": "npm run build -w @arcadia/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
+    "cap:sync": "npm run cap:sync -w @arcadia/web",
+    "cap:android": "npm run cap:android -w @arcadia/web",
+    "wger:up": "node scripts/wger.mjs up",
+    "wger:down": "node scripts/wger.mjs down",
+    "wger:logs": "node scripts/wger.mjs logs",
+    "wger:status": "node scripts/wger.mjs status"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.3"
+  }
+}
