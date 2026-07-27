@@ -31,10 +31,23 @@ Conventions:
 
 ```bash
 npm install
-npm run dev        # web app on http://localhost:5173
-npm run dev:api    # API on http://localhost:3000
-npm run build      # typecheck + build everything
+docker compose up -d db   # dev Postgres on localhost:55432 (arcadia/arcadia)
+npm run dev               # web app on http://localhost:5173
+npm run dev:api           # API on http://localhost:3000 (runs migrations on boot)
+npm run build             # typecheck + build everything
 ```
+
+## Auth & data protection
+
+- Passwords hashed with argon2id (OWASP parameters) — never stored or logged in plaintext.
+- Sessions are 256-bit random tokens; the database stores only their SHA-256 hash.
+  Logout revokes server-side. Browser gets an httpOnly/SameSite=Lax cookie; the
+  native app uses `Authorization: Bearer` with the token from the login response.
+- Auth endpoints are rate-limited; login errors are generic (no account enumeration).
+- CORS is a strict origin allowlist (CORS_ORIGINS) because credentials are allowed.
+- Postgres migrations live in `apps/api/src/db/migrations.ts` — append-only, applied
+  transactionally at startup. On Railway: attach a Postgres service and the injected
+  DATABASE_URL is picked up automatically.
 
 ## Android (Capacitor)
 
