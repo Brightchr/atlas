@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router';
+import { ErrorPage } from '@/components/ErrorPage';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
@@ -13,6 +14,7 @@ import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
 export const router = createBrowserRouter([
   {
     element: <AppLayout />,
+    errorElement: <ErrorPage />,
     children: [
       { path: '/', element: <DashboardPage /> },
       { path: '/signin', element: <SignInPage /> },

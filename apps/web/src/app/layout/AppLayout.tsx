@@ -14,6 +14,7 @@ import {
   VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
+import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 
@@ -137,6 +138,7 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <DbStatusBanner />
         <ImpersonationBanner />
         <TopBar />
         <main className="flex-1 overflow-y-auto pb-28 md:pb-6">
