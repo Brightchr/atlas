@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
 import { Mountain } from 'lucide-react';
-import type { AuthUser } from '@arcadia/shared';
-import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 import { useLogin, useRegister } from '../api';
 
 type Mode = 'signin' | 'register';
@@ -20,21 +17,13 @@ export function SignInPage() {
 
   const login = useLogin();
   const register = useRegister();
-  const queryClient = useQueryClient();
   const active = mode === 'signin' ? login : register;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const onSuccess = (data: { user: AuthUser }) => {
-      // The demo account arrives "fully loaded". Seeding runs in the background
-      // so sign-in is never delayed; the dashboard fills in as data lands.
-      if (data.user.username === 'demo') {
-        void seedDemoLocalData()
-          .then(() => queryClient.invalidateQueries())
-          .catch((err: unknown) => console.warn('Demo data seeding skipped:', err));
-      }
-      navigate('/');
-    };
+    // Demo data seeding happens in AppLayout whenever the demo user is signed
+    // in — sign-in itself only navigates.
+    const onSuccess = () => navigate('/');
     if (mode === 'signin') {
       login.mutate({ email, password }, { onSuccess });
     } else {

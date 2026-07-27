@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Apple,
   CalendarDays,
@@ -17,6 +18,7 @@ import { TopBar } from '@/app/layout/TopBar';
 import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
+import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 
 const navItems = [
   { to: '/', label: 'Home', Icon: House, end: true },
@@ -61,9 +63,21 @@ export function AppLayout() {
     () => localStorage.getItem(COLLAPSE_KEY) === 'collapsed',
   );
   const { data: user } = useCurrentUser();
+  const queryClient = useQueryClient();
   const items = user?.role === 'admin'
     ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck, end: false }]
     : navItems;
+
+  // The demo account arrives "fully loaded": whenever demo is signed in and the
+  // device DB is empty, seed it in the background (idempotent, self-healing).
+  useEffect(() => {
+    if (user?.username !== 'demo') return;
+    void seedDemoLocalData()
+      .then((seeded) => {
+        if (seeded) return queryClient.invalidateQueries();
+      })
+      .catch((err: unknown) => console.warn('Demo data seeding skipped:', err));
+  }, [user?.username, queryClient]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -73,8 +87,14 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar — desktop only */}
+    <div className="flex h-full flex-col">
+      {/* System banners span the full width, above everything — they push the
+          layout down instead of covering the sidebar or top bar. */}
+      <DbStatusBanner />
+      <ImpersonationBanner />
+
+      <div className="flex min-h-0 flex-1">
+        {/* Sidebar — desktop only */}
       <aside
         className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 md:flex ${
           collapsed ? 'w-[76px]' : 'w-64'
@@ -137,13 +157,12 @@ export function AppLayout() {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <DbStatusBanner />
-        <ImpersonationBanner />
-        <TopBar />
-        <main className="flex-1 overflow-y-auto pb-28 md:pb-6">
-          <Outlet />
-        </main>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <main className="flex-1 overflow-y-auto pb-28 md:pb-6">
+            <Outlet />
+          </main>
+        </div>
       </div>
 
       {/* Floating glass tab bar — mobile only */}
