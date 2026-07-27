@@ -11,6 +11,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    // jeep-sqlite is a Stencil web component; pre-bundling duplicates its runtime
+    // and the component never hydrates in dev. Serve it as native ESM instead.
+    exclude: ['jeep-sqlite'],
+  },
   server: {
     port: 5173,
   },
