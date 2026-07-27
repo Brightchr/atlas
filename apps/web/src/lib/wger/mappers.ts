@@ -1,8 +1,9 @@
 import type { Exercise, Muscle } from '@arcadia/shared';
+import { env } from '@/lib/env';
 import type { WgerExerciseInfo, WgerMuscle } from './types';
 
 const ENGLISH = 2;
-const WGER_BASE = 'https://wger.de';
+const WGER_BASE = env.wgerUrl;
 
 function toMuscle(m: WgerMuscle): Muscle {
   return {
