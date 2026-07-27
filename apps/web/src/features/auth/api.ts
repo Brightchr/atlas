@@ -62,6 +62,15 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiFetch<{ ok: boolean }>('/v1/auth/logout', { method: 'POST' }),
-    onSuccess: () => queryClient.setQueryData(['auth', 'me'], null),
+    onSuccess: () => {
+      // Evict all personal data from memory, not just the session — the next
+      // user of this browser must not see the previous user's cached responses.
+      queryClient.setQueryData(['auth', 'me'], null);
+      queryClient.removeQueries({ queryKey: ['notifications'] });
+      queryClient.removeQueries({ queryKey: ['admin'] });
+      queryClient.removeQueries({ queryKey: ['workouts'] });
+      queryClient.removeQueries({ queryKey: ['diary'] });
+      queryClient.removeQueries({ queryKey: ['shopping'] });
+    },
   });
 }

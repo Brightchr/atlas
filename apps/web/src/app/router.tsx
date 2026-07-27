@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { ErrorPage } from '@/components/ErrorPage';
 import { AppLayout } from '@/app/layout/AppLayout';
+import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
@@ -12,12 +13,18 @@ import { PlansPage } from '@/features/plans/pages/PlansPage';
 import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
 
 export const router = createBrowserRouter([
+  // Public: the only page reachable without a session.
+  { path: '/signin', element: <SignInPage />, errorElement: <ErrorPage /> },
+  // Everything else is an authenticated space.
   {
-    element: <AppLayout />,
+    element: (
+      <RequireAuth>
+        <AppLayout />
+      </RequireAuth>
+    ),
     errorElement: <ErrorPage />,
     children: [
       { path: '/', element: <DashboardPage /> },
-      { path: '/signin', element: <SignInPage /> },
       { path: '/admin', element: <AdminPage /> },
       { path: '/exercises', element: <ExerciseListPage /> },
       { path: '/exercises/:id', element: <ExerciseDetailPage /> },

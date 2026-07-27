@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Navigate, useLocation } from 'react-router';
 import { Mountain } from 'lucide-react';
-import { useLogin, useRegister } from '../api';
+import { useLogin, useRegister, useSession } from '../api';
 
 type Mode = 'signin' | 'register';
 
@@ -13,21 +13,29 @@ export function SignInPage() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const navigate = useNavigate();
+  const location = useLocation();
+  const session = useSession();
 
   const login = useLogin();
   const register = useRegister();
   const active = mode === 'signin' ? login : register;
 
+  // Where the user was originally headed (RequireAuth remembers it).
+  const destination = (location.state as { from?: string } | null)?.from ?? '/';
+
+  // Signed in — whether just now (the login mutation updated the session cache)
+  // or already before visiting this page — go to the destination. Navigation is
+  // driven by session state, so it can never race a callback.
+  if (session.data) {
+    return <Navigate to={destination} replace />;
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Demo data seeding happens in AppLayout whenever the demo user is signed
-    // in — sign-in itself only navigates.
-    const onSuccess = () => navigate('/');
     if (mode === 'signin') {
-      login.mutate({ email, password }, { onSuccess });
+      login.mutate({ email, password });
     } else {
-      register.mutate({ email, username, password }, { onSuccess });
+      register.mutate({ email, username, password });
     }
   };
 
