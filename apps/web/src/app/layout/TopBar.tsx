@@ -48,7 +48,10 @@ export function TopBar() {
   return (
     <header
       ref={barRef}
-      className="flex items-center justify-between gap-3 border-b border-line bg-surface/70 px-4 py-2.5 backdrop-blur-sm md:justify-end"
+      // relative z-40 lifts the whole bar (and its dropdown panels) above the
+      // page content — backdrop-blur alone creates a stacking context that
+      // would otherwise paint BELOW positioned elements in <main>.
+      className="relative z-40 flex items-center justify-between gap-3 border-b border-line bg-surface/70 px-4 py-2.5 backdrop-blur-sm md:justify-end"
     >
       {/* Brand — mobile only (desktop shows it in the sidebar) */}
       <div className="flex items-center gap-2.5 md:hidden">
