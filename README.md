@@ -37,6 +37,17 @@ npm run dev:api           # API on http://localhost:3000 (runs migrations on boo
 npm run build             # typecheck + build everything
 ```
 
+## Seeded accounts (dev)
+
+| Account | Email | Password | Notes |
+|---|---|---|---|
+| Demo | demo@arcadia.dev | demo1234 | Signing in seeds the device DB with workouts, meals, shopping list |
+| Admin | admin@arcadia.dev | admin1234 | /admin: user directory + stats, masquerade, role management |
+
+In production these are only created when ADMIN_PASSWORD / DEMO_PASSWORD env vars
+are set — no default credentials ever ship. Admin masquerade sessions are marked in
+the database and recorded in the audit_log table.
+
 ## Auth & data protection
 
 - Passwords hashed with argon2id (OWASP parameters) — never stored or logged in plaintext.
