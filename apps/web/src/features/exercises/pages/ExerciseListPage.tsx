@@ -1,27 +1,19 @@
 import { useState } from 'react';
-import { useExercisePage, useExerciseSearch } from '../api';
+import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/wger/client';
+import { useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
+import { FilterBar } from '../components/FilterBar';
 
-// TODO(step 4a): Add filter state here (the page owns it, FilterBar just displays it):
-//   const [filters, setFilters] = useState<ExerciseFilters>({ muscleIds: [], equipmentIds: [], categoryId: null });
-//
-// TODO(step 4b): Call your useExerciseCatalog() hook and render <FilterBar> under the header,
-// passing catalog data (?? []), filters, and setFilters.
-//
-// TODO(step 4c): Replace `searching` with: term >= 2 chars OR any filter active — and use
-// your new useFilteredExercises(term, filters) for the results.
-//
-// TODO(step 4d): Above the results, show a count when filtering: "{n} exercise{s} found".
-//
-// TODO(step 5): When it all works: npm run build, test in the browser (search + each facet +
-// combinations + clear all), then commit with a message describing the FEATURE, not the files.
 export function ExerciseListPage() {
   const [term, setTerm] = useState('');
+  const [filters, setFilters] = useState<ExerciseFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
-  const searching = term.trim().length >= 2;
 
+  const filtering = term.trim().length >= 2 || hasActiveFilters(filters);
+
+  const catalogQuery = useExerciseCatalog();
   const pageQuery = useExercisePage(page);
-  const searchQuery = useExerciseSearch(term);
+  const resultsQuery = useFilteredExercises(term, filters);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
@@ -39,12 +31,25 @@ export function ExerciseListPage() {
         />
       </header>
 
-      {searching ? (
+      <FilterBar
+        exercises={catalogQuery.data ?? []}
+        filters={filters}
+        onChange={setFilters}
+      />
+
+      {filtering ? (
         <>
-          {searchQuery.isLoading && <p className="text-muted">Searching…</p>}
-          {searchQuery.data?.length === 0 && <p className="text-muted">No matches.</p>}
+          {resultsQuery.isLoading && <p className="text-muted">Searching…</p>}
+          {resultsQuery.data && (
+            <p className="text-sm text-muted tabular-nums">
+              {resultsQuery.data.length} exercise{resultsQuery.data.length === 1 ? '' : 's'} found
+            </p>
+          )}
+          {resultsQuery.data?.length === 0 && (
+            <p className="text-muted">No exercises match — try removing a filter.</p>
+          )}
           <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {searchQuery.data?.map((exercise) => (
+            {resultsQuery.data?.map((exercise) => (
               <li key={exercise.id}>
                 <ExerciseCard exercise={exercise} />
               </li>

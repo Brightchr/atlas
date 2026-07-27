@@ -60,30 +60,54 @@ export async function fetchAllExercises(): Promise<Exercise[]> {
   return all;
 }
 
-// TODO(step 1a): Define and export an ExerciseFilters interface here:
-//   muscleIds: number[]       — selected primary-muscle ids (empty = no muscle filter)
-//   equipmentIds: number[]    — selected equipment ids (empty = no equipment filter)
-//   categoryId: number | null — selected category (null = no category filter)
-//
-// TODO(step 1b): Change filterExercises to accept a third parameter `filters: ExerciseFilters`
-// and apply them IN ADDITION to the text term. Semantics (industry standard for faceted search):
-//   - WITHIN one facet: OR   (muscle "Chest" or "Triceps" → either matches)
-//   - ACROSS facets:    AND  (muscle match AND equipment match AND category match AND text match)
-// Hints: `filters.muscleIds.length === 0 || exercise.primaryMuscles.some(...)` per facet,
-// and an empty term should now mean "no text filter" instead of "return []".
-/** Case-insensitive name/category/muscle match, name-prefix hits first. */
-export function filterExercises(all: Exercise[], term: string): Exercise[] {
+/** Faceted filter selection. Empty arrays / null mean "facet not filtered". */
+export interface ExerciseFilters {
+  muscleIds: number[];
+  equipmentIds: number[];
+  categoryId: number | null;
+}
+
+export const EMPTY_FILTERS: ExerciseFilters = {
+  muscleIds: [],
+  equipmentIds: [],
+  categoryId: null,
+};
+
+export function hasActiveFilters(f: ExerciseFilters): boolean {
+  return f.muscleIds.length > 0 || f.equipmentIds.length > 0 || f.categoryId !== null;
+}
+
+/** Text + facet filtering. Standard faceted-search semantics: OR within a facet,
+ * AND across facets and the text term. Name-prefix hits sort first when searching. */
+export function filterExercises(
+  all: Exercise[],
+  term: string,
+  filters: ExerciseFilters = EMPTY_FILTERS,
+): Exercise[] {
   const q = term.trim().toLowerCase();
-  if (!q) return [];
-  const matches = all.filter(
-    (e) =>
+
+  const matches = all.filter((e) => {
+    const textMatch =
+      q === '' ||
       e.name.toLowerCase().includes(q) ||
       e.category?.name.toLowerCase().includes(q) ||
-      e.primaryMuscles.some((m) => m.commonName.toLowerCase().includes(q)),
-  );
+      e.primaryMuscles.some((m) => m.commonName.toLowerCase().includes(q));
+    const muscleMatch =
+      filters.muscleIds.length === 0 ||
+      e.primaryMuscles.some((m) => filters.muscleIds.includes(m.id));
+    const equipmentMatch =
+      filters.equipmentIds.length === 0 ||
+      e.equipment.some((eq) => filters.equipmentIds.includes(eq.id));
+    const categoryMatch = filters.categoryId === null || e.category?.id === filters.categoryId;
+    return textMatch && muscleMatch && equipmentMatch && categoryMatch;
+  });
+
   return matches.sort((a, b) => {
-    const aPrefix = a.name.toLowerCase().startsWith(q) ? 0 : 1;
-    const bPrefix = b.name.toLowerCase().startsWith(q) ? 0 : 1;
-    return aPrefix - bPrefix || a.name.localeCompare(b.name);
+    if (q !== '') {
+      const aPrefix = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+      const bPrefix = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+      if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+    }
+    return a.name.localeCompare(b.name);
   });
 }
