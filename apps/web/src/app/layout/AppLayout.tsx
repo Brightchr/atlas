@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useNavigate } from 'react-router';
 import {
   Apple,
   CalendarDays,
@@ -9,9 +9,13 @@ import {
   Mountain,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
   ShoppingCart,
+  VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
+import { useStopImpersonation } from '@/features/admin/api';
+import { useCurrentUser, useSession } from '@/features/auth/api';
 
 const navItems = [
   { to: '/', label: 'Home', Icon: House, end: true },
@@ -24,6 +28,30 @@ const navItems = [
 
 const COLLAPSE_KEY = 'arcadia-sidebar';
 
+/** Amber bar shown while an admin views the app as another user. */
+function ImpersonationBanner() {
+  const session = useSession();
+  const stop = useStopImpersonation();
+  const navigate = useNavigate();
+
+  if (!session.data?.impersonated) return null;
+  return (
+    <div className="flex items-center justify-between gap-3 bg-amber-500/15 px-4 py-2 text-sm font-medium text-amber-600">
+      <span className="inline-flex items-center gap-2">
+        <VenetianMask size={16} aria-hidden />
+        Viewing as {session.data.user.username} (admin masquerade)
+      </span>
+      <button
+        type="button"
+        onClick={() => stop.mutate(undefined, { onSuccess: () => navigate('/admin') })}
+        className="rounded-lg border border-amber-500/40 px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-amber-500/20"
+      >
+        Return to admin
+      </button>
+    </div>
+  );
+}
+
 /** App shell: collapsible sidebar on md+ screens, floating glass tab bar on mobile,
  * top bar with theme/notifications/messages/profile on all breakpoints.
  * All colors come from theme tokens — see index.css. */
@@ -31,6 +59,10 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(COLLAPSE_KEY) === 'collapsed',
   );
+  const { data: user } = useCurrentUser();
+  const items = user?.role === 'admin'
+    ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck, end: false }]
+    : navItems;
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -61,7 +93,7 @@ export function AppLayout() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {navItems.map(({ to, label, Icon, end }) => (
+          {items.map(({ to, label, Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -105,6 +137,7 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <ImpersonationBanner />
         <TopBar />
         <main className="flex-1 overflow-y-auto pb-28 md:pb-6">
           <Outlet />

@@ -13,7 +13,7 @@ import {
 import { fetchExercises } from '@/lib/wger/client';
 import { getDiaryForDate } from '@/features/nutrition/repository';
 import { listWorkouts } from '@/features/workouts/repository';
-import { StatTile } from '../components/StatTile';
+import { StatTile } from '@/components/StatTile';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);

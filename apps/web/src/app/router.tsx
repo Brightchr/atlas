@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 import { AppLayout } from '@/app/layout/AppLayout';
+import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { ExerciseListPage } from '@/features/exercises/pages/ExerciseListPage';
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <DashboardPage /> },
       { path: '/signin', element: <SignInPage /> },
+      { path: '/admin', element: <AdminPage /> },
       { path: '/exercises', element: <ExerciseListPage /> },
       { path: '/exercises/:id', element: <ExerciseDetailPage /> },
       { path: '/workouts', element: <WorkoutsPage /> },

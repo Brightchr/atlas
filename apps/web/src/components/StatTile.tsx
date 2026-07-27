@@ -6,6 +6,7 @@ const tints = {
   orange: 'bg-orange-500/15 text-orange-500',
   rose: 'bg-rose-500/15 text-rose-500',
   emerald: 'bg-emerald-500/15 text-emerald-500',
+  sky: 'bg-sky-500/15 text-sky-500',
 } as const;
 
 interface StatTileProps {
