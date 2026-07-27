@@ -1,8 +1,9 @@
 import type { Exercise } from '@arcadia/shared';
-import type { WgerExerciseInfo, WgerPage, WgerSearchResponse } from './types';
+import { env } from '@/lib/env';
+import type { WgerExerciseInfo, WgerPage } from './types';
 import { toExercise } from './mappers';
 
-const BASE_URL = 'https://wger.de/api/v2';
+const BASE_URL = `${env.wgerUrl}/api/v2`;
 const ENGLISH = 2;
 
 async function wgerFetch<T>(path: string, params?: Record<string, string | number>): Promise<T> {
@@ -45,25 +46,33 @@ export async function fetchExercise(id: number): Promise<Exercise> {
   return toExercise(info);
 }
 
-export interface ExerciseSearchHit {
-  /** id usable with fetchExercise */
-  exerciseId: number;
-  name: string;
-  category: string;
-  thumbnailUrl: string | null;
+/** The full exercise catalog (~900 entries — small enough to cache whole).
+ * Search runs client-side over this: instant, offline-friendly, and independent
+ * of wger API versions (newer servers dropped the /exercise/search/ endpoint). */
+export async function fetchAllExercises(): Promise<Exercise[]> {
+  const all: Exercise[] = [];
+  const limit = 100;
+  for (let offset = 0; ; offset += limit) {
+    const page = await fetchExercises(offset, limit);
+    all.push(...page.exercises);
+    if (!page.hasMore) break;
+  }
+  return all;
 }
 
-/** Name search (autocomplete-style). Returns light-weight hits. */
-export async function searchExercises(term: string): Promise<ExerciseSearchHit[]> {
-  if (!term.trim()) return [];
-  const res = await wgerFetch<WgerSearchResponse>('/exercise/search/', {
-    term,
-    language: 'english',
+/** Case-insensitive name/category/muscle match, name-prefix hits first. */
+export function filterExercises(all: Exercise[], term: string): Exercise[] {
+  const q = term.trim().toLowerCase();
+  if (!q) return [];
+  const matches = all.filter(
+    (e) =>
+      e.name.toLowerCase().includes(q) ||
+      e.category?.name.toLowerCase().includes(q) ||
+      e.primaryMuscles.some((m) => m.commonName.toLowerCase().includes(q)),
+  );
+  return matches.sort((a, b) => {
+    const aPrefix = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+    const bPrefix = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    return aPrefix - bPrefix || a.name.localeCompare(b.name);
   });
-  return res.suggestions.map((s) => ({
-    exerciseId: s.data.base_id,
-    name: s.data.name,
-    category: s.data.category,
-    thumbnailUrl: s.data.image_thumbnail ? `https://wger.de${s.data.image_thumbnail}` : null,
-  }));
 }

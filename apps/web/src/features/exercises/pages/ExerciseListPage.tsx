@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
-import { Dumbbell } from 'lucide-react';
 import { useExercisePage, useExerciseSearch } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 
@@ -29,34 +27,17 @@ export function ExerciseListPage() {
       </header>
 
       {searching ? (
-        <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <>
           {searchQuery.isLoading && <p className="text-muted">Searching…</p>}
           {searchQuery.data?.length === 0 && <p className="text-muted">No matches.</p>}
-          {searchQuery.data?.map((hit) => (
-            <li key={`${hit.exerciseId}-${hit.name}`}>
-              <Link
-                to={`/exercises/${hit.exerciseId}`}
-                className="flex h-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                {hit.thumbnailUrl ? (
-                  <img
-                    src={hit.thumbnailUrl}
-                    alt=""
-                    className="h-12 w-12 shrink-0 rounded-xl bg-white object-contain"
-                  />
-                ) : (
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                    <Dumbbell size={20} strokeWidth={1.8} aria-hidden />
-                  </span>
-                )}
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{hit.name}</p>
-                  <p className="text-sm text-muted">{hit.category}</p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+          <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {searchQuery.data?.map((exercise) => (
+              <li key={exercise.id}>
+                <ExerciseCard exercise={exercise} />
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <>
           {pageQuery.isLoading && (

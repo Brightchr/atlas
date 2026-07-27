@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { fetchExercise, fetchExercises, searchExercises } from '@/lib/wger/client';
+import { fetchAllExercises, fetchExercise, fetchExercises, filterExercises } from '@/lib/wger/client';
 
 export const PAGE_SIZE = 20;
 
@@ -11,11 +11,13 @@ export function useExercisePage(page: number) {
   });
 }
 
+/** Loads the full catalog once (cached), filters client-side per keystroke. */
 export function useExerciseSearch(term: string) {
   return useQuery({
-    queryKey: ['exercises', 'search', term],
-    queryFn: () => searchExercises(term),
+    queryKey: ['exercises', 'all'],
+    queryFn: fetchAllExercises,
     enabled: term.trim().length >= 2,
+    select: (all) => filterExercises(all, term),
   });
 }
 

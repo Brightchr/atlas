@@ -52,19 +52,3 @@ export interface WgerExerciseInfo {
   translations: WgerTranslation[];
 }
 
-/** Result shape of /exercise/search/ suggestions. */
-export interface WgerSearchSuggestion {
-  value: string;
-  data: {
-    id: number;
-    base_id: number;
-    name: string;
-    category: string;
-    image: string | null;
-    image_thumbnail: string | null;
-  };
-}
-
-export interface WgerSearchResponse {
-  suggestions: WgerSearchSuggestion[];
-}
