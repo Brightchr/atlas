@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import {
   Bell,
   Check,
   ChevronDown,
   LogIn,
+  LogOut,
   MessageSquare,
   Mountain,
   Settings,
@@ -13,6 +15,7 @@ import {
   Users,
 } from 'lucide-react';
 import { THEMES, useTheme } from '@/app/theme';
+import { useCurrentUser, useLogout } from '@/features/auth/api';
 
 type MenuId = 'theme' | 'notifications' | 'messages' | 'profile';
 
@@ -249,6 +252,9 @@ function MessagesMenu({ open, onToggle }: { open: boolean; onToggle: () => void 
 }
 
 function ProfileMenu({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { data: user } = useCurrentUser();
+  const logout = useLogout();
+
   return (
     <div className="relative">
       <button
@@ -261,25 +267,56 @@ function ProfileMenu({ open, onToggle }: { open: boolean; onToggle: () => void }
           open ? 'ring-2 ring-accent/40' : ''
         }`}
       >
-        <User size={17} strokeWidth={2} aria-hidden />
+        {user ? (
+          <span className="text-sm font-bold uppercase">{user.username.charAt(0)}</span>
+        ) : (
+          <User size={17} strokeWidth={2} aria-hidden />
+        )}
       </button>
 
       {open && (
         <Panel title="Account">
           <div className="mb-1 flex items-center gap-3 rounded-xl bg-elev px-2.5 py-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-accent to-accent-2 text-accent-ink">
-              <User size={16} aria-hidden />
+              {user ? (
+                <span className="text-sm font-bold uppercase">{user.username.charAt(0)}</span>
+              ) : (
+                <User size={16} aria-hidden />
+              )}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">Guest athlete</p>
-              <p className="truncate text-xs text-muted">Not signed in</p>
+              <p className="truncate text-sm font-semibold">{user?.username ?? 'Guest athlete'}</p>
+              <p className="truncate text-xs text-muted">{user?.email ?? 'Not signed in'}</p>
             </div>
           </div>
-          <MenuItem Icon={User} label="Profile" hint="Soon" />
-          <MenuItem Icon={Users} label="Friends" hint="Soon" />
-          <MenuItem Icon={Settings} label="Settings" hint="Soon" />
-          <div className="my-1 border-t border-line" />
-          <MenuItem Icon={LogIn} label="Sign in" hint="Soon" />
+          {user ? (
+            <>
+              <MenuItem Icon={User} label="Profile" hint="Soon" />
+              <MenuItem Icon={Users} label="Friends" hint="Soon" />
+              <MenuItem Icon={Settings} label="Settings" hint="Soon" />
+              <div className="my-1 border-t border-line" />
+              <button
+                type="button"
+                onClick={() => {
+                  logout.mutate();
+                  onToggle();
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-elev"
+              >
+                <LogOut size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
+                Sign out
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/signin"
+              onClick={onToggle}
+              className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-elev"
+            >
+              <LogIn size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
+              Sign in
+            </Link>
+          )}
         </Panel>
       )}
     </div>
