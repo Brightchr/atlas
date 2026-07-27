@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { query } from '../db/pool';
 import { env } from '../lib/env';
+import { createNotification } from '../lib/notify';
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../lib/password';
 import { rateLimit } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
@@ -59,6 +60,12 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
 
   const { token, expiresAt } = await createSession(rows[0]!.id);
   setSessionCookie(c, token, expiresAt);
+  await createNotification(
+    rows[0]!.id,
+    'welcome',
+    'Welcome to Arcadia Atlas',
+    'Set up your first workout to start tracking progress.',
+  );
   return c.json(
     {
       user: {
@@ -130,5 +137,5 @@ authRoutes.post('/logout', async (c) => {
 });
 
 authRoutes.get('/me', requireAuth, (c) => {
-  return c.json({ user: c.get('user') });
+  return c.json({ user: c.get('user'), impersonated: c.get('impersonatorId') !== null });
 });
