@@ -12,6 +12,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # URL the browser (not the container) uses to reach wger — local stack port.
+        VITE_WGER_URL: http://localhost:8001
     ports:
       - '8080:80'
     depends_on:
