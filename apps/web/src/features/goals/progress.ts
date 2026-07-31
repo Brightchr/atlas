@@ -79,11 +79,14 @@ export function goalProgress(goal: Goal, inputs: ProgressInputs): GoalProgress {
     case 'calorie_target': {
       const target = goal.target ?? 2000;
       const kcal = Math.round(inputs.todayKcal);
+      const over = kcal > target;
       return {
         goal,
-        // "Success" is staying at/under — full bar until exceeded, then overrun shown.
-        fraction: kcal === 0 ? 0 : Math.min(1, target / Math.max(kcal, target)),
-        label: `${kcal} of ${target} kcal today`,
+        // The bar shows consumption of the budget: 654/1800 → 36% full.
+        fraction: Math.min(1, kcal / target),
+        label: over
+          ? `${kcal} of ${target} kcal today — ${kcal - target} over budget`
+          : `${kcal} of ${target} kcal today`,
       };
     }
     case 'protein_target': {
