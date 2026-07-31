@@ -12,7 +12,7 @@ import {
   Wheat,
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
-import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import { fetchServing, searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
 import { rankFoodsByRelevance } from '@/lib/foodRank';
 import { Pagination } from '@/components/Pagination';
 import { NutritionTabs } from '../components/NutritionTabs';
@@ -83,7 +83,9 @@ function StatsGrid({
   );
 }
 
-/** One search result (local food or OFF snapshot): tap to expand full stats + log form. */
+/** One search result (local food or OFF snapshot): tap to expand full stats +
+ * log form. Facts show food-label style — per serving when the product
+ * declares one — and the amount is logged in servings or grams. */
 function FoodResult({
   snapshot,
   sourceTag,
@@ -92,12 +94,33 @@ function FoodResult({
 }: {
   snapshot: FoodSnapshot | Food;
   sourceTag: string;
-  onLog: (grams: number, meal: MealType) => void;
+  onLog: (grams: number, meal: MealType, serving?: { name: string | null; grams: number }) => void;
   pending: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [grams, setGrams] = useState('100');
+  const [amount, setAmount] = useState<string | null>(null);
+  const [unit, setUnit] = useState<'serving' | 'g' | null>(null);
   const [meal, setMeal] = useState<MealType>('snack');
+
+  // The search index has no serving data — fetch it once the card expands.
+  const servingQuery = useQuery({
+    queryKey: ['foods', 'serving', snapshot.barcode],
+    queryFn: () => fetchServing(snapshot.barcode!),
+    enabled: open && snapshot.servingGrams === null && snapshot.barcode !== null,
+    staleTime: Infinity,
+    retry: 1,
+  });
+  const servingGrams = snapshot.servingGrams ?? servingQuery.data?.grams ?? null;
+  const servingName = snapshot.servingName ?? servingQuery.data?.name ?? null;
+
+  // Defaults follow the data: 1 serving when the product declares one, 100 g
+  // otherwise — but never override something the user already typed.
+  const effectiveUnit = unit ?? (servingGrams ? 'serving' : 'g');
+  const effectiveAmount = amount ?? (servingGrams ? '1' : '100');
+  const gramsToLog =
+    effectiveUnit === 'serving' && servingGrams
+      ? Number(effectiveAmount) * servingGrams
+      : Number(effectiveAmount);
 
   return (
     <li className="rounded-2xl border border-line bg-surface shadow-sm transition-shadow hover:shadow-md">
@@ -129,18 +152,38 @@ function FoodResult({
       </button>
       {open && (
         <div className="space-y-3 border-t border-line p-3">
-          <StatsGrid per100g={snapshot.per100g} />
+          {servingGrams ? (
+            <StatsGrid
+              per100g={snapshot.per100g}
+              grams={servingGrams}
+              caption={`per serving${servingName ? ` — ${servingName}` : ` (${servingGrams} g)`}`}
+            />
+          ) : (
+            <StatsGrid per100g={snapshot.per100g} />
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="number"
-              min="1"
+              min="0.25"
+              step={effectiveUnit === 'serving' ? 0.25 : 1}
               max="5000"
-              value={grams}
-              onChange={(e) => setGrams(e.target.value)}
-              className="w-24 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
-              aria-label="Grams"
+              value={effectiveAmount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-20 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              aria-label="Amount"
             />
-            <span className="text-sm text-muted">g as</span>
+            <select
+              value={effectiveUnit}
+              onChange={(e) => setUnit(e.target.value as 'serving' | 'g')}
+              aria-label="Unit"
+              className="rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+            >
+              {servingGrams && (
+                <option value="serving">serving{Number(effectiveAmount) === 1 ? '' : 's'} ({servingGrams} g)</option>
+              )}
+              <option value="g">g</option>
+            </select>
+            <span className="text-sm text-muted">as</span>
             <select
               value={meal}
               onChange={(e) => setMeal(e.target.value as MealType)}
@@ -154,13 +197,25 @@ function FoodResult({
             </select>
             <button
               type="button"
-              disabled={pending || !Number(grams)}
-              onClick={() => onLog(Number(grams), meal)}
+              disabled={pending || !Number.isFinite(gramsToLog) || gramsToLog <= 0}
+              onClick={() =>
+                onLog(
+                  Math.round(gramsToLog * 10) / 10,
+                  meal,
+                  servingGrams ? { name: servingName, grams: servingGrams } : undefined,
+                )
+              }
               className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Log it
             </button>
           </div>
+          {effectiveUnit === 'serving' && servingGrams && Number(effectiveAmount) > 0 && (
+            <p className="text-xs text-muted tabular-nums">
+              = {Math.round(gramsToLog)} g · {Math.round((snapshot.per100g.kcal * gramsToLog) / 100)}{' '}
+              kcal
+            </p>
+          )}
         </div>
       )}
     </li>
@@ -197,8 +252,23 @@ export function NutritionPage() {
     void queryClient.invalidateQueries({ queryKey: ['goals'] });
   };
   const logMutation = useMutation({
-    mutationFn: async (args: { snapshot: FoodSnapshot | Food; grams: number; meal: MealType }) => {
-      const food = 'id' in args.snapshot ? args.snapshot : await importFood(args.snapshot);
+    mutationFn: async (args: {
+      snapshot: FoodSnapshot | Food;
+      grams: number;
+      meal: MealType;
+      serving?: { name: string | null; grams: number };
+    }) => {
+      let food: Food;
+      if ('id' in args.snapshot) {
+        food = args.snapshot;
+      } else {
+        // Serving details fetched in the result card ride along into the
+        // import so the saved food remembers them.
+        const enriched = args.serving
+          ? { ...args.snapshot, servingName: args.serving.name, servingGrams: args.serving.grams }
+          : args.snapshot;
+        food = await importFood(enriched);
+      }
       await logFood({ date, meal: args.meal, food, grams: args.grams });
     },
     onSuccess: () => {
@@ -282,7 +352,9 @@ export function NutritionPage() {
                 snapshot={food}
                 sourceTag="saved"
                 pending={logMutation.isPending}
-                onLog={(grams, meal) => logMutation.mutate({ snapshot: food, grams, meal })}
+                onLog={(grams, meal, serving) =>
+                  logMutation.mutate({ snapshot: food, grams, meal, serving })
+                }
               />
             ))}
             {offSorted.map((snapshot) => (
@@ -291,7 +363,9 @@ export function NutritionPage() {
                 snapshot={snapshot}
                 sourceTag="Open Food Facts"
                 pending={logMutation.isPending}
-                onLog={(grams, meal) => logMutation.mutate({ snapshot, grams, meal })}
+                onLog={(grams, meal, serving) =>
+                  logMutation.mutate({ snapshot, grams, meal, serving })
+                }
               />
             ))}
           </ul>

@@ -10,7 +10,7 @@ import { env } from '@/lib/env';
  * the user imports one into the local DB. */
 
 const OFF_BASE = 'https://world.openfoodfacts.org';
-const FIELDS = 'code,product_name,brands,image_front_small_url,nutriments';
+const FIELDS = 'code,product_name,brands,image_front_small_url,nutriments,serving_size,serving_quantity';
 
 interface OffNutriments {
   'energy-kcal_100g'?: number;
@@ -29,9 +29,29 @@ interface OffProduct {
   brands?: string;
   image_front_small_url?: string;
   nutriments?: OffNutriments;
+  serving_size?: string;
+  serving_quantity?: number | string;
 }
 
 export type FoodSnapshot = Omit<Food, 'id'>;
+
+/** OFF is community-entered, and some products carry impossible numbers
+ * (38,000 kcal per 100 g). Per 100 g, no macro can exceed 100 g and calories
+ * top out around pure fat (~900). Implausible products are dropped. */
+function plausiblePer100g(m: Macros): boolean {
+  const grams = [m.proteinG, m.carbsG, m.fatG, m.sugarG, m.fiberG, m.saturatedFatG];
+  return (
+    m.kcal >= 0 &&
+    m.kcal <= 950 &&
+    grams.every((v) => v === undefined || (v >= 0 && v <= 100)) &&
+    (m.sodiumG === undefined || (m.sodiumG >= 0 && m.sodiumG <= 40))
+  );
+}
+
+function toServingGrams(quantity: number | string | undefined): number | null {
+  const n = Number(quantity);
+  return Number.isFinite(n) && n >= 1 && n <= 2000 ? n : null;
+}
 
 function toSnapshot(p: OffProduct): FoodSnapshot | null {
   const n = p.nutriments;
@@ -47,6 +67,7 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
     saturatedFatG: n?.['saturated-fat_100g'],
     sodiumG: n?.sodium_100g,
   };
+  if (!plausiblePer100g(per100g)) return null;
   return {
     name: p.product_name,
     brand: p.brands?.split(',')[0]?.trim() || null,
@@ -54,8 +75,8 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
     source: 'off',
     per100g,
     imageUrl: p.image_front_small_url ?? null,
-    servingName: null,
-    servingGrams: null,
+    servingName: p.serving_size ?? null,
+    servingGrams: toServingGrams(p.serving_quantity),
   };
 }
 
@@ -80,6 +101,25 @@ export async function searchOpenFoodFacts(term: string, page = 1): Promise<FoodS
     foods: (data.products ?? []).map(toSnapshot).filter((s): s is FoodSnapshot => s !== null),
     page: data.page ?? page,
     pageCount: data.pageCount ?? 1,
+  };
+}
+
+/** Serving details for one product. The search index doesn't carry serving
+ * fields, so the UI fetches this lazily (per expanded result) from OFF's v2
+ * product API, which does — and serves CORS. */
+export async function fetchServing(
+  code: string,
+): Promise<{ name: string | null; grams: number | null }> {
+  const res = await fetch(
+    `${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=serving_size,serving_quantity`,
+  );
+  if (!res.ok) return { name: null, grams: null };
+  const data = (await res.json()) as {
+    product?: { serving_size?: string; serving_quantity?: number | string };
+  };
+  return {
+    name: data.product?.serving_size ?? null,
+    grams: toServingGrams(data.product?.serving_quantity),
   };
 }
 

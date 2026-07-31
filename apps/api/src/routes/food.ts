@@ -13,7 +13,7 @@ import { rateLimit } from '../lib/rate-limit';
  * client already maps, and cached briefly to be polite to OFF. */
 
 const SEARCH_URL = 'https://search.openfoodfacts.org/search';
-const FIELDS = 'code,product_name,brands,image_front_small_url,nutriments';
+const FIELDS = 'code,product_name,brands,image_front_small_url,nutriments,serving_size,serving_quantity';
 // OFF asks API consumers to identify themselves: app name + contact.
 const USER_AGENT = 'ArcadiaAtlas/1.0 (https://github.com/Brightchr/atlas)';
 
