@@ -211,6 +211,29 @@ export const upgradeStatements = [
       `ALTER TABLE training_plans ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';`,
     ],
   },
+  {
+    toVersion: 6,
+    statements: [
+      // Purge foods imported before the plausibility filter existed: community
+      // data with impossible per-100g numbers (e.g. 38,000 kcal). Everything
+      // referencing them goes too — their diary entries and plan/recipe uses
+      // are equally wrong.
+      `CREATE TEMPORARY TABLE implausible_foods AS
+        SELECT id FROM foods
+         WHERE kcal < 0 OR kcal > 950
+            OR protein_g < 0 OR protein_g > 100
+            OR carbs_g   < 0 OR carbs_g   > 100
+            OR fat_g     < 0 OR fat_g     > 100
+            OR COALESCE(sugar_g, 0)  < 0 OR COALESCE(sugar_g, 0)  > 100
+            OR COALESCE(fiber_g, 0)  < 0 OR COALESCE(fiber_g, 0)  > 100
+            OR COALESCE(sodium_g, 0) < 0 OR COALESCE(sodium_g, 0) > 40;`,
+      `DELETE FROM diary_entries WHERE food_id IN (SELECT id FROM implausible_foods);`,
+      `DELETE FROM recipe_ingredients WHERE food_id IN (SELECT id FROM implausible_foods);`,
+      `DELETE FROM meal_plan_items WHERE kind = 'food' AND ref_id IN (SELECT id FROM implausible_foods);`,
+      `DELETE FROM foods WHERE id IN (SELECT id FROM implausible_foods);`,
+      `DROP TABLE implausible_foods;`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;
