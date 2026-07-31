@@ -10,8 +10,10 @@ async function main() {
   await seedAccounts();
   await deleteExpiredSessions();
 
-  serve({ fetch: app.fetch, port: env.port, hostname: '0.0.0.0' }, (info) => {
-    console.log(`Arcadia API listening on http://localhost:${info.port}`);
+  // '::' binds dual-stack (IPv6 + IPv4) — required for Railway's private
+  // networking, which is IPv6-only; still works for local IPv4 clients.
+  serve({ fetch: app.fetch, port: env.port, hostname: '::' }, (info) => {
+    console.log(`Arcadia API listening on port ${info.port}`);
   });
 }
 
