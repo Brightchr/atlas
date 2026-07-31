@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/exercise-db/client';
-import { useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
+import { Pagination } from '@/components/Pagination';
+import { PAGE_SIZE, useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FilterBar } from '../components/FilterBar';
 
@@ -90,25 +91,14 @@ export function ExerciseListPage() {
             (public domain).
           </p>
           {pageQuery.data && (
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="button"
-                disabled={page === 0}
-                onClick={() => setPage((p) => p - 1)}
-                className="rounded-xl border border-line bg-surface px-4 py-2 font-medium shadow-sm hover:bg-elev disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-muted tabular-nums">Page {page + 1}</span>
-              <button
-                type="button"
-                disabled={!pageQuery.data.hasMore}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-xl border border-line bg-surface px-4 py-2 font-medium shadow-sm hover:bg-elev disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
+            <Pagination
+              page={page + 1}
+              pageCount={Math.ceil(pageQuery.data.total / PAGE_SIZE)}
+              onChange={(p) => {
+                setPage(p - 1);
+                window.scrollTo({ top: 0 });
+              }}
+            />
           )}
         </>
       )}

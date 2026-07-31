@@ -8,7 +8,9 @@ import {
   type ExerciseFilters,
 } from '@/lib/exercise-db/client';
 
-export const PAGE_SIZE = 20;
+/** Divisible by both grid widths (2 columns on md, 3 on xl) so a full page
+ * never leaves a hole in the last row that reads as a missing card. */
+export const PAGE_SIZE = 24;
 
 export function useExercisePage(page: number) {
   return useQuery({
