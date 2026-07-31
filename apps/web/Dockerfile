@@ -21,5 +21,6 @@ FROM nginx:alpine
 # $host/$uri variables are left alone.
 COPY apps/web/nginx.conf /etc/nginx/templates/default.conf.template
 ENV API_PROXY_TARGET=http://api:3000
+ENV API_DNS_RESOLVER=127.0.0.11
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
