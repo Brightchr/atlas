@@ -1,13 +1,22 @@
-import { useQuery } from '@tanstack/react-query';
-import { Beef, Droplet, Flame, Wheat } from 'lucide-react';
-import { getDiaryForDate } from '../repository';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Beef, Droplet, Flame, Trash2, UtensilsCrossed, Wheat } from 'lucide-react';
+import type { Food, MealType } from '@arcadia/shared';
+import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import {
+  deleteDiaryEntry,
+  getDiaryForDate,
+  importFood,
+  logFood,
+  searchLocalFoods,
+} from '../repository';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/* Macro colors are fixed across themes: calories=orange, protein=rose,
-   carbs=amber, fat=sky. Opacity tints work on light and dark surfaces. */
+const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
 const tiles = [
   { key: 'kcal', label: 'Calories', unit: '', Icon: Flame, tint: 'bg-orange-500/15 text-orange-500' },
   { key: 'proteinG', label: 'Protein', unit: 'g', Icon: Beef, tint: 'bg-rose-500/15 text-rose-500' },
@@ -15,11 +24,115 @@ const tiles = [
   { key: 'fatG', label: 'Fat', unit: 'g', Icon: Droplet, tint: 'bg-sky-500/15 text-sky-500' },
 ] as const;
 
+/** One search result (local food or OFF snapshot) with an inline log form. */
+function FoodResult({
+  snapshot,
+  sourceTag,
+  onLog,
+  pending,
+}: {
+  snapshot: FoodSnapshot | Food;
+  sourceTag: string;
+  onLog: (grams: number, meal: MealType) => void;
+  pending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [grams, setGrams] = useState('100');
+  const [meal, setMeal] = useState<MealType>('snack');
+
+  return (
+    <li className="rounded-2xl border border-line bg-surface p-3 shadow-sm">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center gap-3 text-left">
+        {snapshot.imageUrl ? (
+          <img src={snapshot.imageUrl} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-xl bg-white object-contain" />
+        ) : (
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-elev text-muted">
+            <UtensilsCrossed size={18} strokeWidth={1.8} aria-hidden />
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">{snapshot.name}</span>
+          <span className="block truncate text-xs text-muted">
+            {snapshot.brand ? `${snapshot.brand} · ` : ''}
+            {Math.round(snapshot.per100g.kcal)} kcal
+            {snapshot.per100g.sugarG !== undefined ? ` · ${snapshot.per100g.sugarG} g sugar` : ''}
+            {' /100g'}
+            <span className="ml-1 text-accent">{sourceTag}</span>
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            max="5000"
+            value={grams}
+            onChange={(e) => setGrams(e.target.value)}
+            className="w-24 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+            aria-label="Grams"
+          />
+          <span className="text-sm text-muted">g as</span>
+          <select
+            value={meal}
+            onChange={(e) => setMeal(e.target.value as MealType)}
+            className="rounded-xl border border-line bg-surface px-3 py-2 text-sm capitalize outline-none focus:border-accent"
+          >
+            {MEALS.map((m) => (
+              <option key={m} value={m} className="capitalize">
+                {m}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={pending || !Number(grams)}
+            onClick={() => onLog(Number(grams), meal)}
+            className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            Log it
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function NutritionPage() {
   const date = todayIso();
-  const diaryQuery = useQuery({
-    queryKey: ['diary', date],
-    queryFn: () => getDiaryForDate(date),
+  const [term, setTerm] = useState('');
+  const searching = term.trim().length >= 2;
+  const queryClient = useQueryClient();
+
+  const diaryQuery = useQuery({ queryKey: ['diary', date], queryFn: () => getDiaryForDate(date) });
+
+  const localResults = useQuery({
+    queryKey: ['foods', 'local', term],
+    queryFn: () => searchLocalFoods(term),
+    enabled: searching,
+  });
+  const offResults = useQuery({
+    queryKey: ['foods', 'off', term],
+    queryFn: () => searchOpenFoodFacts(term),
+    enabled: searching,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+
+  const logMutation = useMutation({
+    mutationFn: async (args: { snapshot: FoodSnapshot | Food; grams: number; meal: MealType }) => {
+      const food = 'id' in args.snapshot ? args.snapshot : await importFood(args.snapshot);
+      await logFood({ date, meal: args.meal, food, grams: args.grams });
+    },
+    onSuccess: () => {
+      setTerm('');
+      void queryClient.invalidateQueries({ queryKey: ['diary'] });
+      void queryClient.invalidateQueries({ queryKey: ['goals'] });
+    },
+  });
+  const deleteMutation = useMutation({
+    mutationFn: deleteDiaryEntry,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['diary'] }),
   });
 
   const totals = (diaryQuery.data ?? []).reduce(
@@ -28,60 +141,151 @@ export function NutritionPage() {
       proteinG: acc.proteinG + e.macros.proteinG,
       carbsG: acc.carbsG + e.macros.carbsG,
       fatG: acc.fatG + e.macros.fatG,
+      sugarG: acc.sugarG + (e.macros.sugarG ?? 0),
+      fiberG: acc.fiberG + (e.macros.fiberG ?? 0),
+      sodiumG: acc.sodiumG + (e.macros.sodiumG ?? 0),
     }),
-    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, sugarG: 0, fiberG: 0, sodiumG: 0 },
   );
+
+  // Local matches first; OFF results that duplicate an imported barcode are hidden.
+  const localBarcodes = new Set((localResults.data ?? []).map((f) => f.barcode).filter(Boolean));
+  const offFiltered = (offResults.data ?? []).filter((s) => !localBarcodes.has(s.barcode));
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Nutrition</h1>
-        <p className="text-sm text-muted">Today’s calories and macros.</p>
+      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Nutrition</h1>
+          <p className="text-sm text-muted">Search foods, log meals, track the full stats.</p>
+        </div>
+        <input
+          type="search"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder="Search foods (e.g. oats, nutella)…"
+          className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20 md:w-80"
+        />
       </header>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {tiles.map(({ key, label, unit, Icon, tint }) => (
-          <div
-            key={key}
-            className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
-          >
-            <div>
-              <p className="font-display text-2xl font-bold tracking-tight tabular-nums">
-                {Math.round(totals[key])}
-                {unit && <span className="text-base font-semibold text-muted"> {unit}</span>}
-              </p>
-              <p className="mt-0.5 text-sm text-muted">{label}</p>
-            </div>
-            <span className={`flex h-11 w-11 items-center justify-center rounded-full ${tint}`}>
-              <Icon size={20} strokeWidth={1.8} aria-hidden />
-            </span>
-          </div>
-        ))}
-      </section>
+      {searching ? (
+        <section className="space-y-2">
+          {(localResults.isLoading || offResults.isLoading) && (
+            <p className="text-muted">Searching…</p>
+          )}
+          {offResults.isError && (
+            <p className="text-sm text-rose-500">
+              Food database unreachable — showing your saved foods only.
+            </p>
+          )}
+          {logMutation.isError && (
+            <p className="text-sm text-rose-500">{logMutation.error.message}</p>
+          )}
+          <ul className="space-y-2">
+            {(localResults.data ?? []).map((food) => (
+              <FoodResult
+                key={food.id}
+                snapshot={food}
+                sourceTag="saved"
+                pending={logMutation.isPending}
+                onLog={(grams, meal) => logMutation.mutate({ snapshot: food, grams, meal })}
+              />
+            ))}
+            {offFiltered.map((snapshot) => (
+              <FoodResult
+                key={snapshot.barcode}
+                snapshot={snapshot}
+                sourceTag="Open Food Facts"
+                pending={logMutation.isPending}
+                onLog={(grams, meal) => logMutation.mutate({ snapshot, grams, meal })}
+              />
+            ))}
+          </ul>
+          {searching &&
+            !localResults.isLoading &&
+            !offResults.isLoading &&
+            (localResults.data?.length ?? 0) === 0 &&
+            offFiltered.length === 0 && <p className="text-muted">No foods found.</p>}
+        </section>
+      ) : (
+        <>
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {tiles.map(({ key, label, unit, Icon, tint }) => (
+              <div
+                key={key}
+                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
+              >
+                <div>
+                  <p className="font-display text-2xl font-bold tracking-tight tabular-nums">
+                    {Math.round(totals[key])}
+                    {unit && <span className="text-base font-semibold text-muted"> {unit}</span>}
+                  </p>
+                  <p className="mt-0.5 text-sm text-muted">{label}</p>
+                </div>
+                <span className={`flex h-11 w-11 items-center justify-center rounded-full ${tint}`}>
+                  <Icon size={20} strokeWidth={1.8} aria-hidden />
+                </span>
+              </div>
+            ))}
+          </section>
 
-      {diaryQuery.data?.length === 0 && (
-        <p className="text-muted">
-          Nothing logged today. Food logging UI lands here next — the storage layer (foods, diary,
-          macros) is already in place.
-        </p>
+          {totals.kcal > 0 && (
+            <p className="text-sm text-muted tabular-nums">
+              Also today: {totals.sugarG.toFixed(1)} g sugar · {totals.fiberG.toFixed(1)} g fiber ·{' '}
+              {(totals.sodiumG * 1000).toFixed(0)} mg sodium
+            </p>
+          )}
+
+          {diaryQuery.data?.length === 0 && (
+            <p className="text-muted">
+              Nothing logged today — search a food above to start tracking.
+            </p>
+          )}
+
+          <ul className="space-y-2">
+            {diaryQuery.data?.map((entry) => (
+              <li
+                key={entry.id}
+                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{entry.foodName}</p>
+                  <p className="text-sm text-muted capitalize">
+                    {entry.meal} · {entry.grams} g
+                    {entry.macros.sugarG !== undefined
+                      ? ` · ${entry.macros.sugarG.toFixed(1)} g sugar`
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <p className="font-semibold tabular-nums">{entry.macros.kcal} kcal</p>
+                  <button
+                    type="button"
+                    onClick={() => deleteMutation.mutate(entry.id)}
+                    aria-label={`Delete ${entry.foodName}`}
+                    className="rounded-lg p-1.5 text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500"
+                  >
+                    <Trash2 size={15} aria-hidden />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
-      <ul className="space-y-2">
-        {diaryQuery.data?.map((entry) => (
-          <li
-            key={entry.id}
-            className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
-          >
-            <div>
-              <p className="font-semibold">{entry.foodName}</p>
-              <p className="text-sm text-muted capitalize">
-                {entry.meal} · {entry.grams} g
-              </p>
-            </div>
-            <p className="font-semibold tabular-nums">{entry.macros.kcal} kcal</p>
-          </li>
-        ))}
-      </ul>
+      <p className="pt-2 text-xs text-muted/70">
+        Food data from{' '}
+        <a
+          href="https://world.openfoodfacts.org"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Open Food Facts
+        </a>{' '}
+        (ODbL).
+      </p>
     </div>
   );
 }
