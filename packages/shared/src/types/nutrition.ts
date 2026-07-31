@@ -1,4 +1,4 @@
-/** Per-100g (or per-serving) macro profile. */
+/** Per-100g (or per-serving) nutrient profile. */
 export interface Macros {
   kcal: number;
   proteinG: number;
@@ -6,9 +6,13 @@ export interface Macros {
   fatG: number;
   fiberG?: number;
   sugarG?: number;
+  saturatedFatG?: number;
+  /** Grams of sodium (not salt). */
+  sodiumG?: number;
 }
 
-/** A food item: user-created, or imported from an external source (USDA / Open Food Facts later). */
+/** A food item: user-created, or imported from an external source (Open Food
+ * Facts / USDA). Imports are SNAPSHOTS — once picked, the data lives locally. */
 export interface Food {
   id: string;
   name: string;
@@ -17,6 +21,8 @@ export interface Food {
   source: 'user' | 'usda' | 'off';
   /** Nutrients per 100 g */
   per100g: Macros;
+  /** Product photo (external URL) when the source provides one. */
+  imageUrl: string | null;
   /** Optional default serving, e.g. 1 slice = 32 g */
   servingName: string | null;
   servingGrams: number | null;

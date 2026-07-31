@@ -156,6 +156,17 @@ export const upgradeStatements = [
       );`,
     ],
   },
+  {
+    toVersion: 3,
+    statements: [
+      `ALTER TABLE foods ADD COLUMN saturated_fat_g REAL;`,
+      `ALTER TABLE foods ADD COLUMN sodium_g REAL;`,
+      `ALTER TABLE foods ADD COLUMN image_url TEXT;`,
+      `ALTER TABLE diary_entries ADD COLUMN sugar_g REAL;`,
+      `ALTER TABLE diary_entries ADD COLUMN fiber_g REAL;`,
+      `ALTER TABLE diary_entries ADD COLUMN sodium_g REAL;`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;
