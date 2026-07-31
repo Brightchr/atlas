@@ -82,7 +82,8 @@ export function ExerciseDetailPage() {
       {exercise.description && (
         <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
           <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">How to</h2>
-          {/* wger descriptions are sanitized HTML authored on wger.de */}
+          {/* Description is HTML we build ourselves from the catalog's
+              instruction steps (escaped in the exercise-db mapper). */}
           <div
             className="mt-2 space-y-2 text-sm leading-relaxed [&_li]:mb-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
             dangerouslySetInnerHTML={{ __html: exercise.description }}

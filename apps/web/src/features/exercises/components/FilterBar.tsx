@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import type { Exercise } from '@arcadia/shared';
-import { hasActiveFilters, type ExerciseFilters, EMPTY_FILTERS } from '@/lib/wger/client';
+import { hasActiveFilters, type ExerciseFilters, EMPTY_FILTERS } from '@/lib/exercise-db/client';
 
 interface Option {
   id: number;

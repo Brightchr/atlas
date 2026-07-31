@@ -10,7 +10,7 @@ import {
   Target,
   UtensilsCrossed,
 } from 'lucide-react';
-import { fetchAllExercises } from '@/lib/wger/client';
+import { fetchAllExercises } from '@/lib/exercise-db/client';
 import { buildSuggestions } from '@/features/exercises/suggestions';
 import { getRecentLoggedSets, getSessionDates, listGoals } from '@/features/goals/repository';
 import { getDiaryForDate } from '@/features/nutrition/repository';

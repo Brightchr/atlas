@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/wger/client';
+import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/exercise-db/client';
 import { useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FilterBar } from '../components/FilterBar';
@@ -78,11 +78,16 @@ export function ExerciseListPage() {
             ))}
           </ul>
           <p className="pt-2 text-xs text-muted/70">
-            Exercise data from{' '}
-            <a href="https://wger.de" target="_blank" rel="noreferrer" className="underline">
-              wger
+            Exercise data &amp; images from{' '}
+            <a
+              href="https://github.com/yuhonas/free-exercise-db"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Free Exercise DB
             </a>{' '}
-            (CC-BY-SA).
+            (public domain).
           </p>
           {pageQuery.data && (
             <div className="flex items-center justify-between pt-2">

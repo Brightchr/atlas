@@ -6,7 +6,7 @@ import {
   filterExercises,
   hasActiveFilters,
   type ExerciseFilters,
-} from '@/lib/wger/client';
+} from '@/lib/exercise-db/client';
 
 export const PAGE_SIZE = 20;
 

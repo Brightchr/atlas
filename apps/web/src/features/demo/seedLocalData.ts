@@ -1,9 +1,9 @@
 import { getDb, newId, persist } from '@/lib/db';
-import { fetchExercises } from '@/lib/wger/client';
+import { fetchExercises } from '@/lib/exercise-db/client';
 
 /** Fills the LOCAL device database with realistic demo data (workouts, logged
  * sessions, foods, today's diary, a shopping list). Idempotent — skips if any
- * workouts already exist. Exercises come from the live wger catalog so ids and
+ * workouts already exist. Exercises come from the bundled catalog so ids and
  * names are real. Server-side state (account, notifications) is separate. */
 export async function seedDemoLocalData(): Promise<boolean> {
   const db = await getDb();
