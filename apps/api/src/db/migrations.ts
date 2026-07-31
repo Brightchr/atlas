@@ -62,6 +62,30 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX audit_log_actor_idx ON audit_log(actor_id, created_at);
     `,
   },
+  {
+    id: '003_membership',
+    sql: `
+      -- Monetization is a separate axis from moderation: role = permissions,
+      -- plan = paid tier. plan_expires_at NULL means indefinite.
+      ALTER TABLE users
+        ADD COLUMN plan text NOT NULL DEFAULT 'free'
+          CHECK (plan IN ('free', 'pro')),
+        ADD COLUMN plan_expires_at timestamptz;
+
+      -- Promotion codes for launches/discounts; redemption wiring comes with
+      -- payments. Percent kept as integer (25 = 25% off).
+      CREATE TABLE promotions (
+        id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        code             text NOT NULL UNIQUE,
+        description      text NOT NULL DEFAULT '',
+        discount_percent integer NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
+        active           boolean NOT NULL DEFAULT true,
+        starts_at        timestamptz NOT NULL DEFAULT now(),
+        ends_at          timestamptz,
+        created_at       timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

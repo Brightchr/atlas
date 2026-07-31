@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UserRole } from '@arcadia/shared';
+import type { MembershipPlan, Promotion, UserRole } from '@arcadia/shared';
 import { apiFetch } from '@/lib/api';
 
 export interface AdminStats {
@@ -14,6 +14,8 @@ export interface AdminUser {
   email: string;
   username: string;
   role: UserRole;
+  plan: MembershipPlan;
+  planExpiresAt: string | null;
   createdAt: string;
   activeSessions: number;
   lastLogin: string | null;
@@ -51,6 +53,49 @@ export function useStopImpersonation() {
       apiFetch<{ user: AdminUser }>('/v1/admin/impersonation/stop', { method: 'POST' }),
     onSuccess: (data) =>
       queryClient.setQueryData(['auth', 'me'], { user: data.user, impersonated: false }),
+  });
+}
+
+export function useSetPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, plan }: { userId: string; plan: MembershipPlan }) =>
+      apiFetch<{ ok: boolean }>(`/v1/admin/users/${userId}/plan`, {
+        method: 'PATCH',
+        body: JSON.stringify({ plan }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+}
+
+export function usePromotions() {
+  return useQuery({
+    queryKey: ['admin', 'promotions'],
+    queryFn: () => apiFetch<{ promotions: Promotion[] }>('/v1/admin/promotions'),
+  });
+}
+
+export function useCreatePromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { code: string; description: string; discountPercent: number }) =>
+      apiFetch<{ ok: boolean }>('/v1/admin/promotions', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'promotions'] }),
+  });
+}
+
+export function useTogglePromotion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      apiFetch<{ ok: boolean }>(`/v1/admin/promotions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'promotions'] }),
   });
 }
 

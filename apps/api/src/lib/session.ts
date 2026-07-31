@@ -36,10 +36,13 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
     email: string;
     username: string;
     role: AuthUser['role'];
+    plan: AuthUser['plan'];
     created_at: string;
     impersonator_user_id: string | null;
   }>(
-    `SELECT u.id, u.email, u.username, u.role, u.created_at, s.impersonator_user_id
+    `SELECT u.id, u.email, u.username, u.role, u.created_at, s.impersonator_user_id,
+            CASE WHEN u.plan = 'pro' AND u.plan_expires_at IS NOT NULL AND u.plan_expires_at < now()
+                 THEN 'free' ELSE u.plan END AS plan
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [hashToken(token)],
@@ -52,6 +55,7 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
       email: row.email,
       username: row.username,
       role: row.role,
+      plan: row.plan,
       createdAt: row.created_at,
     },
     impersonatorId: row.impersonator_user_id,

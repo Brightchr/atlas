@@ -73,6 +73,7 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
         email,
         username: body.username,
         role: 'user',
+        plan: 'free',
         createdAt: rows[0]!.created_at,
       },
       // Also returned in the body for the native app, which uses Bearer auth
@@ -92,11 +93,13 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     email: string;
     username: string;
     role: string;
+    plan: string;
     created_at: string;
     password_hash: string;
-  }>('SELECT id, email, username, role, created_at, password_hash FROM users WHERE email = $1', [
-    email,
-  ]);
+  }>(
+    'SELECT id, email, username, role, plan, created_at, password_hash FROM users WHERE email = $1',
+    [email],
+  );
   const user = rows[0];
 
   // Verify against a dummy hash when the user doesn't exist so both paths take
@@ -118,6 +121,7 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       email: user.email,
       username: user.username,
       role: user.role,
+      plan: user.plan,
       createdAt: user.created_at,
     },
     token,

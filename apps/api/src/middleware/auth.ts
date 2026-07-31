@@ -38,6 +38,16 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
+/** Gate for paid features. Admins pass automatically (they need to see what
+ * they sell); expiry is already applied when the session loads. */
+export const requirePro: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get('user');
+  if (!user || (user.plan !== 'pro' && user.role !== 'admin')) {
+    return c.json({ error: 'Pro membership required', upgrade: true }, 402);
+  }
+  await next();
+};
+
 /** Gate for moderation/admin routes. Admins may do anything moderators can. */
 export function requireRole(role: 'moderator' | 'admin'): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
