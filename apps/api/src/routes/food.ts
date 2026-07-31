@@ -30,16 +30,29 @@ interface Product extends Omit<SearchHit, 'brands'> {
   brands?: string;
 }
 
+/** Deep pages die in OFF's Elasticsearch result window anyway; 50 pages of 20
+ * is far past where anyone browses, so both the page param and the reported
+ * page count are clamped to it. */
+const MAX_PAGES = 50;
+
+interface SearchResult {
+  products: Product[];
+  page: number;
+  pageCount: number;
+}
+
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 500;
-const cache = new Map<string, { at: number; products: Product[] }>();
+const cache = new Map<string, { at: number; result: SearchResult }>();
 
-async function searchOff(term: string): Promise<Product[]> {
-  const cached = cache.get(term);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.products;
+async function searchOff(term: string, page: number): Promise<SearchResult> {
+  const key = `${page}:${term}`;
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.result;
 
   const url = new URL(SEARCH_URL);
   url.searchParams.set('q', term);
+  url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', '20');
   url.searchParams.set('fields', FIELDS);
 
@@ -48,22 +61,26 @@ async function searchOff(term: string): Promise<Product[]> {
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Open Food Facts responded ${res.status}`);
-  const data = (await res.json()) as { hits?: SearchHit[] };
+  const data = (await res.json()) as { hits?: SearchHit[]; page?: number; page_count?: number };
 
-  const products = (data.hits ?? []).map(
-    (h): Product => ({
-      ...h,
-      brands: Array.isArray(h.brands) ? h.brands.join(',') : h.brands,
-    }),
-  );
+  const result: SearchResult = {
+    products: (data.hits ?? []).map(
+      (h): Product => ({
+        ...h,
+        brands: Array.isArray(h.brands) ? h.brands.join(',') : h.brands,
+      }),
+    ),
+    page,
+    pageCount: Math.min(data.page_count ?? 1, MAX_PAGES),
+  };
 
   // Oldest-entry eviction keeps the cache bounded without LRU bookkeeping.
   if (cache.size >= CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(term, { at: Date.now(), products });
-  return products;
+  cache.set(key, { at: Date.now(), result });
+  return result;
 }
 
 export const foodRoutes = new Hono();
@@ -72,9 +89,10 @@ export const foodRoutes = new Hono();
 // so the ceiling is sized for typing bursts, not one request per search.
 foodRoutes.get('/search', rateLimit({ windowMs: 60_000, max: 60 }), async (c) => {
   const term = (c.req.query('q') ?? '').trim();
-  if (term.length < 2) return c.json({ products: [] });
+  if (term.length < 2) return c.json({ products: [], page: 1, pageCount: 1 });
+  const page = Math.min(Math.max(Number.parseInt(c.req.query('page') ?? '1', 10) || 1, 1), MAX_PAGES);
   try {
-    return c.json({ products: await searchOff(term) });
+    return c.json(await searchOff(term, page));
   } catch {
     return c.json({ error: 'Food database unreachable' }, 502);
   }

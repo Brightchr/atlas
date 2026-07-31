@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Beef,
   ChevronDown,
@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
 import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import { Pagination } from '@/components/Pagination';
 import { getSavedTargets } from '@/features/goals/repository';
 import {
   deleteDiaryEntry,
@@ -167,6 +168,7 @@ function FoodResult({
 export function NutritionPage() {
   const date = todayIso();
   const [term, setTerm] = useState('');
+  const [foodPage, setFoodPage] = useState(1);
   const [openEntry, setOpenEntry] = useState<string | null>(null);
   const searching = term.trim().length >= 2;
   const queryClient = useQueryClient();
@@ -180,11 +182,12 @@ export function NutritionPage() {
     enabled: searching,
   });
   const offResults = useQuery({
-    queryKey: ['foods', 'off', term],
-    queryFn: () => searchOpenFoodFacts(term),
+    queryKey: ['foods', 'off', term, foodPage],
+    queryFn: () => searchOpenFoodFacts(term, foodPage),
     enabled: searching,
     staleTime: 10 * 60 * 1000,
     retry: 1,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () => {
@@ -220,7 +223,7 @@ export function NutritionPage() {
   const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
   const localSorted = [...(localResults.data ?? [])].sort(byName);
   const localBarcodes = new Set(localSorted.map((f) => f.barcode).filter(Boolean));
-  const offSorted = (offResults.data ?? [])
+  const offSorted = (offResults.data?.foods ?? [])
     .filter((s) => !localBarcodes.has(s.barcode))
     .sort(byName);
 
@@ -248,7 +251,10 @@ export function NutritionPage() {
         <input
           type="search"
           value={term}
-          onChange={(e) => setTerm(e.target.value)}
+          onChange={(e) => {
+            setTerm(e.target.value);
+            setFoodPage(1);
+          }}
           placeholder="Try “oats”, “nutella”, or any brand…"
           className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
@@ -287,6 +293,13 @@ export function NutritionPage() {
             !offResults.isLoading &&
             localSorted.length === 0 &&
             offSorted.length === 0 && <p className="text-muted">No foods found.</p>}
+          {offResults.data && (
+            <Pagination
+              page={offResults.data.page}
+              pageCount={offResults.data.pageCount}
+              onChange={setFoodPage}
+            />
+          )}
         </section>
       ) : (
         <>

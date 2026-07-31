@@ -59,15 +59,28 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
   };
 }
 
-/** Full-text product search — returns snapshot-ready foods with images. */
-export async function searchOpenFoodFacts(term: string): Promise<FoodSnapshot[]> {
-  const url = `${env.apiUrl}/v1/food/search?q=${encodeURIComponent(term)}`;
+export interface FoodSearchPage {
+  foods: FoodSnapshot[];
+  page: number;
+  pageCount: number;
+}
+
+/** Full-text product search — returns snapshot-ready foods with images,
+ * paginated (20 per page, page count capped by the API). */
+export async function searchOpenFoodFacts(term: string, page = 1): Promise<FoodSearchPage> {
+  const url = `${env.apiUrl}/v1/food/search?q=${encodeURIComponent(term)}&page=${page}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open Food Facts search failed (${res.status})`);
-  const data = (await res.json()) as { products?: OffProduct[] };
-  return (data.products ?? [])
-    .map(toSnapshot)
-    .filter((s): s is FoodSnapshot => s !== null);
+  const data = (await res.json()) as {
+    products?: OffProduct[];
+    page?: number;
+    pageCount?: number;
+  };
+  return {
+    foods: (data.products ?? []).map(toSnapshot).filter((s): s is FoodSnapshot => s !== null),
+    page: data.page ?? page,
+    pageCount: data.pageCount ?? 1,
+  };
 }
 
 /** Barcode lookup — the flow the Android scanner will use. */
