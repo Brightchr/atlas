@@ -142,7 +142,12 @@ export async function logFood(args: {
 export async function getDiaryForDate(date: string): Promise<DiaryEntry[]> {
   const db = await getDb();
   const rows = (
-    await db.query('SELECT * FROM diary_entries WHERE date = ? ORDER BY logged_at', [date])
+    await db.query(
+      `SELECT d.*, f.image_url FROM diary_entries d
+        LEFT JOIN foods f ON f.id = d.food_id
+       WHERE d.date = ? ORDER BY d.logged_at`,
+      [date],
+    )
   ).values as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as string,
@@ -150,6 +155,7 @@ export async function getDiaryForDate(date: string): Promise<DiaryEntry[]> {
     meal: r.meal as MealType,
     foodId: r.food_id as string,
     foodName: r.food_name as string,
+    imageUrl: (r.image_url as string | null) ?? null,
     grams: r.grams as number,
     macros: {
       kcal: r.kcal as number,
@@ -167,5 +173,20 @@ export async function getDiaryForDate(date: string): Promise<DiaryEntry[]> {
 export async function deleteDiaryEntry(id: string): Promise<void> {
   const db = await getDb();
   await db.run('DELETE FROM diary_entries WHERE id = ?', [id]);
+  await persist();
+}
+
+/** Re-logs an existing entry as a fresh one (same food, grams and meal, now). */
+export async function duplicateDiaryEntry(id: string): Promise<void> {
+  const db = await getDb();
+  await db.run(
+    `INSERT INTO diary_entries
+      (id, date, meal, food_id, food_name, grams, kcal, protein_g, carbs_g, fat_g,
+       sugar_g, fiber_g, sodium_g, logged_at)
+     SELECT ?, ?, meal, food_id, food_name, grams, kcal, protein_g, carbs_g, fat_g,
+            sugar_g, fiber_g, sodium_g, ?
+       FROM diary_entries WHERE id = ?`,
+    [newId(), new Date().toISOString().slice(0, 10), new Date().toISOString(), id],
+  );
   await persist();
 }

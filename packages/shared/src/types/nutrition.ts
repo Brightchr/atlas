@@ -38,6 +38,8 @@ export interface DiaryEntry {
   meal: MealType;
   foodId: string;
   foodName: string;
+  /** Product photo of the underlying food, when available. */
+  imageUrl: string | null;
   grams: number;
   macros: Macros;
   loggedAt: string;
