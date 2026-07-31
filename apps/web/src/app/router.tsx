@@ -11,6 +11,7 @@ import { ExerciseDetailPage } from '@/features/exercises/pages/ExerciseDetailPag
 import { WorkoutsPage } from '@/features/workouts/pages/WorkoutsPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { PlansPage } from '@/features/plans/pages/PlansPage';
+import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
 
 export const router = createBrowserRouter([
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: '/workouts', element: <WorkoutsPage /> },
       { path: '/nutrition', element: <NutritionPage /> },
       { path: '/plans', element: <PlansPage /> },
+      { path: '/settings', element: <SettingsPage /> },
       { path: '/shopping', element: <ShoppingPage /> },
     ],
   },
