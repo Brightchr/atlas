@@ -135,6 +135,27 @@ export const upgradeStatements = [
       );`,
     ],
   },
+  {
+    toVersion: 2,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS goals (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        target REAL,
+        muscle_id INTEGER,
+        muscle_name TEXT,
+        created_at TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0
+      );`,
+      `CREATE TABLE IF NOT EXISTS body_weight_logs (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL UNIQUE,
+        weight_kg REAL NOT NULL,
+        logged_at TEXT NOT NULL
+      );`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;

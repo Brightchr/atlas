@@ -1,4 +1,5 @@
 export * from './types/exercise';
+export * from './types/goal';
 export * from './types/user';
 export * from './types/workout';
 export * from './types/nutrition';

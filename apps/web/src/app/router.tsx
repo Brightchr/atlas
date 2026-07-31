@@ -5,6 +5,7 @@ import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
+import { GoalsPage } from '@/features/goals/pages/GoalsPage';
 import { ExerciseListPage } from '@/features/exercises/pages/ExerciseListPage';
 import { ExerciseDetailPage } from '@/features/exercises/pages/ExerciseDetailPage';
 import { WorkoutsPage } from '@/features/workouts/pages/WorkoutsPage';
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: '/admin', element: <AdminPage /> },
       { path: '/exercises', element: <ExerciseListPage /> },
       { path: '/exercises/:id', element: <ExerciseDetailPage /> },
+      { path: '/goals', element: <GoalsPage /> },
       { path: '/workouts', element: <WorkoutsPage /> },
       { path: '/nutrition', element: <NutritionPage /> },
       { path: '/plans', element: <PlansPage /> },

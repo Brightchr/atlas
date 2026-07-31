@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   ShieldCheck,
   ShoppingCart,
+  Target,
   VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
@@ -24,6 +25,7 @@ const navItems = [
   { to: '/', label: 'Home', Icon: House, end: true },
   { to: '/exercises', label: 'Exercises', Icon: Dumbbell },
   { to: '/workouts', label: 'Workouts', Icon: ClipboardList },
+  { to: '/goals', label: 'Goals', Icon: Target },
   { to: '/nutrition', label: 'Nutrition', Icon: Apple },
   { to: '/plans', label: 'Plans', Icon: CalendarDays },
   { to: '/shopping', label: 'Shopping', Icon: ShoppingCart },
