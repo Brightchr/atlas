@@ -77,6 +77,13 @@ export function ExerciseListPage() {
               </li>
             ))}
           </ul>
+          <p className="pt-2 text-xs text-muted/70">
+            Exercise data from{' '}
+            <a href="https://wger.de" target="_blank" rel="noreferrer" className="underline">
+              wger
+            </a>{' '}
+            (CC-BY-SA).
+          </p>
           {pageQuery.data && (
             <div className="flex items-center justify-between pt-2">
               <button
