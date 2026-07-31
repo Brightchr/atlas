@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
 import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import { getSavedTargets } from '@/features/goals/repository';
 import {
   deleteDiaryEntry,
   duplicateDiaryEntry,
@@ -171,6 +172,7 @@ export function NutritionPage() {
   const queryClient = useQueryClient();
 
   const diaryQuery = useQuery({ queryKey: ['diary', date], queryFn: () => getDiaryForDate(date) });
+  const targetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
 
   const localResults = useQuery({
     queryKey: ['foods', 'local', term],
@@ -289,29 +291,58 @@ export function NutritionPage() {
       ) : (
         <>
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {tiles.map(({ key, label, unit, Icon, tint }) => (
-              <div
-                key={key}
-                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
-              >
-                <div>
-                  <p className="font-display text-2xl font-bold tracking-tight tabular-nums">
-                    {Math.round(totals[key])}
-                    {unit && <span className="text-base font-semibold text-muted"> {unit}</span>}
-                  </p>
-                  <p className="mt-0.5 text-sm text-muted">{label}</p>
+            {tiles.map(({ key, label, unit, Icon, tint }) => {
+              const target = targetsQuery.data
+                ? { kcal: targetsQuery.data.kcal, proteinG: targetsQuery.data.proteinG, carbsG: targetsQuery.data.carbsG, fatG: targetsQuery.data.fatG }[key]
+                : undefined;
+              const over = target !== undefined && totals[key] > target;
+              return (
+                <div key={key} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-display text-2xl font-bold tracking-tight tabular-nums">
+                        {Math.round(totals[key])}
+                        {unit && <span className="text-base font-semibold text-muted"> {unit}</span>}
+                      </p>
+                      <p className="mt-0.5 text-sm text-muted">
+                        {label}
+                        {target !== undefined && (
+                          <span className="tabular-nums"> / {Math.round(target)}{unit}</span>
+                        )}
+                      </p>
+                    </div>
+                    <span className={`flex h-11 w-11 items-center justify-center rounded-full ${tint}`}>
+                      <Icon size={20} strokeWidth={1.8} aria-hidden />
+                    </span>
+                  </div>
+                  {target !== undefined && (
+                    <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-elev">
+                      <div
+                        className={`h-full rounded-full transition-[width] duration-500 ${
+                          over ? 'bg-rose-500' : 'bg-linear-to-r from-accent to-accent-2'
+                        }`}
+                        style={{ width: `${Math.min(100, Math.round((totals[key] / target) * 100))}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
-                <span className={`flex h-11 w-11 items-center justify-center rounded-full ${tint}`}>
-                  <Icon size={20} strokeWidth={1.8} aria-hidden />
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </section>
 
           {totals.kcal > 0 && (
             <p className="text-sm text-muted tabular-nums">
-              Also today: {totals.sugarG.toFixed(1)} g sugar · {totals.fiberG.toFixed(1)} g fiber ·{' '}
-              {(totals.sodiumG * 1000).toFixed(0)} mg sodium
+              Also today: {totals.sugarG.toFixed(1)}
+              {targetsQuery.data ? ` of ≤${targetsQuery.data.sugarMaxG}` : ''} g sugar ·{' '}
+              {totals.fiberG.toFixed(1)}
+              {targetsQuery.data ? ` of ${targetsQuery.data.fiberG}` : ''} g fiber ·{' '}
+              {(totals.sodiumG * 1000).toFixed(0)}
+              {targetsQuery.data ? ' of ≤2300' : ''} mg sodium
+            </p>
+          )}
+          {!targetsQuery.data && (
+            <p className="text-xs text-muted">
+              Tip: set up “Your plan” on the Goals page to get recommended daily targets here.
             </p>
           )}
 
