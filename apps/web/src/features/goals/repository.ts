@@ -1,5 +1,29 @@
 import type { BodyWeightLog, Goal, GoalType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
+import type { DailyTargets, Profile } from './targets';
+
+/** Generic key/value settings helpers (settings table, JSON values). */
+async function getSetting<T>(key: string): Promise<T | null> {
+  const db = await getDb();
+  const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [key])).values as {
+    value: string;
+  }[];
+  return rows[0] ? (JSON.parse(rows[0].value) as T) : null;
+}
+
+async function setSetting(key: string, value: unknown): Promise<void> {
+  const db = await getDb();
+  await db.run(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [key, JSON.stringify(value)],
+  );
+  await persist();
+}
+
+export const getProfile = () => getSetting<Profile>('profile');
+export const saveProfile = (profile: Profile) => setSetting('profile', profile);
+export const getSavedTargets = () => getSetting<DailyTargets>('daily-targets');
+export const saveTargets = (targets: DailyTargets) => setSetting('daily-targets', targets);
 
 interface GoalRow {
   id: string;
@@ -61,6 +85,28 @@ export async function createGoal(input: {
   );
   await persist();
   return id;
+}
+
+/** Sets the target for a goal type, updating the active goal if one exists —
+ * used when applying computed daily targets so goals don't duplicate. */
+export async function upsertTargetGoal(
+  type: GoalType,
+  title: string,
+  target: number,
+): Promise<void> {
+  const db = await getDb();
+  const existing = (
+    await db.query('SELECT id FROM goals WHERE type = ? AND archived = 0 LIMIT 1', [type])
+  ).values as { id: string }[];
+  if (existing[0]) {
+    await db.run('UPDATE goals SET target = ? WHERE id = ?', [target, existing[0].id]);
+  } else {
+    await db.run(
+      'INSERT INTO goals (id, type, title, target, created_at) VALUES (?, ?, ?, ?, ?)',
+      [newId(), type, title, target, new Date().toISOString()],
+    );
+  }
+  await persist();
 }
 
 export async function archiveGoal(id: string): Promise<void> {

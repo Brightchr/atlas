@@ -12,6 +12,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { GoalType } from '@arcadia/shared';
 import { useExerciseCatalog } from '@/features/exercises/api';
 import { useArchiveGoal, useCreateGoal, useGoalProgress, useLogWeight } from '../api';
+import { PlanCard } from '../components/PlanCard';
 
 /* Goal templates modeled on what leading fitness apps offer. */
 const templates: {
@@ -75,6 +76,8 @@ export function GoalsPage() {
           Set targets — exercise suggestions adapt to what you're chasing.
         </p>
       </header>
+
+      <PlanCard />
 
       {progress.data?.length === 0 && (
         <p className="text-muted">No goals yet — pick one below to get started.</p>
