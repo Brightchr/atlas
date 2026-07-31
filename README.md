@@ -1,10 +1,12 @@
 # Arcadia Atlas
 
-Workout platform: exercise lookup (powered by [wger](https://wger.de)), workout & diet plans,
-calorie tracking, and shopping lists. Local-first — everything is stored in SQLite on the device.
+Workout platform: exercise lookup, workout & diet plans, calorie tracking, and shopping
+lists. Local-first — everything is stored in SQLite on the device.
 
 **Proprietary — all rights reserved.** This code is not licensed for use, copying, or
-distribution. Exercise data displayed in the app comes from [wger](https://wger.de) (CC-BY-SA).
+distribution. Exercise data and images come from
+[Free Exercise DB](https://github.com/yuhonas/free-exercise-db) (public domain); food data
+from [Open Food Facts](https://world.openfoodfacts.org) (ODbL).
 
 ## Structure
 
@@ -14,7 +16,7 @@ apps/
     src/
       app/        Router, providers, layout shell
       features/   One folder per feature: exercises, workouts, nutrition, plans, shopping
-      lib/        Cross-feature infrastructure: wger client, SQLite layer, env
+      lib/        Cross-feature infrastructure: exercise catalog, SQLite layer, env
   api/        Hono API for Railway (sync/auth later — health endpoint for now)
 packages/
   shared/     Domain types shared by web and api
@@ -23,7 +25,8 @@ packages/
 Conventions:
 
 - Features never import from each other's internals — shared code lives in `lib/` or `@arcadia/shared`.
-- External DTOs (wger) are mapped to domain types at the client boundary; features only see domain types.
+- External DTOs (Free Exercise DB, Open Food Facts) are mapped to domain types at the client
+  boundary; features only see domain types.
 - SQLite access goes through a `repository.ts` per feature; schema changes are versioned in
   `apps/web/src/lib/db/schema.ts` (append a new `toVersion`, never edit an existing one).
 
@@ -82,21 +85,14 @@ docker compose up --build
 # web: http://localhost:8080, api: http://localhost:3000
 ```
 
-## Local wger (self-hosted exercise database)
+## Exercise catalog
 
-The app reads exercise data from wger. To run your own instance instead of wger.de:
-
-```bash
-npm run wger:up      # clones the official stack into infra/wger on first run, then starts it
-npm run wger:logs    # watch first-boot migrations + exercise sync (takes a few minutes)
-npm run wger:down
-```
-
-- UI: http://localhost:8001 (default login `admin` / `adminadmin`)
-- API: http://localhost:8001/api/v2/
-- Upstream stack lives in `infra/wger` (gitignored, `git pull`-able); our customizations are
-  layered via `infra/wger.override.yml` — never edit the upstream files.
-- Point the app at it with `VITE_WGER_URL=http://localhost:8001` in `apps/web/.env`.
+Exercise data is vendored from
+[Free Exercise DB](https://github.com/yuhonas/free-exercise-db) (public domain) at
+`apps/web/src/lib/exercise-db/exercises.json` and ships with the app — no external API at
+runtime. Images are served from the same pinned dataset commit via jsDelivr. To update the
+catalog, re-download `dist/exercises.json` from the upstream repo and bump `DATA_COMMIT` in
+`apps/web/src/lib/exercise-db/client.ts` (both must move together).
 
 ## Railway
 

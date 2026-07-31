@@ -20,12 +20,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
     "cap:sync": "npm run cap:sync -w @arcadia/web",
-    "cap:android": "npm run cap:android -w @arcadia/web",
-    "wger:up": "node scripts/wger.mjs up",
-    "wger:down": "node scripts/wger.mjs down",
-    "wger:logs": "node scripts/wger.mjs logs",
-    "wger:status": "node scripts/wger.mjs status",
-    "wger:images": "node scripts/wger.mjs images"
+    "cap:android": "npm run cap:android -w @arcadia/web"
   },
   "devDependencies": {
     "prettier": "^3.3.3",
