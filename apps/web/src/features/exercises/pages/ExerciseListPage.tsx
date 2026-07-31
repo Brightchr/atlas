@@ -1,6 +1,9 @@
 import { useState } from 'react';
+import { Home } from 'lucide-react';
 import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/exercise-db/client';
+import { useTrainingSetup } from '@/lib/trainingSetup';
 import { Pagination } from '@/components/Pagination';
+import { TrainingTabs } from '@/components/TrainingTabs';
 import { PAGE_SIZE, useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FilterBar } from '../components/FilterBar';
@@ -9,8 +12,17 @@ export function ExerciseListPage() {
   const [term, setTerm] = useState('');
   const [filters, setFilters] = useState<ExerciseFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
+  const setup = useTrainingSetup();
 
   const filtering = term.trim().length >= 2 || hasActiveFilters(filters);
+  // The ownership filter only makes sense with a home setup on file.
+  const ownedActive = filters.ownedEquipmentIds !== null;
+  const showOwnedToggle = setup.location !== 'gym';
+  const toggleOwned = () =>
+    setFilters({
+      ...filters,
+      ownedEquipmentIds: ownedActive ? null : setup.homeEquipmentIds,
+    });
 
   const catalogQuery = useExerciseCatalog();
   const pageQuery = useExercisePage(page);
@@ -32,11 +44,33 @@ export function ExerciseListPage() {
         />
       </header>
 
-      <FilterBar
-        exercises={catalogQuery.data ?? []}
-        filters={filters}
-        onChange={setFilters}
-      />
+      <TrainingTabs />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <FilterBar
+            exercises={catalogQuery.data ?? []}
+            filters={filters}
+            onChange={setFilters}
+          />
+        </div>
+        {showOwnedToggle && (
+          <button
+            type="button"
+            aria-pressed={ownedActive}
+            title="Only exercises doable with your home equipment (set it in Settings)"
+            onClick={toggleOwned}
+            className={`inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
+              ownedActive
+                ? 'border-accent/40 bg-accent-soft text-accent'
+                : 'border-line bg-surface text-muted hover:text-ink'
+            }`}
+          >
+            <Home size={15} strokeWidth={1.8} aria-hidden />
+            My equipment
+          </button>
+        )}
+      </div>
 
       {filtering ? (
         <>

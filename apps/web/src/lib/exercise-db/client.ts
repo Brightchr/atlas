@@ -72,6 +72,10 @@ const MUSCLES: Record<string, Muscle> = Object.fromEntries(
   ]),
 );
 
+/** "body only" — exercises needing no gear; they always pass equipment
+ * ownership filters. */
+export const BODY_ONLY_EQUIPMENT_ID = 3;
+
 const EQUIPMENT: Record<string, { id: number; name: string }> = Object.fromEntries(
   (
     [
@@ -89,6 +93,11 @@ const EQUIPMENT: Record<string, { id: number; name: string }> = Object.fromEntri
       [12, 'other', 'Other'],
     ] as const
   ).map(([id, key, name]) => [key, { id, name }]),
+);
+
+/** The full equipment vocabulary — used by the home-gym setup UI. */
+export const EQUIPMENT_OPTIONS: { id: number; name: string }[] = Object.values(EQUIPMENT).sort(
+  (a, b) => a.name.localeCompare(b.name),
 );
 
 const CATEGORIES: Record<string, { id: number; name: string }> = Object.fromEntries(
@@ -198,16 +207,26 @@ export interface ExerciseFilters {
   muscleIds: number[];
   equipmentIds: number[];
   categoryId: number | null;
+  /** "Only what I own": keep exercises whose every equipment requirement is in
+   * this set. Bodyweight ("body only" / no equipment) always passes. Null =
+   * not filtering by ownership. */
+  ownedEquipmentIds: number[] | null;
 }
 
 export const EMPTY_FILTERS: ExerciseFilters = {
   muscleIds: [],
   equipmentIds: [],
   categoryId: null,
+  ownedEquipmentIds: null,
 };
 
 export function hasActiveFilters(f: ExerciseFilters): boolean {
-  return f.muscleIds.length > 0 || f.equipmentIds.length > 0 || f.categoryId !== null;
+  return (
+    f.muscleIds.length > 0 ||
+    f.equipmentIds.length > 0 ||
+    f.categoryId !== null ||
+    f.ownedEquipmentIds !== null
+  );
 }
 
 /** Text + facet filtering. Standard faceted-search semantics: OR within a facet,
@@ -231,8 +250,13 @@ export function filterExercises(
     const equipmentMatch =
       filters.equipmentIds.length === 0 ||
       e.equipment.some((eq) => filters.equipmentIds.includes(eq.id));
+    const ownedMatch =
+      filters.ownedEquipmentIds === null ||
+      e.equipment.every(
+        (eq) => eq.id === BODY_ONLY_EQUIPMENT_ID || filters.ownedEquipmentIds!.includes(eq.id),
+      );
     const categoryMatch = filters.categoryId === null || e.category?.id === filters.categoryId;
-    return textMatch && muscleMatch && equipmentMatch && categoryMatch;
+    return textMatch && muscleMatch && equipmentMatch && ownedMatch && categoryMatch;
   });
 
   return matches.sort((a, b) => {
