@@ -1,4 +1,5 @@
-import { X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import type { Exercise } from '@arcadia/shared';
 import { hasActiveFilters, type ExerciseFilters, EMPTY_FILTERS } from '@/lib/wger/client';
 
@@ -13,6 +14,8 @@ interface FilterBarProps {
   filters: ExerciseFilters;
   onChange: (next: ExerciseFilters) => void;
 }
+
+type FacetKey = 'category' | 'muscle' | 'equipment';
 
 /** Dedupe by id via Map, then sort by name. */
 function deriveOptions(exercises: Exercise[]) {
@@ -33,22 +36,30 @@ function toggleId(ids: number[], id: number): number[] {
   return ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 }
 
-function Chip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
+/** Compact faceted filtering: one toolbar of pill buttons with active counts;
+ * tapping one expands a wrapped chip panel below — no sideways scrolling, easy
+ * thumb targets on mobile. Controlled component: the page owns the state. */
+export function FilterBar({ exercises, filters, onChange }: FilterBarProps) {
+  const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
+  const options = deriveOptions(exercises);
+  const active = hasActiveFilters(filters);
+
+  const facets: { key: FacetKey; label: string; count: number }[] = [
+    { key: 'category', label: 'Category', count: filters.categoryId !== null ? 1 : 0 },
+    { key: 'muscle', label: 'Muscle', count: filters.muscleIds.length },
+    { key: 'equipment', label: 'Equipment', count: filters.equipmentIds.length },
+  ];
+
+  const toggleFacet = (key: FacetKey) => setOpenFacet((cur) => (cur === key ? null : key));
+
+  const chip = (label: string, isActive: boolean, onClick: () => void) => (
     <button
+      key={label}
       type="button"
-      aria-pressed={active}
+      aria-pressed={isActive}
       onClick={onClick}
-      className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-        active
+      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+        isActive
           ? 'border-transparent bg-accent text-accent-ink shadow-sm'
           : 'border-line bg-surface text-muted hover:text-ink'
       }`}
@@ -56,69 +67,71 @@ function Chip({
       {label}
     </button>
   );
-}
-
-function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-20 shrink-0 text-xs font-semibold tracking-wide text-muted uppercase">
-        {label}
-      </span>
-      <div className="-my-1 flex gap-1.5 overflow-x-auto py-1">{children}</div>
-    </div>
-  );
-}
-
-/** Controlled facet-filter bar: the page owns the state, this renders it. */
-export function FilterBar({ exercises, filters, onChange }: FilterBarProps) {
-  const options = deriveOptions(exercises);
-  const active = hasActiveFilters(filters);
 
   return (
     <div className="space-y-2">
-      <ChipRow label="Category">
-        {options.categories.map(({ id, name }) => (
-          <Chip
-            key={id}
-            label={name}
-            active={filters.categoryId === id}
-            onClick={() =>
-              onChange({ ...filters, categoryId: filters.categoryId === id ? null : id })
-            }
-          />
+      <div className="flex flex-wrap items-center gap-2">
+        {facets.map(({ key, label, count }) => (
+          <button
+            key={key}
+            type="button"
+            aria-expanded={openFacet === key}
+            onClick={() => toggleFacet(key)}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium shadow-sm transition-colors ${
+              openFacet === key || count > 0
+                ? 'border-accent/40 bg-accent-soft text-accent'
+                : 'border-line bg-surface text-muted hover:text-ink'
+            }`}
+          >
+            {label}
+            {count > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-ink">
+                {count}
+              </span>
+            )}
+            <ChevronDown
+              size={14}
+              aria-hidden
+              className={`transition-transform ${openFacet === key ? 'rotate-180' : ''}`}
+            />
+          </button>
         ))}
-      </ChipRow>
-      <ChipRow label="Muscle">
-        {options.muscles.map(({ id, name }) => (
-          <Chip
-            key={id}
-            label={name}
-            active={filters.muscleIds.includes(id)}
-            onClick={() => onChange({ ...filters, muscleIds: toggleId(filters.muscleIds, id) })}
-          />
-        ))}
-      </ChipRow>
-      <ChipRow label="Equipment">
-        {options.equipment.map(({ id, name }) => (
-          <Chip
-            key={id}
-            label={name}
-            active={filters.equipmentIds.includes(id)}
-            onClick={() =>
-              onChange({ ...filters, equipmentIds: toggleId(filters.equipmentIds, id) })
-            }
-          />
-        ))}
-      </ChipRow>
-      {active && (
-        <button
-          type="button"
-          onClick={() => onChange(EMPTY_FILTERS)}
-          className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
-        >
-          <X size={12} aria-hidden />
-          Clear all filters
-        </button>
+        {active && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange(EMPTY_FILTERS);
+              setOpenFacet(null);
+            }}
+            className="inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-ink"
+          >
+            <X size={13} aria-hidden />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {openFacet && (
+        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface p-3 shadow-sm">
+          {openFacet === 'category' &&
+            options.categories.map(({ id, name }) =>
+              chip(name, filters.categoryId === id, () =>
+                onChange({ ...filters, categoryId: filters.categoryId === id ? null : id }),
+              ),
+            )}
+          {openFacet === 'muscle' &&
+            options.muscles.map(({ id, name }) =>
+              chip(name, filters.muscleIds.includes(id), () =>
+                onChange({ ...filters, muscleIds: toggleId(filters.muscleIds, id) }),
+              ),
+            )}
+          {openFacet === 'equipment' &&
+            options.equipment.map(({ id, name }) =>
+              chip(name, filters.equipmentIds.includes(id), () =>
+                onChange({ ...filters, equipmentIds: toggleId(filters.equipmentIds, id) }),
+              ),
+            )}
+        </div>
       )}
     </div>
   );
