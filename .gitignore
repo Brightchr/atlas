@@ -16,9 +16,13 @@ apps/web/android/
 apps/web/ios/
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Database dumps (contain user data and password hashes — never commit)
+backups/
 
 # Editors / OS / AI tooling
 .vscode/
