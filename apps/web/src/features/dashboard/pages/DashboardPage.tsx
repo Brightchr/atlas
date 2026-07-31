@@ -3,14 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   ChevronRight,
-  ClipboardList,
   Drumstick,
   Dumbbell,
   Flame,
   Search,
+  Target,
   UtensilsCrossed,
 } from 'lucide-react';
-import { fetchExercises } from '@/lib/wger/client';
+import { fetchAllExercises } from '@/lib/wger/client';
+import { buildSuggestions } from '@/features/exercises/suggestions';
+import { getRecentLoggedSets, listGoals } from '@/features/goals/repository';
 import { getDiaryForDate } from '@/features/nutrition/repository';
 import { listWorkouts } from '@/features/workouts/repository';
 import { StatTile } from '@/components/StatTile';
@@ -30,7 +32,7 @@ const quickActions = [
   { to: '/exercises', label: 'Browse exercises', Icon: Search },
   { to: '/workouts', label: 'Start a workout', Icon: Dumbbell },
   { to: '/nutrition', label: 'Log a meal', Icon: UtensilsCrossed },
-  { to: '/plans', label: 'View plans', Icon: ClipboardList },
+  { to: '/goals', label: 'Set a goal', Icon: Target },
 ];
 
 export function DashboardPage() {
@@ -39,10 +41,14 @@ export function DashboardPage() {
   const diaryQuery = useQuery({ queryKey: ['diary', date], queryFn: () => getDiaryForDate(date) });
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
   const suggestedQuery = useQuery({
-    queryKey: ['exercises', 'suggested'],
+    queryKey: ['suggestions'],
     queryFn: async () => {
-      const page = await fetchExercises(0, 40);
-      return page.exercises.filter((e) => e.imageUrls.length > 0).slice(0, 8);
+      const [catalog, recentSets, goals] = await Promise.all([
+        fetchAllExercises(),
+        getRecentLoggedSets(21).catch(() => []),
+        listGoals().catch(() => []),
+      ]);
+      return buildSuggestions({ catalog, recentSets, goals });
     },
   });
 
@@ -121,31 +127,35 @@ export function DashboardPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Suggested exercises</h2>
-          <Link to="/exercises" className="text-sm font-medium text-accent hover:underline">
-            See all
+          <h2 className="text-lg font-bold">Suggested for you</h2>
+          <Link to="/goals" className="text-sm font-medium text-accent hover:underline">
+            Tune via goals
           </Link>
         </div>
         {suggestedQuery.isError && (
           <p className="text-sm text-rose-500">Could not reach the exercise database.</p>
         )}
         <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
-          {(suggestedQuery.data ?? []).map((exercise) => (
+          {(suggestedQuery.data ?? []).map(({ exercise, reason }) => (
             <li key={exercise.id} className="w-44 shrink-0 snap-start md:w-auto">
               <Link
                 to={`/exercises/${exercise.id}`}
                 className="block h-full rounded-2xl border border-line bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
               >
                 <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-elev">
-                  <img
-                    src={exercise.imageUrls[0]}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-contain"
-                  />
+                  {exercise.imageUrls[0] ? (
+                    <img
+                      src={exercise.imageUrls[0]}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <Dumbbell size={28} className="text-muted" strokeWidth={1.5} aria-hidden />
+                  )}
                 </div>
                 <p className="mt-2 truncate text-sm font-semibold">{exercise.name}</p>
-                <p className="truncate text-xs text-muted">{exercise.category?.name}</p>
+                <p className="truncate text-xs font-medium text-accent">{reason}</p>
               </Link>
             </li>
           ))}
