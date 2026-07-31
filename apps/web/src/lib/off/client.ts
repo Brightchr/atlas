@@ -1,9 +1,13 @@
 import type { Food, Macros } from '@arcadia/shared';
+import { env } from '@/lib/env';
 
 /** Open Food Facts client (https://world.openfoodfacts.org — ODbL license,
- * attribution shown on the Nutrition page). OFF serves permissive CORS, so the
- * browser can call it directly. Results are mapped to snapshot-ready Food
- * shapes; the id is filled in when the user imports one into the local DB. */
+ * attribution shown on the Nutrition page). Text search goes through our API
+ * (/v1/food/search): OFF's legacy browser-callable search endpoint now 503s
+ * and its replacement doesn't serve CORS for third-party origins. Barcode
+ * lookups still hit OFF directly — that endpoint works and serves CORS.
+ * Results are mapped to snapshot-ready Food shapes; the id is filled in when
+ * the user imports one into the local DB. */
 
 const OFF_BASE = 'https://world.openfoodfacts.org';
 const FIELDS = 'code,product_name,brands,image_front_small_url,nutriments';
@@ -57,9 +61,7 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
 
 /** Full-text product search — returns snapshot-ready foods with images. */
 export async function searchOpenFoodFacts(term: string): Promise<FoodSnapshot[]> {
-  const url =
-    `${OFF_BASE}/cgi/search.pl?action=process&json=1&search_simple=1&page_size=20` +
-    `&fields=${FIELDS}&search_terms=${encodeURIComponent(term)}`;
+  const url = `${env.apiUrl}/v1/food/search?q=${encodeURIComponent(term)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open Food Facts search failed (${res.status})`);
   const data = (await res.json()) as { products?: OffProduct[] };
