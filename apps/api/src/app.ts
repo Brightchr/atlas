@@ -5,6 +5,7 @@ import { env } from './lib/env';
 import { sessionMiddleware, type AppEnv } from './middleware/auth';
 import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
+import { foodRoutes } from './routes/food';
 import { healthRoutes } from './routes/health';
 import { notificationRoutes } from './routes/notifications';
 
@@ -25,6 +26,7 @@ app.use('*', sessionMiddleware);
 
 app.route('/health', healthRoutes);
 app.route('/v1/auth', authRoutes);
+app.route('/v1/food', foodRoutes);
 app.route('/v1/notifications', notificationRoutes);
 app.route('/v1/admin', adminRoutes);
 
