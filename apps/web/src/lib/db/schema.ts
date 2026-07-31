@@ -203,6 +203,14 @@ export const upgradeStatements = [
       `CREATE INDEX IF NOT EXISTS idx_meal_plan_items_day ON meal_plan_items(day_of_week);`,
     ],
   },
+  {
+    toVersion: 5,
+    statements: [
+      // Sharing scope for training plans: private (device only), friends, or
+      // public (community browse). The share itself lives server-side.
+      `ALTER TABLE training_plans ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private';`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;
