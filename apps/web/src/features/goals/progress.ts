@@ -11,6 +11,8 @@ interface ProgressInputs {
   todayProteinG: number;
   /** Sets performed per muscle id in the last 7 days. */
   weeklySetsPerMuscle: Map<number, number>;
+  /** Renders a stored kg value in the user's preferred unit. Defaults to kg. */
+  formatWeight?: (kg: number) => string;
 }
 
 function isoDaysAgo(days: number): string {
@@ -51,6 +53,7 @@ export function goalProgress(goal: Goal, inputs: ProgressInputs): GoalProgress {
     }
     case 'weight_target': {
       const target = goal.target ?? 0;
+      const fmt = inputs.formatWeight ?? ((kg: number) => `${kg} kg`);
       const latest = inputs.weightHistory[0];
       const first = inputs.weightHistory[inputs.weightHistory.length - 1];
       if (!latest || !first) {
@@ -63,7 +66,7 @@ export function goalProgress(goal: Goal, inputs: ProgressInputs): GoalProgress {
       return {
         goal,
         fraction: total === 0 ? 1 : Math.min(1, movingRightWay ? done / total : 0),
-        label: `${latest.weightKg} kg now — target ${target} kg`,
+        label: `${fmt(latest.weightKg)} now — target ${fmt(target)}`,
       };
     }
     case 'muscle_focus': {

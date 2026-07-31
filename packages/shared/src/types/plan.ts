@@ -41,6 +41,21 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
 }
 
+/** One entry in a weekly meal-plan slot (day × meal). Either a plain food
+ * measured in grams, or a recipe measured in servings. */
+export interface MealPlanItem {
+  id: string;
+  /** 0 = Monday … 6 = Sunday */
+  dayOfWeek: number;
+  meal: MealType;
+  kind: 'food' | 'recipe';
+  /** Food.id or Recipe.id depending on kind. */
+  refId: string;
+  name: string;
+  grams: number | null;
+  servings: number | null;
+}
+
 export interface RecipeIngredient {
   id: string;
   recipeId: string;

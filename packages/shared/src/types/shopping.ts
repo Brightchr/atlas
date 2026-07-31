@@ -1,3 +1,17 @@
+/** An entry on the single living shopping list. 'needed' items are the active
+ * list; 'bought' items remain as purchase history and can be re-added (rebuy)
+ * instead of building a new list every trip. */
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  /** Free-form quantity, e.g. "600 g", "2 cans" */
+  quantity: string | null;
+  status: 'needed' | 'bought';
+  position: number;
+  timesBought: number;
+  lastBoughtAt: string | null;
+}
+
 export interface ShoppingList {
   id: string;
   name: string;

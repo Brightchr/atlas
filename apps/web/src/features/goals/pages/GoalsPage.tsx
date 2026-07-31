@@ -11,6 +11,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import type { GoalType } from '@arcadia/shared';
 import { useExerciseCatalog } from '@/features/exercises/api';
+import { displayWeight, parseWeight, useUnits, weightUnit } from '@/lib/units';
 import { useArchiveGoal, useCreateGoal, useGoalProgress, useLogWeight } from '../api';
 import { PlanCard } from '../components/PlanCard';
 
@@ -38,6 +39,7 @@ export function GoalsPage() {
   const createGoal = useCreateGoal();
   const archiveGoal = useArchiveGoal();
   const logWeight = useLogWeight();
+  const units = useUnits();
 
   const [openTemplate, setOpenTemplate] = useState<GoalType | null>(null);
   const [target, setTarget] = useState('');
@@ -53,7 +55,11 @@ export function GoalsPage() {
   const hasWeightGoal = progress.data?.some((p) => p.goal.type === 'weight_target') ?? false;
 
   const handleCreate = (template: (typeof templates)[number]) => {
-    const numericTarget = Number(target) || template.defaultTarget;
+    // Weight targets are typed in the preferred unit but stored in kg.
+    const isWeight = template.type === 'weight_target';
+    const fallback = isWeight ? displayWeight(template.defaultTarget, units) : template.defaultTarget;
+    const typed = Number(target) || fallback;
+    const numericTarget = isWeight ? parseWeight(typed, units) : typed;
     const muscle = muscles.find((m) => m.id === Number(muscleId));
     if (template.needsMuscle && !muscle) return;
     createGoal.mutate({
@@ -118,14 +124,14 @@ export function GoalsPage() {
             max="400"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
-            placeholder="Today's weight (kg)"
+            placeholder={`Today's weight (${weightUnit(units)})`}
             className="w-44 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
           />
           <button
             type="button"
             disabled={!Number(weight)}
             onClick={() => {
-              logWeight.mutate(Number(weight));
+              logWeight.mutate(parseWeight(Number(weight), units));
               setWeight('');
             }}
             className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
@@ -137,10 +143,12 @@ export function GoalsPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-bold">Add a goal</h2>
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {/* items-start keeps siblings at their natural height when one card
+            expands its inline editor — otherwise the whole row stretches. */}
+        <ul className="grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((template) => (
             <li key={template.type}>
-              <div className="h-full rounded-2xl border border-line bg-surface p-4 shadow-sm">
+              <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
                 <button
                   type="button"
                   onClick={() =>
@@ -177,7 +185,11 @@ export function GoalsPage() {
                         type="number"
                         value={target}
                         onChange={(e) => setTarget(e.target.value)}
-                        placeholder={`${template.defaultTarget} ${template.unit}`}
+                        placeholder={
+                          template.type === 'weight_target'
+                            ? `${displayWeight(template.defaultTarget, units)} ${weightUnit(units)}`
+                            : `${template.defaultTarget} ${template.unit}`
+                        }
                         className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
                       />
                       <button

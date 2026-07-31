@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Exercise, GoalProgress } from '@arcadia/shared';
 import { getDiaryForDate } from '@/features/nutrition/repository';
+import { formatWeight, useUnits } from '@/lib/units';
 import { goalProgress } from './progress';
 import {
   archiveGoal,
@@ -34,8 +35,9 @@ export function weeklySetsPerMuscle(
 /** Goals with computed progress. `catalog` comes from useExerciseCatalog so the
  * exercise data is shared with the rest of the app. */
 export function useGoalProgress(catalog: Exercise[] | undefined) {
+  const units = useUnits();
   return useQuery({
-    queryKey: ['goals', 'progress', catalog ? 'with-catalog' : 'no-catalog'],
+    queryKey: ['goals', 'progress', catalog ? 'with-catalog' : 'no-catalog', units],
     queryFn: async (): Promise<GoalProgress[]> => {
       const today = new Date().toISOString().slice(0, 10);
       const [goals, sessionDates, weightHistory, diary, recentSets] = await Promise.all([
@@ -55,6 +57,7 @@ export function useGoalProgress(catalog: Exercise[] | undefined) {
         todayKcal: totals.kcal,
         todayProteinG: totals.proteinG,
         weeklySetsPerMuscle: weeklySetsPerMuscle(catalog ?? [], recentSets),
+        formatWeight: (kg: number) => formatWeight(kg, units),
       };
       return goals.map((goal) => goalProgress(goal, inputs));
     },
