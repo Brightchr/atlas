@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
 import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import { rankFoodsByRelevance } from '@/lib/foodRank';
 import { Pagination } from '@/components/Pagination';
 import { NutritionTabs } from '../components/NutritionTabs';
 import { getSavedTargets } from '@/features/goals/repository';
@@ -221,12 +222,14 @@ export function NutritionPage() {
     { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, sugarG: 0, fiberG: 0, sodiumG: 0 },
   );
 
-  const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
-  const localSorted = [...(localResults.data ?? [])].sort(byName);
+  // Rank by name relevance to the query; ties keep Open Food Facts' own
+  // relevance order (alphabetical sorting buried the obvious match).
+  const localSorted = rankFoodsByRelevance(localResults.data ?? [], term);
   const localBarcodes = new Set(localSorted.map((f) => f.barcode).filter(Boolean));
-  const offSorted = (offResults.data?.foods ?? [])
-    .filter((s) => !localBarcodes.has(s.barcode))
-    .sort(byName);
+  const offSorted = rankFoodsByRelevance(
+    (offResults.data?.foods ?? []).filter((s) => !localBarcodes.has(s.barcode)),
+    term,
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">

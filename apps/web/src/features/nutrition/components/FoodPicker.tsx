@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import type { Food } from '@arcadia/shared';
+import { rankFoodsByRelevance } from '@/lib/foodRank';
 import { searchOpenFoodFacts } from '@/lib/off/client';
 import { importFood, searchLocalFoods } from '../repository';
 
@@ -74,9 +75,12 @@ export function FoodPicker({ onPick, pending }: FoodPickerProps) {
     );
   }
 
-  const localFoods = localResults.data ?? [];
+  const localFoods = rankFoodsByRelevance(localResults.data ?? [], term);
   const localBarcodes = new Set(localFoods.map((f) => f.barcode).filter(Boolean));
-  const offFoods = (offResults.data?.foods ?? []).filter((s) => !localBarcodes.has(s.barcode));
+  const offFoods = rankFoodsByRelevance(
+    (offResults.data?.foods ?? []).filter((s) => !localBarcodes.has(s.barcode)),
+    term,
+  );
 
   return (
     <div className="space-y-2">
