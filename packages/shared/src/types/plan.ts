@@ -1,11 +1,14 @@
 import type { MealType } from './nutrition';
 
+export type PlanVisibility = 'private' | 'friends' | 'public';
+
 /** A weekly training plan mapping days to workouts. */
 export interface TrainingPlan {
   id: string;
   name: string;
   description: string | null;
   source: 'user' | 'provided';
+  visibility: PlanVisibility;
   /** 0 = Monday … 6 = Sunday */
   days: TrainingPlanDay[];
 }
@@ -14,6 +17,43 @@ export interface TrainingPlanDay {
   dayOfWeek: number;
   workoutId: string | null;
   isRestDay: boolean;
+}
+
+/** Wire format for sharing a plan: the full plan travels as one payload with
+ * workout definitions embedded, so importing needs no other server state. */
+export interface SharedPlanWorkout {
+  name: string;
+  exercises: {
+    exerciseId: number;
+    exerciseName: string;
+    position: number;
+    targetSets: number;
+    targetReps: number | null;
+    targetDurationSec: number | null;
+    restSec: number | null;
+  }[];
+}
+
+export interface SharedPlanDay {
+  dayOfWeek: number;
+  isRestDay: boolean;
+  workout: SharedPlanWorkout | null;
+}
+
+export interface SharedPlanPayload {
+  name: string;
+  description: string;
+  days: SharedPlanDay[];
+}
+
+export interface SharedPlanSummary {
+  id: string;
+  name: string;
+  description: string;
+  visibility: PlanVisibility;
+  owner: string;
+  mine: boolean;
+  updatedAt: string;
 }
 
 /** A diet plan: recipes/meals assigned to days. Shopping lists are derived from this. */

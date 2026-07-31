@@ -86,6 +86,30 @@ const migrations: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    id: '004_shared_plans',
+    sql: `
+      -- Workout plans published from a device. The full plan (days + embedded
+      -- workout definitions) travels as one JSON payload — the server never
+      -- needs to understand workout internals, only visibility.
+      -- 'friends' visibility is stored but resolves to owner-only until the
+      -- friends system ships.
+      CREATE TABLE shared_plans (
+        id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        local_plan_id text NOT NULL,
+        name          text NOT NULL,
+        description   text NOT NULL DEFAULT '',
+        visibility    text NOT NULL DEFAULT 'private'
+                      CHECK (visibility IN ('private', 'friends', 'public')),
+        payload       jsonb NOT NULL,
+        created_at    timestamptz NOT NULL DEFAULT now(),
+        updated_at    timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (owner_user_id, local_plan_id)
+      );
+      CREATE INDEX shared_plans_visibility_idx ON shared_plans(visibility, updated_at);
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
