@@ -23,11 +23,11 @@ import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 
 const navItems = [
   { to: '/', label: 'Home', Icon: House, end: true },
-  { to: '/exercises', label: 'Exercises', Icon: Dumbbell },
-  { to: '/workouts', label: 'Workouts', Icon: ClipboardList },
   { to: '/goals', label: 'Goals', Icon: Target },
+  { to: '/plans', label: 'Workout plans', Icon: CalendarDays },
+  { to: '/workouts', label: 'Workouts', Icon: ClipboardList },
+  { to: '/exercises', label: 'Exercises', Icon: Dumbbell },
   { to: '/nutrition', label: 'Nutrition', Icon: Apple },
-  { to: '/plans', label: 'Plans', Icon: CalendarDays },
   { to: '/shopping', label: 'Shopping', Icon: ShoppingCart },
 ];
 
