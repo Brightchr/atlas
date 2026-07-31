@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { fetchAllExercises } from '@/lib/wger/client';
 import { buildSuggestions } from '@/features/exercises/suggestions';
-import { getRecentLoggedSets, listGoals } from '@/features/goals/repository';
+import { getRecentLoggedSets, getSessionDates, listGoals } from '@/features/goals/repository';
 import { getDiaryForDate } from '@/features/nutrition/repository';
 import { listWorkouts } from '@/features/workouts/repository';
 import { StatTile } from '@/components/StatTile';
@@ -43,12 +43,14 @@ export function DashboardPage() {
   const suggestedQuery = useQuery({
     queryKey: ['suggestions'],
     queryFn: async () => {
-      const [catalog, recentSets, goals] = await Promise.all([
+      const [catalog, recentSets, goals, sessionDates] = await Promise.all([
         fetchAllExercises(),
         getRecentLoggedSets(21).catch(() => []),
         listGoals().catch(() => []),
+        getSessionDates(2).catch((): string[] => []),
       ]);
-      return buildSuggestions({ catalog, recentSets, goals });
+      const trainedToday = sessionDates.includes(new Date().toISOString().slice(0, 10));
+      return buildSuggestions({ catalog, recentSets, goals, trainedToday });
     },
   });
 

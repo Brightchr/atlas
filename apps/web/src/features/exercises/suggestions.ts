@@ -24,9 +24,11 @@ export function buildSuggestions(options: {
   catalog: Exercise[];
   recentSets: { exerciseId: number; completedAt: string }[];
   goals: Goal[];
+  /** True when a workout session exists today — consistency goals nudge otherwise. */
+  trainedToday?: boolean;
   limit?: number;
 }): ExerciseSuggestion[] {
-  const { catalog, recentSets, goals, limit = 8 } = options;
+  const { catalog, recentSets, goals, trainedToday = false, limit = 8 } = options;
   const byId = new Map(catalog.map((e) => [e.id, e]));
 
   // What has been trained, per muscle, and which exercises were done recently.
@@ -97,6 +99,18 @@ export function buildSuggestions(options: {
       used.add(exercise.id);
       suggestions.push({ exercise, reason: muscle.reason });
     }
+  }
+
+  // Consistency goals (streak / weekly frequency) nudge the top pick on days
+  // without a workout yet — any training keeps those goals alive.
+  const consistencyGoal = goals.find(
+    (g) => g.type === 'streak' || g.type === 'workout_frequency',
+  );
+  if (consistencyGoal && !trainedToday && suggestions[0]) {
+    suggestions[0] = {
+      ...suggestions[0],
+      reason: `Train today to keep “${consistencyGoal.title}” alive`,
+    };
   }
   return suggestions;
 }
