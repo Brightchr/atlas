@@ -1,61 +1,115 @@
-﻿import type { ShoppingList, ShoppingListItem } from '@arcadia/shared';
+import type { ShoppingItem } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 
-export async function listShoppingLists(): Promise<ShoppingList[]> {
-  const db = await getDb();
-  const lists = (await db.query('SELECT * FROM shopping_lists ORDER BY created_at DESC'))
-    .values as Record<string, unknown>[];
-  const items = (await db.query('SELECT * FROM shopping_list_items ORDER BY position'))
-    .values as Record<string, unknown>[];
+/** The single living shopping list. 'needed' rows are the active list;
+ * 'bought' rows are purchase history that can be re-added (rebuy) — one list
+ * forever instead of a new list per trip. */
 
-  const toItem = (r: Record<string, unknown>): ShoppingListItem => ({
-    id: r.id as string,
-    listId: r.list_id as string,
-    name: r.name as string,
-    quantity: r.quantity as string | null,
-    checked: Boolean(r.checked),
-    position: r.position as number,
-  });
-
-  return lists.map((l) => ({
-    id: l.id as string,
-    name: l.name as string,
-    dietPlanId: l.diet_plan_id as string | null,
-    createdAt: l.created_at as string,
-    items: items.filter((i) => i.list_id === l.id).map(toItem),
-  }));
+interface ItemRow {
+  id: string;
+  name: string;
+  quantity: string | null;
+  status: 'needed' | 'bought';
+  position: number;
+  times_bought: number;
+  last_bought_at: string | null;
 }
 
-export async function createShoppingList(name: string): Promise<string> {
+function toItem(r: ItemRow): ShoppingItem {
+  return {
+    id: r.id,
+    name: r.name,
+    quantity: r.quantity,
+    status: r.status,
+    position: r.position,
+    timesBought: r.times_bought,
+    lastBoughtAt: r.last_bought_at,
+  };
+}
+
+export async function listShoppingItems(): Promise<ShoppingItem[]> {
   const db = await getDb();
-  const id = newId();
+  const rows = (
+    await db.query(
+      `SELECT * FROM shopping_items
+        ORDER BY CASE status WHEN 'needed' THEN 0 ELSE 1 END,
+                 position,
+                 last_bought_at DESC`,
+    )
+  ).values as ItemRow[];
+  return rows.map(toItem);
+}
+
+/** Combine two quantity strings: "300 g" + "200 g" → "500 g"; otherwise join. */
+function mergeQuantities(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  const grams = /^(\d+(?:\.\d+)?)\s*g$/i;
+  const ma = grams.exec(a.trim());
+  const mb = grams.exec(b.trim());
+  if (ma?.[1] && mb?.[1]) return `${Math.round((Number(ma[1]) + Number(mb[1])) * 10) / 10} g`;
+  return `${a} + ${b}`;
+}
+
+/** Add something to buy. If it's already on the needed list (same name,
+ * case-insensitive) the quantities merge instead of duplicating the row —
+ * this is also what meal-plan generation calls per ingredient. */
+export async function addNeededItem(name: string, quantity?: string | null): Promise<void> {
+  const db = await getDb();
+  const existing = (
+    await db.query(
+      `SELECT * FROM shopping_items WHERE status = 'needed' AND lower(name) = lower(?) LIMIT 1`,
+      [name],
+    )
+  ).values as ItemRow[];
+
+  if (existing[0]) {
+    await db.run('UPDATE shopping_items SET quantity = ? WHERE id = ?', [
+      mergeQuantities(existing[0].quantity, quantity ?? null),
+      existing[0].id,
+    ]);
+  } else {
+    const positionRes = await db.query(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM shopping_items WHERE status = 'needed'`,
+    );
+    const position = (positionRes.values?.[0]?.next as number) ?? 0;
+    await db.run(
+      `INSERT INTO shopping_items (id, name, quantity, status, position, times_bought, last_bought_at)
+       VALUES (?, ?, ?, 'needed', ?, 0, NULL)`,
+      [newId(), name, quantity ?? null, position],
+    );
+  }
+  await persist();
+}
+
+/** Check an item off: it moves to history and its purchase count ticks up. */
+export async function markBought(id: string): Promise<void> {
+  const db = await getDb();
   await db.run(
-    'INSERT INTO shopping_lists (id, name, diet_plan_id, created_at) VALUES (?, ?, NULL, ?)',
-    [id, name, new Date().toISOString()],
+    `UPDATE shopping_items
+        SET status = 'bought', times_bought = times_bought + 1, last_bought_at = ?
+      WHERE id = ?`,
+    [new Date().toISOString(), id],
   );
   await persist();
-  return id;
 }
 
-export async function addItem(listId: string, name: string, quantity?: string): Promise<void> {
+/** Put a past purchase back on the list (rebuy). The purchase count is left
+ * alone — it only counts completed buys. */
+export async function rebuyItem(id: string): Promise<void> {
   const db = await getDb();
   const positionRes = await db.query(
-    'SELECT COALESCE(MAX(position), -1) + 1 AS next FROM shopping_list_items WHERE list_id = ?',
-    [listId],
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM shopping_items WHERE status = 'needed'`,
   );
-  const position = (positionRes.values?.[0]?.next as number) ?? 0;
-  await db.run(
-    'INSERT INTO shopping_list_items (id, list_id, name, quantity, checked, position) VALUES (?, ?, ?, ?, 0, ?)',
-    [newId(), listId, name, quantity ?? null, position],
-  );
+  await db.run(`UPDATE shopping_items SET status = 'needed', position = ? WHERE id = ?`, [
+    (positionRes.values?.[0]?.next as number) ?? 0,
+    id,
+  ]);
   await persist();
 }
 
-export async function toggleItem(itemId: string, checked: boolean): Promise<void> {
+export async function deleteShoppingItem(id: string): Promise<void> {
   const db = await getDb();
-  await db.run('UPDATE shopping_list_items SET checked = ? WHERE id = ?', [
-    checked ? 1 : 0,
-    itemId,
-  ]);
+  await db.run('DELETE FROM shopping_items WHERE id = ?', [id]);
   await persist();
 }

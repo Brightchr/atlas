@@ -107,23 +107,30 @@ export async function seedDemoLocalData(): Promise<boolean> {
     );
   }
 
-  const listId = newId();
-  await db.run(
-    'INSERT INTO shopping_lists (id, name, diet_plan_id, created_at) VALUES (?, ?, NULL, ?)',
-    [listId, 'Weekly groceries', now],
-  );
-  const items: [string, string, number][] = [
-    ['Chicken breast', '1 kg', 0],
-    ['Brown rice', '500 g', 0],
-    ['Broccoli', '2 heads', 1],
-    ['Greek yogurt', '4 cups', 0],
-    ['Oats', '1 box', 1],
-    ['Bananas', '6', 0],
+  // Single living shopping list: a few items to buy, a few in rebuy history.
+  const shoppingItems: [string, string, 'needed' | 'bought', number][] = [
+    ['Chicken breast', '1 kg', 'needed', 2],
+    ['Brown rice', '500 g', 'needed', 1],
+    ['Greek yogurt', '4 cups', 'needed', 0],
+    ['Bananas', '6', 'needed', 3],
+    ['Broccoli', '2 heads', 'bought', 4],
+    ['Oats', '1 box', 'bought', 2],
   ];
-  for (const [position, [name, quantity, checked]] of items.entries()) {
+  for (const [position, [name, quantity, status, timesBought]] of shoppingItems.entries()) {
     await db.run(
-      'INSERT INTO shopping_list_items (id, list_id, name, quantity, checked, position) VALUES (?, ?, ?, ?, ?, ?)',
-      [newId(), listId, name, quantity, checked, position],
+      `INSERT INTO shopping_items (id, name, quantity, status, position, times_bought, last_bought_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId(),
+        name,
+        quantity,
+        status,
+        position,
+        timesBought,
+        status === 'bought' || timesBought > 0
+          ? new Date(Date.now() - (position + 2) * 24 * 60 * 60 * 1000).toISOString()
+          : null,
+      ],
     );
   }
 

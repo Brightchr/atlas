@@ -167,6 +167,42 @@ export const upgradeStatements = [
       `ALTER TABLE diary_entries ADD COLUMN sodium_g REAL;`,
     ],
   },
+  {
+    toVersion: 4,
+    statements: [
+      // One living shopping list. Items flip between 'needed' and 'bought';
+      // bought items stay as history with a purchase count so they can be
+      // re-added ("rebuy") instead of creating list after list.
+      `CREATE TABLE IF NOT EXISTS shopping_items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        quantity TEXT,
+        status TEXT NOT NULL DEFAULT 'needed',
+        position INTEGER NOT NULL DEFAULT 0,
+        times_bought INTEGER NOT NULL DEFAULT 0,
+        last_bought_at TEXT
+      );`,
+      // Carry existing multi-list items into the single list; checked = bought.
+      `INSERT INTO shopping_items (id, name, quantity, status, position, times_bought, last_bought_at)
+        SELECT id, name, quantity,
+               CASE WHEN checked = 1 THEN 'bought' ELSE 'needed' END,
+               position, checked, NULL
+          FROM shopping_list_items;`,
+      // The weekly meal plan: one implicit plan, slots keyed by day + meal.
+      // A slot entry is either a plain food (grams) or a recipe (servings).
+      `CREATE TABLE IF NOT EXISTS meal_plan_items (
+        id TEXT PRIMARY KEY,
+        day_of_week INTEGER NOT NULL,
+        meal TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        ref_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        grams REAL,
+        servings REAL
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_meal_plan_items_day ON meal_plan_items(day_of_week);`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;
