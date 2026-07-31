@@ -16,6 +16,10 @@ ENV VITE_WGER_URL=$VITE_WGER_URL
 RUN npm run build -w @arcadia/web
 
 FROM nginx:alpine
-COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+# templates/ is processed by nginx's entrypoint with envsubst at startup —
+# only ${VARS} that exist in the environment are substituted, nginx's own
+# $host/$uri variables are left alone.
+COPY apps/web/nginx.conf /etc/nginx/templates/default.conf.template
+ENV API_PROXY_TARGET=http://api:3000
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
