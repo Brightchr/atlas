@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
+import { Lightbox } from '@/components/Lightbox';
 import { useExercise } from '../api';
 
 export function ExerciseDetailPage() {
   const { id } = useParams();
   const query = useExercise(Number(id));
+  const [preview, setPreview] = useState<number | null>(null);
 
   if (query.isLoading) {
     return <p className="p-4 text-muted md:p-6">Loading…</p>;
@@ -43,15 +46,30 @@ export function ExerciseDetailPage() {
 
       {exercise.imageUrls.length > 0 && (
         <div className="flex gap-2 overflow-x-auto">
-          {exercise.imageUrls.map((url) => (
-            <img
+          {exercise.imageUrls.map((url, i) => (
+            <button
               key={url}
-              src={url}
-              alt={exercise.name}
-              className="h-44 rounded-2xl border border-line bg-white object-contain p-2"
-            />
+              type="button"
+              aria-label={`Preview photo ${i + 1} of ${exercise.name}`}
+              onClick={() => setPreview(i)}
+              className="shrink-0 cursor-zoom-in"
+            >
+              <img
+                src={url}
+                alt={exercise.name}
+                className="h-44 rounded-2xl border border-line bg-white object-contain p-2 transition-transform hover:scale-[1.02]"
+              />
+            </button>
           ))}
         </div>
+      )}
+      {preview !== null && (
+        <Lightbox
+          images={exercise.imageUrls}
+          alt={exercise.name}
+          startIndex={preview}
+          onClose={() => setPreview(null)}
+        />
       )}
 
       <section className="grid grid-cols-2 gap-3">
