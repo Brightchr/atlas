@@ -8,7 +8,9 @@ export const env = {
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://arcadia:arcadia@localhost:55432/arcadia',
   /** Browser origins allowed to call this API with credentials (cookies). */
-  corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://localhost:8080')
+  corsOrigins: (
+    process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://localhost:5174,http://localhost:8080'
+  )
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean),
