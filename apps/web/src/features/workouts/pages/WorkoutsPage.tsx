@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
+import { TrainingTabs } from '@/components/TrainingTabs';
 import { createWorkout, deleteWorkout, listWorkouts } from '../repository';
 
 export function WorkoutsPage() {
@@ -26,6 +27,8 @@ export function WorkoutsPage() {
         <h1 className="text-2xl font-bold">Workouts</h1>
         <p className="text-sm text-muted">Your workout templates, stored on this device.</p>
       </header>
+
+      <TrainingTabs />
 
       <div className="flex gap-2">
         <input

@@ -15,6 +15,7 @@ import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
 import { PlansPage } from '@/features/plans/pages/PlansPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
+import { TrainingDashboardPage } from '@/features/training/pages/TrainingDashboardPage';
 
 export const router = createBrowserRouter([
   // Public: the only page reachable without a session.
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
       { path: '/plans', element: <PlansPage /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '/shopping', element: <ShoppingPage /> },
+      { path: '/training', element: <TrainingDashboardPage /> },
     ],
   },
 ]);

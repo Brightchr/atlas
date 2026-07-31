@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Apple,
-  CalendarDays,
-  ClipboardList,
   Dumbbell,
   House,
   Mountain,
@@ -21,15 +19,36 @@ import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 
-const navItems = [
+// Training is a hub: plans, workouts and exercises live under it as tabs
+// (mirroring Nutrition's diary/meal-plan/recipes). Goals stay separate.
+// `match` lists extra path prefixes that should light the item up.
+interface NavItem {
+  to: string;
+  label: string;
+  Icon: typeof House;
+  end?: boolean;
+  match?: string[];
+}
+
+const navItems: NavItem[] = [
   { to: '/', label: 'Home', Icon: House, end: true },
   { to: '/goals', label: 'Goals', Icon: Target },
-  { to: '/plans', label: 'Workout plans', Icon: CalendarDays },
-  { to: '/workouts', label: 'Workouts', Icon: ClipboardList },
-  { to: '/exercises', label: 'Exercises', Icon: Dumbbell },
+  {
+    to: '/training',
+    label: 'Training',
+    Icon: Dumbbell,
+    match: ['/plans', '/workouts', '/exercises'],
+  },
   { to: '/nutrition', label: 'Nutrition', Icon: Apple },
   { to: '/shopping', label: 'Shopping', Icon: ShoppingCart },
 ];
+
+function isItemActive(item: NavItem, pathname: string): boolean {
+  if (item.end) return pathname === item.to;
+  return (
+    pathname.startsWith(item.to) || (item.match ?? []).some((prefix) => pathname.startsWith(prefix))
+  );
+}
 
 const COLLAPSE_KEY = 'arcadia-sidebar';
 
@@ -65,9 +84,10 @@ export function AppLayout() {
     () => localStorage.getItem(COLLAPSE_KEY) === 'collapsed',
   );
   const { data: user } = useCurrentUser();
+  const { pathname } = useLocation();
   const queryClient = useQueryClient();
-  const items = user?.role === 'admin'
-    ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck, end: false }]
+  const items: NavItem[] = user?.role === 'admin'
+    ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
     : navItems;
 
   // The demo account arrives "fully loaded": whenever demo is signed in and the
@@ -116,24 +136,22 @@ export function AppLayout() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {items.map(({ to, label, Icon, end }) => (
+          {items.map((item) => (
             <NavLink
-              key={to}
-              to={to}
-              end={end}
-              title={collapsed ? label : undefined}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-                  collapsed ? 'justify-center px-0' : 'px-3.5'
-                } ${
-                  isActive
-                    ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                    : 'text-muted hover:bg-elev hover:text-ink'
-                }`
-              }
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              title={collapsed ? item.label : undefined}
+              className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                collapsed ? 'justify-center px-0' : 'px-3.5'
+              } ${
+                isItemActive(item, pathname)
+                  ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
+                  : 'text-muted hover:bg-elev hover:text-ink'
+              }`}
             >
-              <Icon size={18} strokeWidth={1.8} className="shrink-0" aria-hidden />
-              {!collapsed && <span className="whitespace-nowrap">{label}</span>}
+              <item.Icon size={18} strokeWidth={1.8} className="shrink-0" aria-hidden />
+              {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
             </NavLink>
           ))}
         </nav>
@@ -172,21 +190,19 @@ export function AppLayout() {
         aria-label="Primary"
         className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-between rounded-2xl border border-line bg-surface/80 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-xl md:hidden"
       >
-        {navItems.map(({ to, label, Icon, end }) => (
+        {navItems.map((item) => (
           <NavLink
-            key={to}
-            to={to}
-            end={end}
-            aria-label={label}
-            className={({ isActive }) =>
-              `flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-                isActive
-                  ? 'bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-sm'
-                  : 'text-muted'
-              }`
-            }
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            aria-label={item.label}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+              isItemActive(item, pathname)
+                ? 'bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-sm'
+                : 'text-muted'
+            }`}
           >
-            <Icon size={20} strokeWidth={1.8} aria-hidden />
+            <item.Icon size={20} strokeWidth={1.8} aria-hidden />
           </NavLink>
         ))}
       </nav>
