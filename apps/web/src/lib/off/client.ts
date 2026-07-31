@@ -31,6 +31,8 @@ interface OffProduct {
   nutriments?: OffNutriments;
   serving_size?: string;
   serving_quantity?: number | string;
+  /** Set by our API's merged search: 'usda' rows come from FoodData Central. */
+  source?: 'usda' | 'off';
 }
 
 export type FoodSnapshot = Omit<Food, 'id'>;
@@ -72,7 +74,7 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
     name: p.product_name,
     brand: p.brands?.split(',')[0]?.trim() || null,
     barcode: p.code,
-    source: 'off',
+    source: p.source ?? 'off',
     per100g,
     imageUrl: p.image_front_small_url ?? null,
     servingName: p.serving_size ?? null,

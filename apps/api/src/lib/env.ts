@@ -22,4 +22,8 @@ export const env = {
     (process.env.NODE_ENV === 'production' ? null : 'admin1234'),
   demoPassword:
     process.env.DEMO_PASSWORD ?? (process.env.NODE_ENV === 'production' ? null : 'demo1234'),
+  /** USDA FoodData Central key (free at https://fdc.nal.usda.gov/api-key-signup).
+   * DEMO_KEY works but is rate-limited to ~30 req/hour — fine for dev, set a
+   * real key in production. */
+  fdcApiKey: process.env.FDC_API_KEY ?? 'DEMO_KEY',
 } as const;

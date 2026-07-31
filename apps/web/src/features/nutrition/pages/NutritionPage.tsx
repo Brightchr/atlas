@@ -102,11 +102,16 @@ function FoodResult({
   const [unit, setUnit] = useState<'serving' | 'g' | null>(null);
   const [meal, setMeal] = useState<MealType>('snack');
 
-  // The search index has no serving data — fetch it once the card expands.
+  // OFF's search index has no serving data — fetch it once the card expands.
+  // (USDA rows already carry theirs; their codes mean nothing to OFF.)
   const servingQuery = useQuery({
     queryKey: ['foods', 'serving', snapshot.barcode],
     queryFn: () => fetchServing(snapshot.barcode!),
-    enabled: open && snapshot.servingGrams === null && snapshot.barcode !== null,
+    enabled:
+      open &&
+      snapshot.servingGrams === null &&
+      snapshot.barcode !== null &&
+      snapshot.source === 'off',
     staleTime: Infinity,
     retry: 1,
   });
@@ -361,7 +366,7 @@ export function NutritionPage() {
               <FoodResult
                 key={snapshot.barcode}
                 snapshot={snapshot}
-                sourceTag="Open Food Facts"
+                sourceTag={snapshot.source === 'usda' ? 'USDA' : 'Open Food Facts'}
                 pending={logMutation.isPending}
                 onLog={(grams, meal, serving) =>
                   logMutation.mutate({ snapshot, grams, meal, serving })
@@ -503,6 +508,10 @@ export function NutritionPage() {
 
       <p className="pt-2 text-xs text-muted/70">
         Food data from{' '}
+        <a href="https://fdc.nal.usda.gov" target="_blank" rel="noreferrer" className="underline">
+          USDA FoodData Central
+        </a>{' '}
+        (public domain) and{' '}
         <a href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer" className="underline">
           Open Food Facts
         </a>{' '}
