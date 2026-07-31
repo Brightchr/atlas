@@ -14,6 +14,7 @@ import {
 import type { Food, Macros, MealType } from '@arcadia/shared';
 import { searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
 import { Pagination } from '@/components/Pagination';
+import { NutritionTabs } from '../components/NutritionTabs';
 import { getSavedTargets } from '@/features/goals/repository';
 import {
   deleteDiaryEntry,
@@ -233,6 +234,8 @@ export function NutritionPage() {
         <h1 className="text-2xl font-bold">Nutrition</h1>
         <p className="text-sm text-muted">Today’s meals, calories and full nutrition stats.</p>
       </header>
+
+      <NutritionTabs />
 
       {/* Prominent, self-explanatory logging entry point */}
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">

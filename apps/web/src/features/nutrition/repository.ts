@@ -2,7 +2,7 @@ import type { DiaryEntry, Food, Macros, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import type { FoodSnapshot } from '@/lib/off/client';
 
-function scaleMacros(per100g: Macros, grams: number): Macros {
+export function scaleMacros(per100g: Macros, grams: number): Macros {
   const f = grams / 100;
   const opt = (v: number | undefined) => (v === undefined ? undefined : +(v * f).toFixed(2));
   return {
@@ -96,6 +96,15 @@ export async function importFood(snapshot: FoodSnapshot): Promise<Food> {
   );
   await persist();
   return { ...snapshot, id };
+}
+
+export async function getFoodsByIds(ids: string[]): Promise<Map<string, Food>> {
+  if (ids.length === 0) return new Map();
+  const db = await getDb();
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = (await db.query(`SELECT * FROM foods WHERE id IN (${placeholders})`, ids))
+    .values as FoodRow[];
+  return new Map(rows.map((r) => [r.id, toFood(r)]));
 }
 
 export async function searchLocalFoods(term: string): Promise<Food[]> {
