@@ -1,8 +1,35 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft } from 'lucide-react';
 import { Lightbox } from '@/components/Lightbox';
 import { useExercise } from '../api';
+
+/** Go back to wherever the user came from — a workout, a live session, or the
+ * exercise list — falling back to /exercises on a direct visit (React Router
+ * stamps history.state.idx; 0 means this is the first in-app entry). */
+function BackButton({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+  const canGoBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
+  if (!canGoBack) {
+    return (
+      <Link
+        to="/exercises"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void navigate(-1)}
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+    >
+      {children}
+    </button>
+  );
+}
 
 export function ExerciseDetailPage() {
   const { id } = useParams();
@@ -16,9 +43,7 @@ export function ExerciseDetailPage() {
     return (
       <div className="space-y-3 p-4 md:p-6">
         <p className="text-rose-500">Could not load this exercise.</p>
-        <Link to="/exercises" className="font-medium text-accent hover:underline">
-          Back to exercises
-        </Link>
+        <BackButton>Back</BackButton>
       </div>
     );
   }
@@ -27,13 +52,10 @@ export function ExerciseDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/exercises"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
-      >
+      <BackButton>
         <ArrowLeft size={15} aria-hidden />
-        Exercises
-      </Link>
+        Back
+      </BackButton>
 
       <header>
         <h1 className="text-2xl font-bold">{exercise.name}</h1>
