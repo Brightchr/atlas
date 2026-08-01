@@ -1,14 +1,16 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
+import { ChevronRight, Play, Trash2 } from 'lucide-react';
 import { TrainingTabs } from '@/components/TrainingTabs';
-import { createWorkout, deleteWorkout, listWorkouts } from '../repository';
+import { createWorkout, deleteWorkout, getOpenSession, listWorkouts } from '../repository';
 
 export function WorkoutsPage() {
   const [name, setName] = useState('');
   const queryClient = useQueryClient();
 
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
+  const openSessionQuery = useQuery({ queryKey: ['sessions', 'open'], queryFn: getOpenSession });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['workouts'] });
   const createMutation = useMutation({ mutationFn: createWorkout, onSuccess: invalidate });
@@ -47,6 +49,19 @@ export function WorkoutsPage() {
         </button>
       </div>
 
+      {openSessionQuery.data && (
+        <Link
+          to={`/workouts/session/${openSessionQuery.data.id}`}
+          className="flex items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <span className="flex items-center gap-2.5 text-sm font-semibold">
+            <Play size={16} className="text-accent" aria-hidden />
+            Workout in progress: {openSessionQuery.data.workoutName}
+          </span>
+          <span className="text-xs font-medium text-accent">Resume</span>
+        </Link>
+      )}
+
       {workoutsQuery.isError && (
         <p className="text-rose-500">Local database unavailable — workouts cannot be loaded.</p>
       )}
@@ -57,18 +72,22 @@ export function WorkoutsPage() {
         {workoutsQuery.data?.map((workout) => (
           <li
             key={workout.id}
-            className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm"
+            className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
           >
-            <div>
-              <p className="font-semibold">{workout.name}</p>
-              <p className="text-sm text-muted">
-                {workout.exercises.length} exercise{workout.exercises.length === 1 ? '' : 's'}
-              </p>
-            </div>
+            <Link to={`/workouts/${workout.id}`} className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">{workout.name}</span>
+                <span className="block text-sm text-muted">
+                  {workout.exercises.length} exercise{workout.exercises.length === 1 ? '' : 's'} —
+                  view, edit &amp; start
+                </span>
+              </span>
+              <ChevronRight size={17} className="shrink-0 text-muted" aria-hidden />
+            </Link>
             <button
               type="button"
               onClick={() => deleteMutation.mutate(workout.id)}
-              className="rounded-lg p-2 text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500"
+              className="shrink-0 rounded-lg p-2 text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-500"
               aria-label={`Delete ${workout.name}`}
             >
               <Trash2 size={17} aria-hidden />

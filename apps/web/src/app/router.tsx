@@ -9,6 +9,8 @@ import { GoalsPage } from '@/features/goals/pages/GoalsPage';
 import { ExerciseListPage } from '@/features/exercises/pages/ExerciseListPage';
 import { ExerciseDetailPage } from '@/features/exercises/pages/ExerciseDetailPage';
 import { WorkoutsPage } from '@/features/workouts/pages/WorkoutsPage';
+import { WorkoutDetailPage } from '@/features/workouts/pages/WorkoutDetailPage';
+import { WorkoutSessionPage } from '@/features/workouts/pages/WorkoutSessionPage';
 import { MealPlanPage } from '@/features/nutrition/pages/MealPlanPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
@@ -35,6 +37,8 @@ export const router = createBrowserRouter([
       { path: '/exercises/:id', element: <ExerciseDetailPage /> },
       { path: '/goals', element: <GoalsPage /> },
       { path: '/workouts', element: <WorkoutsPage /> },
+      { path: '/workouts/session/:sessionId', element: <WorkoutSessionPage /> },
+      { path: '/workouts/:id', element: <WorkoutDetailPage /> },
       { path: '/nutrition', element: <NutritionPage /> },
       { path: '/nutrition/meal-plan', element: <MealPlanPage /> },
       { path: '/nutrition/recipes', element: <RecipesPage /> },
