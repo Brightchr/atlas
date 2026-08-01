@@ -107,7 +107,9 @@ export function PlansPage() {
   const importPlan = useImportSharedPlan();
 
   const workouts = workoutsQuery.data ?? [];
-  const community = (sharedQuery.data?.plans ?? []).filter((p) => !p.mine);
+  // Includes your own shares (badged) — that's also how you pull a plan you
+  // published onto a fresh device.
+  const community = sharedQuery.data?.plans ?? [];
 
   const handleCreate = () => {
     const trimmed = name.trim();
@@ -190,6 +192,11 @@ export function PlansPage() {
                   <p className="truncate text-sm font-semibold">{shared.name}</p>
                   <p className="truncate text-xs text-muted">
                     by {shared.owner}
+                    {shared.mine && (
+                      <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                        you
+                      </span>
+                    )}
                     <Icon size={11} className="mb-0.5 ml-1.5 inline" aria-hidden />
                   </p>
                 </div>
