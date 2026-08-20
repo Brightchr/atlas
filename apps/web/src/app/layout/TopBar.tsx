@@ -332,7 +332,14 @@ function ProfileMenu({ open, onToggle }: { open: boolean; onToggle: () => void }
           </div>
           {user ? (
             <>
-              <MenuItem Icon={User} label="Profile" hint="Soon" />
+              <Link
+                to="/profile"
+                onClick={onToggle}
+                className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-elev"
+              >
+                <User size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
+                Profile
+              </Link>
               <MenuItem Icon={Users} label="Friends" hint="Soon" />
               <Link
                 to="/settings"

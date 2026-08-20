@@ -11,7 +11,7 @@
     <title>Arcadia Atlas</title>
     <script>
       // Apply the stored theme before first paint to avoid a flash of the default.
-      document.documentElement.dataset.theme = localStorage.getItem('arcadia-theme') || 'aurora';
+      document.documentElement.dataset.theme = ({aurora:'glacier',mint:'meadow',midnight:'indigo-night',carbon:'tide'})[localStorage.getItem('arcadia-theme')] || localStorage.getItem('arcadia-theme') || 'indigo-night';
 
       // Browsers never fire requestAnimationFrame in hidden/background tabs, but
       // jeep-sqlite (our browser SQLite) renders via rAF and would stall forever.

@@ -4,7 +4,6 @@ import { BookOpenText, NotebookPen, Plus, ShoppingCart, X } from 'lucide-react';
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
-import { NutritionTabs } from '../components/NutritionTabs';
 import {
   addMealPlanItem,
   addPlanWeekToShoppingList,
@@ -208,7 +207,6 @@ export function MealPlanPage() {
         </p>
       </header>
 
-      <NutritionTabs />
 
       <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
         {DAYS.map((label, i) => (

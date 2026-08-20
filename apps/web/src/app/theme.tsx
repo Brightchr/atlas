@@ -2,19 +2,29 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 
 export const THEMES = [
-  { id: 'aurora', label: 'Aurora', mode: 'light', swatch: ['#f4f5fb', '#4f46e5'] },
-  { id: 'mint', label: 'Mint', mode: 'light', swatch: ['#f2f7f4', '#0d9488'] },
-  { id: 'midnight', label: 'Midnight', mode: 'dark', swatch: ['#0b0d17', '#818cf8'] },
-  { id: 'carbon', label: 'Carbon', mode: 'dark', swatch: ['#0a0a0c', '#a3e635'] },
+  { id: 'indigo-night', label: 'Indigo Night', mode: 'dark', swatch: ['#14151d', '#818cf8'] },
+  { id: 'tide', label: 'Tide', mode: 'dark', swatch: ['#0d1417', '#2dd4bf'] },
+  { id: 'glacier', label: 'Glacier', mode: 'light', swatch: ['#f4f6fa', '#2563eb'] },
+  { id: 'meadow', label: 'Meadow', mode: 'light', swatch: ['#f9f9f4', '#047857'] },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];
 
 const STORAGE_KEY = 'arcadia-theme';
-const DEFAULT_THEME: ThemeId = 'aurora';
+const DEFAULT_THEME: ThemeId = 'indigo-night';
+
+/** The 2026 redesign renamed every theme; carry old choices to their nearest
+ * new home instead of silently resetting to the default. */
+const LEGACY_THEMES: Record<string, ThemeId> = {
+  aurora: 'glacier',
+  mint: 'meadow',
+  midnight: 'indigo-night',
+  carbon: 'tide',
+};
 
 function readStoredTheme(): ThemeId {
   const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored && LEGACY_THEMES[stored]) return LEGACY_THEMES[stored];
   return THEMES.some((t) => t.id === stored) ? (stored as ThemeId) : DEFAULT_THEME;
 }
 

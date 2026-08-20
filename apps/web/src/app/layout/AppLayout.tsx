@@ -9,8 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
-  ShoppingCart,
-  Target,
+  UserRound,
   VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
@@ -18,10 +17,12 @@ import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
+import { startSync } from '@/lib/sync/engine';
+import { useTrainingProfile } from '@/features/training/profile';
 
-// Training is a hub: plans, workouts and exercises live under it as tabs
-// (mirroring Nutrition's diary/meal-plan/recipes). Goals stay separate.
-// `match` lists extra path prefixes that should light the item up.
+// The 4-tab shell: Home, Train, Eat, You — each tab is a complete world and
+// drill-down happens inside it. `match` lists extra path prefixes (detail
+// and legacy routes) that keep the tab lit.
 interface NavItem {
   to: string;
   label: string;
@@ -32,15 +33,16 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', label: 'Home', Icon: House, end: true },
-  { to: '/goals', label: 'Goals', Icon: Target },
   {
-    to: '/training',
-    label: 'Training',
+    to: '/train',
+    label: 'Train',
     Icon: Dumbbell,
-    match: ['/plans', '/workouts', '/exercises'],
+    match: ['/workouts', '/exercises', '/plans', '/training'],
   },
-  { to: '/nutrition', label: 'Nutrition', Icon: Apple },
-  { to: '/shopping', label: 'Shopping', Icon: ShoppingCart },
+  { to: '/eat', label: 'Eat', Icon: Apple, match: ['/nutrition', '/shopping'] },
+  // Profile and Settings are account pages under the top-bar avatar menu,
+  // so they deliberately don't light this tab.
+  { to: '/you', label: 'You', Icon: UserRound, match: ['/goals'] },
 ];
 
 function isItemActive(item: NavItem, pathname: string): boolean {
@@ -85,10 +87,27 @@ export function AppLayout() {
   );
   const { data: user } = useCurrentUser();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const items: NavItem[] = user?.role === 'admin'
     ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
     : navItems;
+
+  // Sync runs for the whole signed-in session: pull/push on start, then on
+  // reconnect, tab focus, after writes (debounced), and on a slow interval.
+  useEffect(() => {
+    if (!user?.id) return;
+    return startSync(user.id);
+  }, [user?.id]);
+
+  // New-user onboarding: until a training profile exists, everything funnels
+  // to the goal picker — it's the lens the rest of the app filters through.
+  const profile = useTrainingProfile();
+  useEffect(() => {
+    if (profile.isSuccess && profile.data === null && pathname !== '/welcome') {
+      navigate('/welcome', { replace: true });
+    }
+  }, [profile.isSuccess, profile.data, pathname, navigate]);
 
   // The demo account arrives "fully loaded": whenever demo is signed in and the
   // device DB is empty, seed it in the background (idempotent, self-healing).
