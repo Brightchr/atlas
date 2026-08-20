@@ -110,6 +110,93 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX shared_plans_visibility_idx ON shared_plans(visibility, updated_at);
     `,
   },
+  {
+    id: '005_sync',
+    sql: `
+      -- Device sync: a per-user replica log, one row per synced entity row.
+      -- The server never parses payloads (same stance as shared_plans) — it
+      -- only orders changes. seq is a global sequence; clients page through
+      -- their own rows with WHERE user_id = ? AND seq > cursor, so per-user
+      -- ordering is all that matters. Tombstones keep payload NULL.
+      CREATE SEQUENCE sync_rows_seq;
+      CREATE TABLE sync_rows (
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        entity     text NOT NULL,
+        row_id     text NOT NULL,
+        payload    jsonb,
+        deleted    boolean NOT NULL DEFAULT false,
+        -- Client clock at the moment of the change: the last-write-wins axis.
+        changed_at timestamptz NOT NULL,
+        device_id  text NOT NULL,
+        seq        bigint NOT NULL DEFAULT nextval('sync_rows_seq'),
+        PRIMARY KEY (user_id, entity, row_id)
+      );
+      CREATE INDEX sync_rows_user_seq_idx ON sync_rows(user_id, seq);
+    `,
+  },
+  {
+    id: '006_plan_social',
+    sql: `
+      -- Published plans grow discovery metadata: what the plan is for, how hard
+      -- it is, and the eating style it pairs with. Existing shares default to
+      -- the neutral middle.
+      ALTER TABLE shared_plans
+        ADD COLUMN difficulty text NOT NULL DEFAULT 'intermediate'
+          CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')),
+        ADD COLUMN goal text NOT NULL DEFAULT 'general'
+          CHECK (goal IN ('build_muscle', 'lose_weight', 'get_stronger', 'general')),
+        ADD COLUMN diet text
+          CHECK (diet IN ('high_protein', 'calorie_deficit', 'balanced', 'performance'));
+
+      -- One review per user per plan; re-reviewing updates in place.
+      CREATE TABLE plan_reviews (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_id    uuid NOT NULL REFERENCES shared_plans(id) ON DELETE CASCADE,
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating     integer NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment    text NOT NULL DEFAULT '',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (plan_id, user_id)
+      );
+      CREATE INDEX plan_reviews_plan_idx ON plan_reviews(plan_id);
+
+      -- Direct person-to-person shares: the recipient (and only the recipient)
+      -- gains view/import access to a non-public plan. Requires sign-in by
+      -- construction — rows reference user accounts.
+      CREATE TABLE plan_shares (
+        id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_id      uuid NOT NULL REFERENCES shared_plans(id) ON DELETE CASCADE,
+        from_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        to_user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (plan_id, to_user_id)
+      );
+      CREATE INDEX plan_shares_to_idx ON plan_shares(to_user_id);
+    `,
+  },
+  {
+    id: '007_profiles',
+    sql: `
+      -- Public-facing identity. display_name NULL means "show the username";
+      -- bio is always a string so the UI never branches on null.
+      ALTER TABLE users
+        ADD COLUMN display_name text CHECK (char_length(display_name) <= 60),
+        ADD COLUMN bio text NOT NULL DEFAULT '' CHECK (char_length(bio) <= 500);
+    `,
+  },
+  {
+    id: '008_profile_page',
+    sql: `
+      -- The customizable public profile: appearance (banner preset, avatar
+      -- emoji), per-section privacy switches, and an opt-in snapshot of
+      -- training goals. One validated JSON document so the page can grow
+      -- without a migration per knob. Size-capped against abuse.
+      ALTER TABLE users
+        ADD COLUMN profile jsonb NOT NULL DEFAULT '{}'
+          CHECK (pg_column_size(profile) <= 8192);
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
