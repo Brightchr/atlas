@@ -46,12 +46,33 @@ export interface SharedPlanPayload {
   days: SharedPlanDay[];
 }
 
+export type PlanDifficulty = 'beginner' | 'intermediate' | 'advanced';
+export type PlanGoal = 'build_muscle' | 'lose_weight' | 'get_stronger' | 'general';
+export type PlanDiet = 'high_protein' | 'calorie_deficit' | 'balanced' | 'performance';
+
 export interface SharedPlanSummary {
   id: string;
   name: string;
   description: string;
   visibility: PlanVisibility;
+  difficulty: PlanDifficulty;
+  goal: PlanGoal;
+  diet: PlanDiet | null;
   owner: string;
+  mine: boolean;
+  /** True when this plan was sent directly to the caller. */
+  sharedToMe: boolean;
+  /** Average rating (1 decimal), or null before the first review. */
+  rating: number | null;
+  reviewCount: number;
+  updatedAt: string;
+}
+
+export interface PlanReview {
+  id: string;
+  rating: number;
+  comment: string;
+  author: string;
   mine: boolean;
   updatedAt: string;
 }
