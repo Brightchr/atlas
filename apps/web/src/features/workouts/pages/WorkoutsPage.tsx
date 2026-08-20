@@ -1,19 +1,27 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Play, Trash2 } from 'lucide-react';
-import { TrainingTabs } from '@/components/TrainingTabs';
 import { createWorkout, deleteWorkout, getOpenSession, listWorkouts } from '../repository';
 
 export function WorkoutsPage() {
   const [name, setName] = useState('');
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
   const openSessionQuery = useQuery({ queryKey: ['sessions', 'open'], queryFn: getOpenSession });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['workouts'] });
-  const createMutation = useMutation({ mutationFn: createWorkout, onSuccess: invalidate });
+  const createMutation = useMutation({
+    mutationFn: createWorkout,
+    // Creating lands you IN the new workout, exercise picker ready — no
+    // hunting for it in the list afterwards.
+    onSuccess: (id) => {
+      invalidate();
+      navigate(`/workouts/${id}`);
+    },
+  });
   const deleteMutation = useMutation({ mutationFn: deleteWorkout, onSuccess: invalidate });
 
   const handleCreate = () => {
@@ -30,7 +38,6 @@ export function WorkoutsPage() {
         <p className="text-sm text-muted">Your workout templates, stored on this device.</p>
       </header>
 
-      <TrainingTabs />
 
       <div className="flex gap-2">
         <input

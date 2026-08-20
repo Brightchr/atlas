@@ -1,17 +1,52 @@
-import { useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router';
 import { Home } from 'lucide-react';
-import { EMPTY_FILTERS, hasActiveFilters, type ExerciseFilters } from '@/lib/exercise-db/client';
+import { hasActiveFilters, type ExerciseFilters } from '@/lib/exercise-db/client';
 import { useTrainingSetup } from '@/lib/trainingSetup';
 import { Pagination } from '@/components/Pagination';
-import { TrainingTabs } from '@/components/TrainingTabs';
 import { PAGE_SIZE, useExerciseCatalog, useExercisePage, useFilteredExercises } from '../api';
 import { ExerciseCard } from '../components/ExerciseCard';
 import { FilterBar } from '../components/FilterBar';
 
+const parseIds = (value: string | null): number[] =>
+  value ? value.split(',').map(Number).filter(Number.isFinite) : [];
+
 export function ExerciseListPage() {
-  const [term, setTerm] = useState('');
-  const [filters, setFilters] = useState<ExerciseFilters>(EMPTY_FILTERS);
-  const [page, setPage] = useState(0);
+  // Search, facets and page live in the URL: back-navigation from a detail
+  // page restores them exactly, and any filtered view is a shareable link.
+  const [params, setParams] = useSearchParams();
+  const term = params.get('q') ?? '';
+  const page = Math.max(0, Number(params.get('page') ?? 0) || 0);
+  const filters = useMemo<ExerciseFilters>(
+    () => ({
+      muscleIds: parseIds(params.get('muscle')),
+      equipmentIds: parseIds(params.get('equipment')),
+      categoryId: params.get('category') ? Number(params.get('category')) : null,
+      ownedEquipmentIds: params.get('owned') ? parseIds(params.get('owned')) : null,
+    }),
+    [params],
+  );
+
+  const update = useCallback(
+    (patch: { term?: string; filters?: ExerciseFilters; page?: number }) => {
+      const nextTerm = patch.term ?? term;
+      const nextFilters = patch.filters ?? filters;
+      const nextPage = patch.page ?? (patch.term !== undefined || patch.filters ? 0 : page);
+      const next = new URLSearchParams();
+      if (nextTerm) next.set('q', nextTerm);
+      if (nextFilters.muscleIds.length) next.set('muscle', nextFilters.muscleIds.join(','));
+      if (nextFilters.equipmentIds.length) next.set('equipment', nextFilters.equipmentIds.join(','));
+      if (nextFilters.categoryId !== null) next.set('category', String(nextFilters.categoryId));
+      if (nextFilters.ownedEquipmentIds !== null)
+        next.set('owned', nextFilters.ownedEquipmentIds.join(',') || '0');
+      if (nextPage > 0) next.set('page', String(nextPage));
+      setParams(next, { replace: true });
+    },
+    [term, filters, page, setParams],
+  );
+  const setTerm = (value: string) => update({ term: value });
+  const setFilters = (value: ExerciseFilters) => update({ filters: value });
+  const setPage = (value: number) => update({ page: value });
   const setup = useTrainingSetup();
 
   const filtering = term.trim().length >= 2 || hasActiveFilters(filters);
@@ -44,7 +79,6 @@ export function ExerciseListPage() {
         />
       </header>
 
-      <TrainingTabs />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0 flex-1">

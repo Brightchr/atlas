@@ -16,8 +16,18 @@ import {
 /** Inline catalog search for adding an exercise to this workout. */
 function ExercisePicker({ onPick, onClose }: { onPick: (e: Exercise) => void; onClose: () => void }) {
   const [term, setTerm] = useState('');
+  const [lastAdded, setLastAdded] = useState<string | null>(null);
   const catalog = useExerciseCatalog();
   const matches = term.trim().length >= 2 ? filterExercises(catalog.data ?? [], term).slice(0, 8) : [];
+
+  // Picking clears the search and keeps the picker open, so adding five
+  // exercises is one flow — the Hevy pattern — with an "Added ✓" flash as
+  // feedback instead of a silent list mutation somewhere above.
+  const pick = (exercise: Exercise) => {
+    onPick(exercise);
+    setLastAdded(exercise.name);
+    setTerm('');
+  };
 
   return (
     <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
@@ -33,7 +43,7 @@ function ExercisePicker({ onPick, onClose }: { onPick: (e: Exercise) => void; on
             autoFocus
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search the exercise catalog…"
+            placeholder={lastAdded ? `Added ${lastAdded} ✓ — search for the next one…` : 'Search the exercise catalog…'}
             className="w-full rounded-xl border border-line bg-surface py-2 pr-3 pl-9 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
           />
         </div>
@@ -51,7 +61,7 @@ function ExercisePicker({ onPick, onClose }: { onPick: (e: Exercise) => void; on
           <li key={exercise.id}>
             <button
               type="button"
-              onClick={() => onPick(exercise)}
+              onClick={() => pick(exercise)}
               className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-elev"
             >
               {exercise.imageUrls[0] ? (
@@ -225,7 +235,7 @@ export function WorkoutDetailPage() {
     return (
       <div className="space-y-3 p-4 md:p-6">
         <p className="text-rose-500">Could not find this workout.</p>
-        <Link to="/workouts" className="font-medium text-accent hover:underline">
+        <Link to="/train/library" className="font-medium text-accent hover:underline">
           Back to workouts
         </Link>
       </div>
@@ -235,7 +245,7 @@ export function WorkoutDetailPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
       <Link
-        to="/workouts"
+        to="/train/library"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
       >
         <ArrowLeft size={15} aria-hidden />
