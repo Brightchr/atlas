@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  PlanDiet,
+  PlanDifficulty,
+  PlanGoal,
+  PlanReview,
   PlanVisibility,
   SharedPlanPayload,
   SharedPlanSummary,
@@ -16,6 +20,7 @@ import {
   listPlans,
   setPlanDay,
   setPlanVisibility,
+  updatePlanDescription,
 } from './repository';
 
 export function usePlans() {
@@ -38,6 +43,10 @@ function usePlanMutation<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
 }
 
 export const useCreatePlan = () => usePlanMutation(createPlan);
+export const useUpdatePlanDescription = () =>
+  usePlanMutation((args: { planId: string; description: string }) =>
+    updatePlanDescription(args.planId, args.description),
+  );
 export const useDeletePlan = () => usePlanMutation(deletePlan);
 export const useSetPlanDay = () =>
   usePlanMutation(
@@ -54,8 +63,9 @@ export function useSharedPlans() {
   });
 }
 
-/** Publish (or republish) a plan with the chosen visibility. The local
- * visibility field is updated alongside so the UI reflects the share state. */
+/** Publish (or republish) a plan with the chosen visibility and discovery
+ * tags. The local visibility field is updated alongside so the UI reflects
+ * the share state. */
 export function useSharePlan() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -63,6 +73,11 @@ export function useSharePlan() {
       plan: TrainingPlan;
       workouts: Workout[];
       visibility: PlanVisibility;
+      difficulty?: PlanDifficulty;
+      goal?: PlanGoal;
+      diet?: PlanDiet | null;
+      /** Fresh creator notes — beats the (possibly stale) plan.description. */
+      description?: string;
     }) => {
       await setPlanVisibility(args.plan.id, args.visibility);
       if (args.visibility === 'private') {
@@ -75,8 +90,11 @@ export function useSharePlan() {
         body: JSON.stringify({
           localPlanId: args.plan.id,
           name: args.plan.name,
-          description: args.plan.description ?? '',
+          description: args.description ?? args.plan.description ?? '',
           visibility: args.visibility,
+          difficulty: args.difficulty ?? 'intermediate',
+          goal: args.goal ?? 'general',
+          diet: args.diet ?? null,
           payload: buildPlanPayload(args.plan, args.workouts),
         }),
       });
@@ -84,6 +102,51 @@ export function useSharePlan() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['plans'] });
     },
+  });
+}
+
+/** One shared plan in full: summary fields plus the embedded payload. */
+export function useSharedPlanDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ['plans', 'shared', id],
+    queryFn: () =>
+      apiFetch<SharedPlanSummary & { payload: SharedPlanPayload }>(`/v1/plans/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+/** Reviews for one shared plan. */
+export function usePlanReviews(planId: string | null) {
+  return useQuery({
+    queryKey: ['plans', 'reviews', planId],
+    queryFn: () => apiFetch<{ reviews: PlanReview[] }>(`/v1/plans/${planId}/reviews`),
+    enabled: planId !== null,
+  });
+}
+
+export function useSubmitReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { planId: string; rating: number; comment: string }) =>
+      apiFetch(`/v1/plans/${args.planId}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({ rating: args.rating, comment: args.comment }),
+      }),
+    onSuccess: (_data, args) => {
+      void queryClient.invalidateQueries({ queryKey: ['plans', 'reviews', args.planId] });
+      void queryClient.invalidateQueries({ queryKey: ['plans', 'shared'] });
+    },
+  });
+}
+
+/** Send one of your published plans directly to another user by username. */
+export function useSendPlan() {
+  return useMutation({
+    mutationFn: (args: { planId: string; username: string }) =>
+      apiFetch(`/v1/plans/${args.planId}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ username: args.username }),
+      }),
   });
 }
 

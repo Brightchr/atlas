@@ -82,6 +82,16 @@ export async function setPlanDay(
   await persist();
 }
 
+/** The creator's notes: shown on the plan card and published with shares. */
+export async function updatePlanDescription(id: string, description: string): Promise<void> {
+  const db = await getDb();
+  await db.run('UPDATE training_plans SET description = ? WHERE id = ?', [
+    description.trim() || null,
+    id,
+  ]);
+  await persist();
+}
+
 export async function setPlanVisibility(id: string, visibility: PlanVisibility): Promise<void> {
   const db = await getDb();
   await db.run('UPDATE training_plans SET visibility = ? WHERE id = ?', [visibility, id]);
