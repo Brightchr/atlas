@@ -6,6 +6,8 @@ import {
   displayHeight,
   displayWeight,
   formatWeight,
+  cmToFtIn,
+  ftInToCm,
   heightUnit,
   parseHeight,
   parseWeight,
@@ -110,14 +112,43 @@ export function PlanCard() {
             className={selectClasses}
           />
         </Field>
-        <Field label={`Height (${heightUnit(units)})`}>
-          <input
-            type="number"
-            value={displayHeight(profile.heightCm, units)}
-            onChange={(e) => set('heightCm', parseHeight(Number(e.target.value), units))}
-            className={selectClasses}
-          />
-        </Field>
+        {units === 'imperial' ? (
+          <Field label="Height (ft / in)">
+            <div className="flex gap-1.5">
+              <input
+                type="number"
+                min="3"
+                max="8"
+                aria-label="Height feet"
+                value={cmToFtIn(profile.heightCm).feet}
+                onChange={(e) =>
+                  set('heightCm', ftInToCm(Number(e.target.value), cmToFtIn(profile.heightCm).inches))
+                }
+                className={selectClasses}
+              />
+              <input
+                type="number"
+                min="0"
+                max="11"
+                aria-label="Height inches"
+                value={cmToFtIn(profile.heightCm).inches}
+                onChange={(e) =>
+                  set('heightCm', ftInToCm(cmToFtIn(profile.heightCm).feet, Number(e.target.value)))
+                }
+                className={selectClasses}
+              />
+            </div>
+          </Field>
+        ) : (
+          <Field label={`Height (${heightUnit(units)})`}>
+            <input
+              type="number"
+              value={displayHeight(profile.heightCm, units)}
+              onChange={(e) => set('heightCm', parseHeight(Number(e.target.value), units))}
+              className={selectClasses}
+            />
+          </Field>
+        )}
         <Field label={`Weight (${weightUnit(units)})`}>
           <input
             type="number"

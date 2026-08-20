@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Flag, Timer, X } from 'lucide-react';
+import { Check, Flag, Timer, TimerOff, X } from 'lucide-react';
 import type { LoggedSet, WorkoutExercise } from '@arcadia/shared';
 import { formatWeight, parseWeight, useUnits, weightUnit, type UnitSystem } from '@/lib/units';
+import { useRestTimerEnabled, useSetRestTimerEnabled } from '@/lib/restTimer';
 import {
   deleteLoggedSet,
   finishSession,
@@ -182,12 +183,21 @@ export function WorkoutSessionPage() {
   }, []);
   const restRemaining = restEndsAt === null ? 0 : Math.ceil((restEndsAt - now) / 1000);
 
+  const restTimerEnabled = useRestTimerEnabled();
+  const setRestTimerEnabled = useSetRestTimerEnabled();
+  const toggleRestTimer = () => {
+    if (restTimerEnabled) setRestEndsAt(null); // silence a running countdown too
+    setRestTimerEnabled.mutate(!restTimerEnabled);
+  };
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sessions'] });
   const logMutation = useMutation({
     mutationFn: logSet,
     onSuccess: (_data, variables) => {
       void invalidate();
-      // Kick off the rest countdown for the exercise that was just logged.
+      // Kick off the rest countdown for the exercise that was just logged —
+      // unless the user has switched the timer off (a remembered preference).
+      if (!restTimerEnabled) return;
       const rest = workoutQuery.data?.exercises.find(
         (e) => e.exerciseId === variables.exerciseId,
       )?.restSec;
@@ -209,7 +219,7 @@ export function WorkoutSessionPage() {
     return (
       <div className="space-y-3 p-4 md:p-6">
         <p className="text-rose-500">Could not find this session.</p>
-        <Link to="/workouts" className="font-medium text-accent hover:underline">
+        <Link to="/train/library" className="font-medium text-accent hover:underline">
           Back to workouts
         </Link>
       </div>
@@ -231,15 +241,38 @@ export function WorkoutSessionPage() {
           </p>
         </div>
         {!session.finishedAt && (
-          <button
-            type="button"
-            disabled={finishMutation.isPending}
-            onClick={() => finishMutation.mutate()}
-            className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <Flag size={15} aria-hidden />
-            Finish workout
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={restTimerEnabled}
+              title={
+                restTimerEnabled
+                  ? 'Rest timer on — tap to stop it auto-starting (remembered)'
+                  : 'Rest timer off — tap to turn it back on'
+              }
+              onClick={toggleRestTimer}
+              className={`springy inline-flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm ${
+                restTimerEnabled
+                  ? 'border-accent/40 bg-accent-soft text-accent'
+                  : 'border-line bg-surface text-muted hover:text-ink'
+              }`}
+            >
+              {restTimerEnabled ? (
+                <Timer size={17} aria-hidden />
+              ) : (
+                <TimerOff size={17} aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={finishMutation.isPending}
+              onClick={() => finishMutation.mutate()}
+              className="springy inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <Flag size={15} aria-hidden />
+              Finish workout
+            </button>
+          </div>
         )}
       </header>
 

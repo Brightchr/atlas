@@ -49,7 +49,9 @@ async function readUnits(): Promise<UnitSystem> {
   const db = await getDb();
   const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [UNITS_KEY]))
     .values as { value: string }[];
-  return rows[0]?.value === 'imperial' ? 'imperial' : 'metric';
+  // US units by default; metric is the explicit choice. (Storage is always
+  // metric regardless — this only affects display and input.)
+  return rows[0]?.value === 'metric' ? 'metric' : 'imperial';
 }
 
 async function writeUnits(units: UnitSystem): Promise<void> {
@@ -61,12 +63,21 @@ async function writeUnits(units: UnitSystem): Promise<void> {
   await persist();
 }
 
-/** The unit preference, shared app-wide via the query cache. Defaults to
- * metric until the setting loads (metric is also the storage format, so a
- * flash of metric is never wrong data — just the other unit). */
+/** The unit preference, shared app-wide via the query cache. US units are
+ * the default; the moment the stored setting loads it takes over. */
 export function useUnits(): UnitSystem {
   const query = useQuery({ queryKey: ['settings', UNITS_KEY], queryFn: readUnits });
-  return query.data ?? 'metric';
+  return query.data ?? 'imperial';
+}
+
+/** cm → whole feet + inches for US-style height display/entry. */
+export function cmToFtIn(cm: number): { feet: number; inches: number } {
+  const totalInches = Math.round(cmToIn(cm));
+  return { feet: Math.floor(totalInches / 12), inches: totalInches % 12 };
+}
+
+export function ftInToCm(feet: number, inches: number): number {
+  return Math.round(inToCm(feet * 12 + inches) * 10) / 10;
 }
 
 export function useSetUnits() {
