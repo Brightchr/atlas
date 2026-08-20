@@ -115,14 +115,16 @@ export async function archiveGoal(id: string): Promise<void> {
   await persist();
 }
 
-/** One weight entry per day — logging twice replaces that day's value. */
+/** One weight entry per day — logging twice replaces that day's value. The id
+ * IS the date: deterministic across devices, so syncing the same day from two
+ * phones converges on one row instead of colliding on UNIQUE(date). */
 export async function logBodyWeight(weightKg: number): Promise<void> {
   const db = await getDb();
   const date = new Date().toISOString().slice(0, 10);
   await db.run(
     `INSERT INTO body_weight_logs (id, date, weight_kg, logged_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(date) DO UPDATE SET weight_kg = excluded.weight_kg, logged_at = excluded.logged_at`,
-    [newId(), date, weightKg, new Date().toISOString()],
+    [date, date, weightKg, new Date().toISOString()],
   );
   await persist();
 }

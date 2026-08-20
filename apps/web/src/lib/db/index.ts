@@ -99,6 +99,15 @@ export async function persist(): Promise<void> {
   if (Capacitor.getPlatform() === 'web' && dbPromise) {
     await sqlite.saveToStore(DB_NAME);
   }
+  for (const cb of persistListeners) cb();
+}
+
+/** Every repository write ends in persist(), which makes it the one reliable
+ * "local data changed" signal — the sync engine hooks it to schedule a push. */
+const persistListeners = new Set<() => void>();
+export function onPersist(cb: () => void): () => void {
+  persistListeners.add(cb);
+  return () => persistListeners.delete(cb);
 }
 
 /** Small helper for generating row ids. */

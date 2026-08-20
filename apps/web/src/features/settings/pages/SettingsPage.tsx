@@ -1,5 +1,15 @@
-import { Check, Dumbbell, Ruler } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, CloudUpload, Dumbbell, RefreshCw, Ruler, TriangleAlert } from 'lucide-react';
 import { EQUIPMENT_OPTIONS } from '@/lib/exercise-db/client';
+import {
+  adoptCurrentAccount,
+  isSyncEnabled,
+  setSyncEnabled,
+  syncNow,
+} from '@/lib/sync/engine';
+import { useSyncState } from '@/lib/sync/useSync';
 import {
   useSaveTrainingSetup,
   useTrainingSetup,
@@ -8,8 +18,8 @@ import {
 import { useSetUnits, useUnits, type UnitSystem } from '@/lib/units';
 
 const UNIT_OPTIONS: { id: UnitSystem; label: string; hint: string }[] = [
+  { id: 'imperial', label: 'US units', hint: 'Pounds, feet & inches (default)' },
   { id: 'metric', label: 'Metric', hint: 'Kilograms and centimeters' },
-  { id: 'imperial', label: 'Imperial', hint: 'Pounds and inches' },
 ];
 
 const LOCATION_OPTIONS: { id: TrainingLocation; label: string; hint: string }[] = [
@@ -17,6 +27,166 @@ const LOCATION_OPTIONS: { id: TrainingLocation; label: string; hint: string }[] 
   { id: 'home', label: 'Home', hint: 'Only what you own' },
   { id: 'both', label: 'Both', hint: 'Gym and a home setup' },
 ];
+
+/** Sync & backup: on by default; local-only is an explicit, warned choice.
+ * Turning sync off offers to also erase the server copy (the privacy case). */
+function SyncSection() {
+  const queryClient = useQueryClient();
+  const sync = useSyncState();
+  const enabledQuery = useQuery({ queryKey: ['sync', 'enabled'], queryFn: isSyncEnabled });
+  const enabled = enabledQuery.data ?? true;
+  const [confirming, setConfirming] = useState(false);
+
+  const toggle = useMutation({
+    mutationFn: (args: { enabled: boolean; deleteServerCopy?: boolean }) =>
+      setSyncEnabled(args.enabled, { deleteServerCopy: args.deleteServerCopy }),
+    onSuccess: () => {
+      setConfirming(false);
+      void queryClient.invalidateQueries({ queryKey: ['sync', 'enabled'] });
+    },
+  });
+
+  const lastSynced = sync.lastSyncAt
+    ? new Date(sync.lastSyncAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+    : null;
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <CloudUpload size={17} strokeWidth={1.8} aria-hidden />
+        </span>
+        <div>
+          <p className="text-sm font-semibold">Sync &amp; backup</p>
+          <p className="text-xs text-muted">
+            Keeps your diet, recipes, meal plan and shopping list the same on every device you
+            sign in on, syncing whenever you're online. Health data from watches never syncs —
+            it stays on the device that recorded it.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          aria-pressed={enabled}
+          onClick={() => {
+            if (!enabled) toggle.mutate({ enabled: true });
+          }}
+          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+            enabled ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
+          }`}
+        >
+          <span>
+            <span className="block text-sm font-semibold">Sync on</span>
+            <span className="block text-xs text-muted">Backed up and shared across devices</span>
+          </span>
+          {enabled && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
+        </button>
+        <button
+          type="button"
+          aria-pressed={!enabled}
+          onClick={() => {
+            if (enabled) setConfirming(true);
+          }}
+          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+            !enabled ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
+          }`}
+        >
+          <span>
+            <span className="block text-sm font-semibold">Local only</span>
+            <span className="block text-xs text-muted">Data never leaves this device</span>
+          </span>
+          {!enabled && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
+        </button>
+      </div>
+
+      {confirming && (
+        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="flex items-start gap-2">
+            <TriangleAlert size={16} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
+            <p className="text-xs">
+              Your diet, recipes, meal plan and shopping list will exist only on this device. If
+              you lose it, they're gone — and your other devices will stop getting updates.
+            </p>
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ enabled: false })}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-elev"
+            >
+              Go local, keep server backup
+            </button>
+            <button
+              type="button"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ enabled: false, deleteServerCopy: true })}
+              className="rounded-lg border border-rose-500/40 bg-surface px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-elev"
+            >
+              Go local and delete server copy
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sync.accountMismatch && (
+        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+          <p>
+            The data on this device was synced by a different account, so syncing is paused to
+            keep accounts separate.
+          </p>
+          <button
+            type="button"
+            onClick={() => void adoptCurrentAccount()}
+            className="mt-2 rounded-lg border border-line bg-surface px-3 py-1.5 font-semibold hover:bg-elev"
+          >
+            Sync this device with the current account
+          </button>
+        </div>
+      )}
+
+      {enabled && !sync.accountMismatch && (
+        <div className="mt-3 flex items-center justify-between text-xs text-muted">
+          <span aria-live="polite">
+            {sync.status === 'syncing' && 'Syncing…'}
+            {sync.status === 'error' && `Sync problem: ${sync.error ?? 'unknown error'} — will retry`}
+            {sync.status !== 'syncing' &&
+              sync.status !== 'error' &&
+              (lastSynced ? `Last synced ${lastSynced}` : 'Waiting for first sync')}
+          </span>
+          <button
+            type="button"
+            onClick={() => void syncNow()}
+            disabled={sync.status === 'syncing'}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 font-semibold text-ink hover:bg-elev disabled:opacity-50"
+          >
+            <RefreshCw
+              size={13}
+              className={sync.status === 'syncing' ? 'animate-spin' : ''}
+              aria-hidden
+            />
+            Sync now
+          </button>
+        </div>
+      )}
+      {!enabled && (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-amber-600">
+          <TriangleAlert size={14} aria-hidden />
+          Local only — this device's data isn't backed up.
+        </p>
+      )}
+    </section>
+  );
+}
 
 export function SettingsPage() {
   const units = useUnits();
@@ -40,6 +210,8 @@ export function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted">Preferences for how the app displays your data.</p>
       </header>
+
+      <SyncSection />
 
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2.5">
@@ -143,7 +315,11 @@ export function SettingsPage() {
       </section>
 
       <p className="text-xs text-muted/70">
-        Theme lives in the top bar; more preferences will land here over time.
+        Theme lives in the top bar. Training goals and password live under{' '}
+        <Link to="/profile" className="text-accent hover:underline">
+          your profile
+        </Link>
+        .
       </p>
     </div>
   );
