@@ -66,6 +66,16 @@ export async function deleteSession(token: string): Promise<void> {
   await query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)]);
 }
 
+/** Revokes every session for a user EXCEPT the one making the request —
+ * standard hygiene after a password change: stolen sessions die, the person
+ * changing the password stays signed in. */
+export async function deleteOtherSessions(userId: string, currentToken: string): Promise<void> {
+  await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [
+    userId,
+    hashToken(currentToken),
+  ]);
+}
+
 /** Housekeeping — expired rows are already unusable; this just keeps the table tidy. */
 export async function deleteExpiredSessions(): Promise<void> {
   await query('DELETE FROM sessions WHERE expires_at <= now()');

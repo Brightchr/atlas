@@ -7,7 +7,7 @@ import { env } from '../lib/env';
 import { createNotification } from '../lib/notify';
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../lib/password';
 import { rateLimit } from '../lib/rate-limit';
-import { createSession, deleteSession } from '../lib/session';
+import { createSession, deleteOtherSessions, deleteSession } from '../lib/session';
 import { requireAuth, SESSION_COOKIE, type AppEnv } from '../middleware/auth';
 
 const registerSchema = z.object({
@@ -143,3 +143,48 @@ authRoutes.post('/logout', async (c) => {
 authRoutes.get('/me', requireAuth, (c) => {
   return c.json({ user: c.get('user'), impersonated: c.get('impersonatorId') !== null });
 });
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(8).max(128),
+});
+
+/** Change password: requires the current one (a walked-away-from laptop must
+ * not be enough), rehashes, and revokes every other session so anything
+ * stolen dies with the old password. */
+authRoutes.post(
+  '/change-password',
+  requireAuth,
+  authLimiter,
+  zValidator('json', changePasswordSchema),
+  async (c) => {
+    const user = c.get('user')!;
+    const body = c.req.valid('json');
+
+    const rows = await query<{ password_hash: string }>(
+      'SELECT password_hash FROM users WHERE id = $1',
+      [user.id],
+    );
+    const valid = rows[0] && (await verifyPassword(rows[0].password_hash, body.currentPassword));
+    if (!valid) return c.json({ error: 'Current password is incorrect' }, 401);
+
+    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [
+      await hashPassword(body.newPassword),
+      user.id,
+    ]);
+
+    const bearer = c.req.header('Authorization');
+    const token =
+      getCookie(c, SESSION_COOKIE) ??
+      (bearer?.startsWith('Bearer ') ? bearer.slice('Bearer '.length) : undefined);
+    if (token) await deleteOtherSessions(user.id, token);
+
+    await createNotification(
+      user.id,
+      'security',
+      'Your password was changed',
+      'All other signed-in devices were signed out. If this wasn’t you, change your password again immediately.',
+    );
+    return c.json({ ok: true });
+  },
+);
