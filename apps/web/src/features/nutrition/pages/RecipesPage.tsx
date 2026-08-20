@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChefHat, Plus, Trash2, UtensilsCrossed, X } from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
 import { FoodPicker } from '../components/FoodPicker';
-import { NutritionTabs } from '../components/NutritionTabs';
 import {
   addIngredient,
   createRecipe,
@@ -32,12 +31,13 @@ function RecipeCard({ recipe }: { recipe: RecipeDetails }) {
   });
   const removeMutation = useMutation({ mutationFn: removeIngredient, onSuccess: invalidate });
   const deleteMutation = useMutation({ mutationFn: deleteRecipe, onSuccess: invalidate });
+  const [logServings, setLogServings] = useState('1');
   const logMutation = useMutation({
     mutationFn: () =>
       logRecipeToDiary(recipe, {
         date: new Date().toISOString().slice(0, 10),
         meal,
-        servings: 1,
+        servings: Number(logServings) || 1,
       }),
     onSuccess: invalidate,
   });
@@ -115,14 +115,23 @@ function RecipeCard({ recipe }: { recipe: RecipeDetails }) {
                     </option>
                   ))}
                 </select>
+                <input
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={logServings}
+                  onChange={(e) => setLogServings(e.target.value)}
+                  aria-label="Servings to log"
+                  className="w-16 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"
+                />
                 <button
                   type="button"
-                  disabled={logMutation.isPending}
+                  disabled={logMutation.isPending || !(Number(logServings) > 0)}
                   onClick={() => logMutation.mutate()}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   <UtensilsCrossed size={13} aria-hidden />
-                  Log 1 serving
+                  Log {Number(logServings) === 1 ? '1 serving' : `${logServings} servings`}
                 </button>
               </>
             )}
@@ -167,7 +176,6 @@ export function RecipesPage() {
         </p>
       </header>
 
-      <NutritionTabs />
 
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
         <div className="mb-2.5 flex items-center gap-2.5">

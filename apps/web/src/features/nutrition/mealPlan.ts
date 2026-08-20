@@ -32,6 +32,34 @@ function toItem(r: ItemRow): MealPlanItem {
   };
 }
 
+/** Planned calories per meal for one weekday — what the diary compares the
+ * day's reality against ("I had an extra snack" becomes visible). Meals with
+ * nothing planned are absent from the map. */
+export async function plannedKcalByMeal(
+  dayOfWeek: number,
+): Promise<Partial<Record<MealType, number>>> {
+  const items = (await listMealPlanItems()).filter((i) => i.dayOfWeek === dayOfWeek);
+  if (items.length === 0) return {};
+  const foods = await getFoodsByIds(items.filter((i) => i.kind === 'food').map((i) => i.refId));
+  const recipes = await listRecipes();
+  const byMeal: Partial<Record<MealType, number>> = {};
+  for (const item of items) {
+    let kcal = 0;
+    if (item.kind === 'food') {
+      const food = foods.get(item.refId);
+      if (food && item.grams) kcal = (food.per100g.kcal * item.grams) / 100;
+    } else {
+      const recipe = recipes.find((r) => r.id === item.refId);
+      if (recipe) kcal = recipe.perServing.kcal * (item.servings ?? 1);
+    }
+    byMeal[item.meal] = (byMeal[item.meal] ?? 0) + kcal;
+  }
+  for (const meal of Object.keys(byMeal) as MealType[]) {
+    byMeal[meal] = Math.round(byMeal[meal]!);
+  }
+  return byMeal;
+}
+
 export async function listMealPlanItems(): Promise<MealPlanItem[]> {
   const db = await getDb();
   const rows = (await db.query('SELECT * FROM meal_plan_items ORDER BY day_of_week, meal'))

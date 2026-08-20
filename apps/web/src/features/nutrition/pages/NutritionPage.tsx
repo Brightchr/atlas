@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Beef,
@@ -6,6 +7,7 @@ import {
   Copy,
   Droplet,
   Flame,
+  PlusCircle,
   Search,
   Trash2,
   UtensilsCrossed,
@@ -15,8 +17,8 @@ import type { Food, Macros, MealType } from '@arcadia/shared';
 import { fetchServing, searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
 import { rankFoodsByRelevance } from '@/lib/foodRank';
 import { Pagination } from '@/components/Pagination';
-import { NutritionTabs } from '../components/NutritionTabs';
 import { getSavedTargets } from '@/features/goals/repository';
+import { plannedKcalByMeal } from '../mealPlan';
 import {
   deleteDiaryEntry,
   duplicateDiaryEntry,
@@ -91,16 +93,20 @@ function FoodResult({
   sourceTag,
   onLog,
   pending,
+  defaultMeal,
 }: {
   snapshot: FoodSnapshot | Food;
   sourceTag: string;
   onLog: (grams: number, meal: MealType, serving?: { name: string | null; grams: number }) => void;
   pending: boolean;
+  /** Pre-targeted meal (set by a meal section's Add button). */
+  defaultMeal?: MealType;
 }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState<string | null>(null);
   const [unit, setUnit] = useState<'serving' | 'g' | null>(null);
-  const [meal, setMeal] = useState<MealType>('snack');
+  const [mealChoice, setMealChoice] = useState<MealType | null>(null);
+  const meal = mealChoice ?? defaultMeal ?? 'snack';
 
   // OFF's search index has no serving data — fetch it once the card expands.
   // (USDA rows already carry theirs; their codes mean nothing to OFF.)
@@ -191,7 +197,7 @@ function FoodResult({
             <span className="text-sm text-muted">as</span>
             <select
               value={meal}
-              onChange={(e) => setMeal(e.target.value as MealType)}
+              onChange={(e) => setMealChoice(e.target.value as MealType)}
               className="rounded-xl border border-line bg-surface px-3 py-2 text-sm capitalize outline-none focus:border-accent"
             >
               {MEALS.map((m) => (
@@ -227,16 +233,157 @@ function FoodResult({
   );
 }
 
+/** Create a food straight from its label: per-serving numbers plus the
+ * serving size, stored per-100g so it scales anywhere. The created food is
+ * saved to your library, shows up in every future search, and logs by
+ * servings ("2 servings of peanut butter") like any other food. */
+function CreateFoodCard({ onCreated }: { onCreated: (food: Food) => void }) {
+  const [name, setName] = useState('');
+  const [brand, setBrand] = useState('');
+  const [servingGrams, setServingGrams] = useState('');
+  const [servingName, setServingName] = useState('');
+  const [kcal, setKcal] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+  const [sugar, setSugar] = useState('');
+  const [fiber, setFiber] = useState('');
+  const [sodiumMg, setSodiumMg] = useState('');
+
+  const grams = Number(servingGrams);
+  const valid = name.trim().length > 0 && grams > 0 && Number(kcal) >= 0 && kcal !== '';
+
+  const create = useMutation({
+    mutationFn: async () => {
+      // Label numbers are per serving; storage is per 100 g.
+      const per100 = (v: string) =>
+        v === '' ? undefined : Math.round((Number(v) / grams) * 100 * 100) / 100;
+      return importFood({
+        name: name.trim(),
+        brand: brand.trim() || null,
+        barcode: null,
+        source: 'user',
+        per100g: {
+          kcal: Math.round((Number(kcal) / grams) * 100),
+          proteinG: per100(protein) ?? 0,
+          carbsG: per100(carbs) ?? 0,
+          fatG: per100(fat) ?? 0,
+          sugarG: per100(sugar),
+          fiberG: per100(fiber),
+          sodiumG: sodiumMg === '' ? undefined : per100(String(Number(sodiumMg) / 1000)),
+        },
+        imageUrl: null,
+        servingName: servingName.trim() || `1 serving (${grams} g)`,
+        servingGrams: grams,
+      });
+    },
+    onSuccess: (food) => onCreated(food),
+  });
+
+  const field =
+    'w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent';
+  const label = 'block text-xs font-medium text-muted';
+
+  return (
+    <div className="space-y-3 border-t border-line pt-3">
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        <label className={label}>
+          Name *
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Crunchy peanut butter" className={field} />
+        </label>
+        <label className={label}>
+          Brand
+          <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="optional" className={field} />
+        </label>
+        <label className={label}>
+          Serving size (g) * — from the label
+          <input type="number" min="1" value={servingGrams} onChange={(e) => setServingGrams(e.target.value)} placeholder="e.g. 32" className={field} />
+        </label>
+        <label className={label}>
+          Serving name
+          <input value={servingName} onChange={(e) => setServingName(e.target.value)} placeholder="e.g. 2 tbsp" className={field} />
+        </label>
+      </div>
+      <p className="text-xs font-semibold text-muted">Per serving, straight off the label:</p>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <label className={label}>
+          Calories *
+          <input type="number" min="0" value={kcal} onChange={(e) => setKcal(e.target.value)} className={field} />
+        </label>
+        <label className={label}>
+          Protein (g)
+          <input type="number" min="0" step="0.1" value={protein} onChange={(e) => setProtein(e.target.value)} className={field} />
+        </label>
+        <label className={label}>
+          Carbs (g)
+          <input type="number" min="0" step="0.1" value={carbs} onChange={(e) => setCarbs(e.target.value)} className={field} />
+        </label>
+        <label className={label}>
+          Fat (g)
+          <input type="number" min="0" step="0.1" value={fat} onChange={(e) => setFat(e.target.value)} className={field} />
+        </label>
+        <label className={label}>
+          Sugar (g)
+          <input type="number" min="0" step="0.1" value={sugar} onChange={(e) => setSugar(e.target.value)} placeholder="optional" className={field} />
+        </label>
+        <label className={label}>
+          Fiber (g)
+          <input type="number" min="0" step="0.1" value={fiber} onChange={(e) => setFiber(e.target.value)} placeholder="optional" className={field} />
+        </label>
+        <label className={label}>
+          Sodium (mg)
+          <input type="number" min="0" value={sodiumMg} onChange={(e) => setSodiumMg(e.target.value)} placeholder="optional" className={field} />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={!valid || create.isPending}
+          onClick={() => create.mutate()}
+          className="springy rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
+        >
+          Create food
+        </button>
+        {create.isError && <span className="text-xs text-rose-500">{create.error.message}</span>}
+        <span className="text-xs text-muted">
+          Blending ingredients into one thing, like a smoothie?{' '}
+          <Link to="/eat/recipes" className="text-accent hover:underline">
+            Build it as a recipe
+          </Link>{' '}
+          — it totals the stats for you.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function NutritionPage() {
   const date = todayIso();
   const [term, setTerm] = useState('');
   const [foodPage, setFoodPage] = useState(1);
   const [openEntry, setOpenEntry] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createdFood, setCreatedFood] = useState<Food | null>(null);
+  // A meal section's Add button pre-targets that meal for the next log.
+  const [mealTarget, setMealTarget] = useState<MealType | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const addToMeal = (meal: MealType) => {
+    setMealTarget(meal);
+    searchRef.current?.focus();
+    searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+  const todayDow = (new Date().getDay() + 6) % 7;
   const searching = term.trim().length >= 2;
   const queryClient = useQueryClient();
 
   const diaryQuery = useQuery({ queryKey: ['diary', date], queryFn: () => getDiaryForDate(date) });
   const targetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
+  // What today's meal plan expects per meal — the yardstick that makes an
+  // extra snack or an oversized dinner visible at a glance.
+  const plannedQuery = useQuery({
+    queryKey: ['meal-plan', 'planned-kcal', todayDow],
+    queryFn: () => plannedKcalByMeal(todayDow),
+  });
 
   const localResults = useQuery({
     queryKey: ['foods', 'local', term],
@@ -313,7 +460,6 @@ export function NutritionPage() {
         <p className="text-sm text-muted">Today’s meals, calories and full nutrition stats.</p>
       </header>
 
-      <NutritionTabs />
 
       {/* Prominent, self-explanatory logging entry point */}
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
@@ -330,16 +476,66 @@ export function NutritionPage() {
           </div>
         </div>
         <input
+          ref={searchRef}
           type="search"
           value={term}
           onChange={(e) => {
             setTerm(e.target.value);
             setFoodPage(1);
           }}
-          placeholder="Try “oats”, “nutella”, or any brand…"
+          placeholder={
+            mealTarget ? `Add to ${mealTarget} — search foods…` : 'Try “oats”, “nutella”, or any brand…'
+          }
           className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
+        {mealTarget && (
+          <button
+            type="button"
+            onClick={() => setMealTarget(null)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent capitalize"
+          >
+            Logging to {mealTarget} — tap to clear ✕
+          </button>
+        )}
+        <button
+          type="button"
+          aria-expanded={creating}
+          onClick={() => setCreating(!creating)}
+          className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+        >
+          <PlusCircle size={13} aria-hidden />
+          Can't find it? Create a food from its label
+        </button>
+        {creating && (
+          <CreateFoodCard
+            onCreated={(food) => {
+              setCreating(false);
+              setCreatedFood(food);
+              void queryClient.invalidateQueries({ queryKey: ['foods', 'local'] });
+            }}
+          />
+        )}
       </section>
+
+      {createdFood && (
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-accent">
+            “{createdFood.name}” saved to your foods — log it now, or find it in any future search:
+          </p>
+          <ul>
+            <FoodResult
+              snapshot={createdFood}
+              sourceTag="your food"
+              defaultMeal={mealTarget ?? undefined}
+              pending={logMutation.isPending}
+              onLog={(grams, meal, serving) => {
+                logMutation.mutate({ snapshot: createdFood, grams, meal, serving });
+                setCreatedFood(null);
+              }}
+            />
+          </ul>
+        </section>
+      )}
 
       {searching ? (
         <section className="space-y-2">
@@ -356,6 +552,7 @@ export function NutritionPage() {
                 key={food.id}
                 snapshot={food}
                 sourceTag="saved"
+                defaultMeal={mealTarget ?? undefined}
                 pending={logMutation.isPending}
                 onLog={(grams, meal, serving) =>
                   logMutation.mutate({ snapshot: food, grams, meal, serving })
@@ -367,6 +564,7 @@ export function NutritionPage() {
                 key={snapshot.barcode}
                 snapshot={snapshot}
                 sourceTag={snapshot.source === 'usda' ? 'USDA' : 'Open Food Facts'}
+                defaultMeal={mealTarget ?? undefined}
                 pending={logMutation.isPending}
                 onLog={(grams, meal, serving) =>
                   logMutation.mutate({ snapshot, grams, meal, serving })
@@ -444,13 +642,97 @@ export function NutritionPage() {
             </p>
           )}
 
-          {diaryQuery.data?.length === 0 && (
-            <p className="text-muted">Nothing logged today — search a food above to start.</p>
-          )}
+          {(() => {
+            const entries = diaryQuery.data ?? [];
+            const planned = plannedQuery.data ?? {};
+            const hasPlanToday = Object.keys(planned).length > 0;
+            const mealsEaten = (['breakfast', 'lunch', 'dinner'] as MealType[]).filter((m) =>
+              entries.some((e) => e.meal === m),
+            ).length;
+            const snackCount = entries.filter((e) => e.meal === 'snack').length;
+            return (
+              <p className="text-sm font-medium tabular-nums">
+                {mealsEaten} of 3 meals · {snackCount} snack{snackCount === 1 ? '' : 's'} today
+                {hasPlanToday && (
+                  <span className="ml-1.5 text-xs font-normal text-muted">
+                    — measured against today's meal plan
+                  </span>
+                )}
+              </p>
+            );
+          })()}
 
-          <ul className="space-y-2">
-            {diaryQuery.data?.map((entry) => (
-              <li key={entry.id} className="rounded-2xl border border-line bg-surface shadow-sm">
+          {MEALS.map((mealName) => {
+            const entries = (diaryQuery.data ?? []).filter((e) => e.meal === mealName);
+            const subtotal = Math.round(entries.reduce((sum, e) => sum + e.macros.kcal, 0));
+            const planned = plannedQuery.data?.[mealName];
+            const hasPlanToday = Object.keys(plannedQuery.data ?? {}).length > 0;
+            const overBy = planned !== undefined ? subtotal - planned : 0;
+            const unplanned = hasPlanToday && planned === undefined && entries.length > 0;
+            return (
+              <section key={mealName}>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <h2 className="text-sm font-bold capitalize">{mealName}</h2>
+                  {entries.length > 0 && (
+                    <span className="text-xs text-muted tabular-nums">
+                      {subtotal} kcal
+                      {planned !== undefined && ` of ~${planned} planned`}
+                    </span>
+                  )}
+                  {planned !== undefined && overBy > 75 && (
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600">
+                      +{overBy} kcal over plan
+                    </span>
+                  )}
+                  {unplanned && (
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600">
+                      unplanned
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => addToMeal(mealName)}
+                    className="springy ml-auto rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent"
+                  >
+                    + Add
+                  </button>
+                </div>
+                {entries.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => addToMeal(mealName)}
+                    className="springy w-full rounded-2xl border border-dashed border-line px-3 py-2.5 text-left text-xs text-muted hover:bg-elev"
+                  >
+                    Nothing logged{planned !== undefined ? ` — ~${planned} kcal planned` : ''} · tap
+                    to add {mealName === 'snack' ? 'a snack' : mealName}
+                  </button>
+                ) : (
+                  <ul className="space-y-2">{entries.map(renderEntry)}</ul>
+                )}
+              </section>
+            );
+          })}
+        </>
+      )}
+
+      <p className="pt-2 text-xs text-muted/70">
+        Food data from{' '}
+        <a href="https://fdc.nal.usda.gov" target="_blank" rel="noreferrer" className="underline">
+          USDA FoodData Central
+        </a>{' '}
+        (public domain) and{' '}
+        <a href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer" className="underline">
+          Open Food Facts
+        </a>{' '}
+        (ODbL).
+      </p>
+    </div>
+  );
+
+  /** One diary entry row — expandable to full stats, re-log and delete. */
+  function renderEntry(entry: NonNullable<typeof diaryQuery.data>[number]) {
+    return (
+      <li key={entry.id} className="rounded-2xl border border-line bg-surface shadow-sm">
                 <button
                   type="button"
                   onClick={() => setOpenEntry(openEntry === entry.id ? null : entry.id)}
@@ -500,23 +782,7 @@ export function NutritionPage() {
                     </div>
                   </div>
                 )}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      <p className="pt-2 text-xs text-muted/70">
-        Food data from{' '}
-        <a href="https://fdc.nal.usda.gov" target="_blank" rel="noreferrer" className="underline">
-          USDA FoodData Central
-        </a>{' '}
-        (public domain) and{' '}
-        <a href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer" className="underline">
-          Open Food Facts
-        </a>{' '}
-        (ODbL).
-      </p>
-    </div>
-  );
+      </li>
+    );
+  }
 }
