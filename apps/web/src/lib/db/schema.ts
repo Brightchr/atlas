@@ -17,6 +17,18 @@ export const SYNCED_TABLES = [
   'body_weight_logs',
 ] as const;
 
+/** Training tables sync only when the user opts in (off by default — see the
+ * trainingSync flag in sync_meta). Their triggers are always installed; the
+ * engine decides per sync whether these entities are pushed/applied. */
+export const TRAINING_SYNC_TABLES = [
+  'workouts',
+  'workout_exercises',
+  'training_plans',
+  'training_plan_days',
+  'workout_sessions',
+  'logged_sets',
+] as const;
+
 const NOW_ISO = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`;
 // Triggers record every write into sync_pending (a dirty-set, latest change
 // wins per row) so repositories never have to remember to track changes.
@@ -41,8 +53,8 @@ function syncTriggerStatements(table: string): string[] {
 
 /** Marks every existing row as pending — first-sync backfill, and re-run when
  * the user re-enables sync (their server copy may be gone or stale). */
-export function seedPendingStatements(): string[] {
-  return SYNCED_TABLES.map(
+export function seedPendingStatements(tables: readonly string[] = SYNCED_TABLES): string[] {
+  return tables.map(
     (t) =>
       `INSERT INTO sync_pending (entity, row_id, op, changed_at)
          SELECT '${t}', id, 'upsert', ${NOW_ISO} FROM ${t} WHERE true
@@ -313,6 +325,25 @@ export const upgradeStatements = [
       ...syncTriggerStatements('body_weight_logs'),
       `UPDATE body_weight_logs SET id = date;`,
       ...seedPendingStatements(),
+    ],
+  },
+  {
+    toVersion: 9,
+    statements: [
+      // Opt-in training sync. training_plan_days had a composite PK; the
+      // engine addresses rows by id, so it gains a deterministic one —
+      // plan_id + '#' + day_of_week — the same trick body_weight_logs used.
+      // Every insert path must supply it (repository.ts, recommend.ts).
+      `ALTER TABLE training_plan_days ADD COLUMN id TEXT;`,
+      `UPDATE training_plan_days SET id = plan_id || '#' || day_of_week;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_training_plan_days_id ON training_plan_days(id);`,
+      // Per-plan escape hatch: a plan marked local-only is never pushed even
+      // when training sync is on (and marking it pushes a server-side delete).
+      `ALTER TABLE training_plans ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0;`,
+      // Triggers are installed unconditionally; while training sync is off the
+      // engine simply drops these entities from push/pull, and the pending
+      // rows self-clear. Enabling training sync seeds the backfill.
+      ...TRAINING_SYNC_TABLES.flatMap(syncTriggerStatements),
     ],
   },
 ];

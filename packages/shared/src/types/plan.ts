@@ -9,6 +9,8 @@ export interface TrainingPlan {
   description: string | null;
   source: 'user' | 'provided';
   visibility: PlanVisibility;
+  /** Pinned to this device: excluded from training sync (per-device flag). */
+  localOnly: boolean;
   /** 0 = Monday … 6 = Sunday */
   days: TrainingPlanDay[];
 }

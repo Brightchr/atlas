@@ -1,7 +1,7 @@
 import { queryClient } from '@/app/providers';
 import { apiFetch } from '@/lib/api';
 import { getDb, newId, onPersist, persist } from '@/lib/db';
-import { SYNCED_TABLES, seedPendingStatements } from '@/lib/db/schema';
+import { SYNCED_TABLES, TRAINING_SYNC_TABLES, seedPendingStatements } from '@/lib/db/schema';
 
 /** Device sync engine — local-first with a server relay.
  *
@@ -19,7 +19,15 @@ import { SYNCED_TABLES, seedPendingStatements } from '@/lib/db/schema';
 const PUSH_BATCH = 400;
 const WRITE_DEBOUNCE_MS = 2_500;
 const PERIODIC_MS = 5 * 60 * 1000;
-const SYNCED = new Set<string>(SYNCED_TABLES);
+/** The entities this sync pass covers — refreshed at the start of every
+ * syncNow because training sync is a user setting, not a constant. */
+let SYNCED = new Set<string>(SYNCED_TABLES);
+
+async function refreshSyncedSet(): Promise<void> {
+  SYNCED = (await isTrainingSyncEnabled())
+    ? new Set<string>([...SYNCED_TABLES, ...TRAINING_SYNC_TABLES])
+    : new Set<string>(SYNCED_TABLES);
+}
 
 export interface SyncState {
   status: 'off' | 'idle' | 'syncing' | 'error';
@@ -78,6 +86,33 @@ export async function isSyncEnabled(): Promise<boolean> {
   return (await getMeta('enabled')) !== '0'; // on by default
 }
 
+/** Training data (plans, workouts, session history) is an opt-in: OFF by
+ * default, so training stays on-device unless the user asks for sync. */
+export async function isTrainingSyncEnabled(): Promise<boolean> {
+  return (await getMeta('trainingSync')) === '1';
+}
+
+/** Plans the user pinned to this device — never pushed, and remote changes
+ * to them are not applied. */
+async function localOnlyPlanIds(): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = (await db.query('SELECT id FROM training_plans WHERE local_only = 1'))
+    .values as { id: string }[];
+  return new Set(rows.map((r) => r.id));
+}
+
+/** True when this entity/row belongs to a local-only plan. Day rows encode
+ * their plan in the deterministic id (`planId#dayOfWeek`, see schema v9). */
+function belongsToLocalOnlyPlan(entity: string, rowId: string, localOnly: Set<string>): boolean {
+  if (localOnly.size === 0) return false;
+  if (entity === 'training_plans') return localOnly.has(rowId);
+  if (entity === 'training_plan_days') {
+    const hash = rowId.lastIndexOf('#');
+    return hash > 0 && localOnly.has(rowId.slice(0, hash));
+  }
+  return false;
+}
+
 // ---------- wire shapes ----------
 
 interface Change {
@@ -126,8 +161,12 @@ SUSPEND_OFF.statement = SUSPEND_ON.statement.replace("'1'", "'0'");
 async function buildApplyStatements(
   ch: Change,
   pendingAt: string | undefined,
+  localOnly: Set<string>,
 ): Promise<SqlStatement[] | null> {
   if (!SYNCED.has(ch.entity)) return null; // unknown entity (newer app version elsewhere)
+  // A plan pinned to this device keeps local authority — remote edits and
+  // deletes for it are ignored here.
+  if (belongsToLocalOnlyPlan(ch.entity, ch.rowId, localOnly)) return null;
   // Local pending edit that is newer wins — it will push and overwrite the
   // server row. Older local pending loses: drop it and take the remote row.
   if (pendingAt && pendingAt > ch.changedAt) return null;
@@ -175,10 +214,15 @@ async function applyPage(changes: Change[]): Promise<number> {
     await db.query('SELECT entity, row_id, changed_at FROM sync_pending')
   ).values as PendingRow[];
   const pendingAt = new Map(pendingRows.map((p) => [`${p.entity}:${p.row_id}`, p.changed_at]));
+  const localOnly = await localOnlyPlanIds();
 
   const perChange: SqlStatement[][] = [];
   for (const ch of changes) {
-    const stmts = await buildApplyStatements(ch, pendingAt.get(`${ch.entity}:${ch.rowId}`));
+    const stmts = await buildApplyStatements(
+      ch,
+      pendingAt.get(`${ch.entity}:${ch.rowId}`),
+      localOnly,
+    );
     if (stmts) perChange.push(stmts);
   }
   if (perChange.length === 0) return 0;
@@ -262,9 +306,13 @@ async function pushAll(deviceId: string): Promise<void> {
       for (const row of found) payloads.set(`${entity}:${String(row.id)}`, row);
     }
 
+    const localOnly = await localOnlyPlanIds();
     const changes: Change[] = [];
     for (const p of pending) {
       if (!SYNCED.has(p.entity)) continue;
+      // Local-only plans never push content. Deletes still go through — that
+      // is how pinning a previously-synced plan removes its server copy.
+      if (p.op !== 'delete' && belongsToLocalOnlyPlan(p.entity, p.row_id, localOnly)) continue;
       const payload = payloads.get(`${p.entity}:${p.row_id}`) ?? null;
       // Deletes come ONLY from real delete ops. A pending 'upsert' whose row
       // is missing locally is stale bookkeeping (interrupted apply, wiped
@@ -338,6 +386,7 @@ export async function syncNow(): Promise<void> {
   running = true;
   setState({ status: 'syncing', error: null });
   try {
+    await refreshSyncedSet();
     const deviceId = await getDeviceId();
     const applied = await pullAll(deviceId);
     await pushAll(deviceId);
@@ -360,6 +409,15 @@ export async function syncNow(): Promise<void> {
   }
 }
 
+/** Backfill statements for everything that should sync right now — the base
+ * tables plus training when its opt-in is on. */
+async function activeSeedStatements(): Promise<string[]> {
+  const tables = (await isTrainingSyncEnabled())
+    ? [...SYNCED_TABLES, ...TRAINING_SYNC_TABLES]
+    : [...SYNCED_TABLES];
+  return seedPendingStatements(tables);
+}
+
 /** Turn sync on (seeds a full backfill so the server copy is complete even if
  * it was deleted) or off. Turning it off can also erase the server copy. */
 export async function setSyncEnabled(
@@ -369,7 +427,7 @@ export async function setSyncEnabled(
   await setMeta('enabled', enabled ? '1' : '0');
   if (enabled) {
     const db = await getDb();
-    for (const sql of seedPendingStatements()) await db.execute(sql);
+    for (const sql of await activeSeedStatements()) await db.execute(sql);
     await persist();
     setState({ status: 'idle' });
     void syncNow();
@@ -388,10 +446,27 @@ export async function adoptCurrentAccount(): Promise<void> {
   await setMeta('accountId', currentUserId);
   await setMeta('cursor', '0');
   const db = await getDb();
-  for (const sql of seedPendingStatements()) await db.execute(sql);
+  for (const sql of await activeSeedStatements()) await db.execute(sql);
   await persist();
   setState({ accountMismatch: false });
   void syncNow();
+}
+
+/** Opt training data in or out of sync. Turning it ON seeds a training
+ * backfill and rewinds the pull cursor to 0 — training changes other devices
+ * pushed earlier were skipped as unknown entities, and only a full re-pull
+ * can recover them (applying is idempotent, so replaying the log is safe).
+ * Turning it OFF leaves already-synced training data in the server backup;
+ * it simply stops flowing. */
+export async function setTrainingSyncEnabled(enabled: boolean): Promise<void> {
+  await setMeta('trainingSync', enabled ? '1' : '0');
+  if (enabled) {
+    await setMeta('cursor', '0');
+    const db = await getDb();
+    for (const sql of seedPendingStatements([...TRAINING_SYNC_TABLES])) await db.execute(sql);
+    await persist();
+    void syncNow();
+  }
 }
 
 /** Wires the engine to the app lifecycle. Call once per signed-in session;

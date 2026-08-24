@@ -6,7 +6,9 @@ import { EQUIPMENT_OPTIONS } from '@/lib/exercise-db/client';
 import {
   adoptCurrentAccount,
   isSyncEnabled,
+  isTrainingSyncEnabled,
   setSyncEnabled,
+  setTrainingSyncEnabled,
   syncNow,
 } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
@@ -46,6 +48,16 @@ function SyncSection() {
     },
   });
 
+  const trainingQuery = useQuery({
+    queryKey: ['sync', 'training'],
+    queryFn: isTrainingSyncEnabled,
+  });
+  const trainingOn = trainingQuery.data ?? false;
+  const toggleTraining = useMutation({
+    mutationFn: setTrainingSyncEnabled,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['sync', 'training'] }),
+  });
+
   const lastSynced = sync.lastSyncAt
     ? new Date(sync.lastSyncAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
     : null;
@@ -59,9 +71,10 @@ function SyncSection() {
         <div>
           <p className="text-sm font-semibold">Sync &amp; backup</p>
           <p className="text-xs text-muted">
-            Keeps your diet, recipes, meal plan and shopping list the same on every device you
-            sign in on, syncing whenever you're online. Health data from watches never syncs —
-            it stays on the device that recorded it.
+            Keeps your diet, recipes, meal plan and shopping list
+            {trainingOn ? ' — plus your workouts and training plans —' : ''} the same on every
+            device you sign in on, syncing whenever you're online. Health data from watches never
+            syncs — it stays on the device that recorded it.
           </p>
         </div>
       </div>
@@ -100,6 +113,44 @@ function SyncSection() {
           {!enabled && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
         </button>
       </div>
+
+      {enabled && (
+        <div className="mt-3 rounded-xl border border-line bg-elev/40 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Also sync training</p>
+              <p className="text-xs text-muted">
+                Off by default — workout plans, workouts and logged sessions stay on this device
+                unless you opt in. Turn it on and they follow you across devices too (private to
+                your account; sharing stays a separate, per-plan choice).
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={trainingOn}
+              aria-label="Sync training data"
+              disabled={toggleTraining.isPending || trainingQuery.isLoading}
+              onClick={() => toggleTraining.mutate(!trainingOn)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                trainingOn ? 'bg-accent' : 'bg-line'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all ${
+                  trainingOn ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+          {trainingOn && (
+            <p className="mt-2 text-xs text-muted">
+              Individual plans can still be pinned to one device from the Plans page. Turning this
+              off stops future syncing but leaves what's already backed up.
+            </p>
+          )}
+        </div>
+      )}
 
       {confirming && (
         <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">

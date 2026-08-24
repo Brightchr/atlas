@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
   Download,
   Globe,
   Lock,
   MessageSquare,
+  MonitorSmartphone,
   Send,
   Star,
   Trash2,
   Users,
 } from 'lucide-react';
+import { isTrainingSyncEnabled } from '@/lib/sync/engine';
 import type {
   PlanDiet,
   PlanDifficulty,
@@ -28,6 +31,7 @@ import {
   usePlans,
   useSendPlan,
   useSetPlanDay,
+  useSetPlanLocalOnly,
   useSharePlan,
   useSharedPlans,
   useUpdatePlanDescription,
@@ -145,6 +149,8 @@ function CommunityCard({ shared }: { shared: SharedPlanSummary }) {
 function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] }) {
   const setDay = useSetPlanDay();
   const deletePlan = useDeletePlan();
+  const setLocalOnly = useSetPlanLocalOnly();
+  const trainingSync = useQuery({ queryKey: ['sync', 'training'], queryFn: isTrainingSyncEnabled });
   const share = useSharePlan();
   const sendPlan = useSendPlan();
   const shared = useSharedPlans();
@@ -257,7 +263,9 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
             aria-label={`${plan.name} visibility`}
             className="rounded-xl border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
           >
-            <option value="private">Private — only this device</option>
+            <option value="private">
+              {trainingSync.data ? 'Private — just you, synced to your devices' : 'Private — only this device'}
+            </option>
             <option value="friends">Friends (coming with the friends system)</option>
             <option value="public">Public — anyone can import</option>
           </select>
@@ -267,6 +275,20 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
             <span className="text-xs text-accent">Sharing updated ✓</span>
           )}
         </div>
+
+        {trainingSync.data && (
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={plan.localOnly}
+              disabled={setLocalOnly.isPending}
+              onChange={(e) => setLocalOnly.mutate({ planId: plan.id, localOnly: e.target.checked })}
+              className="h-3.5 w-3.5"
+            />
+            <MonitorSmartphone size={13} aria-hidden />
+            Keep this plan on this device only (removes it from sync and other devices)
+          </label>
+        )}
 
         {plan.visibility !== 'private' && (
           <>

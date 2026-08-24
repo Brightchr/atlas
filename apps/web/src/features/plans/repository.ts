@@ -13,7 +13,12 @@ interface PlanRow {
   description: string | null;
   source: 'user' | 'provided';
   visibility: PlanVisibility;
+  local_only: number;
 }
+
+/** Deterministic id for a plan-day row (see schema v9) — the sync engine
+ * addresses rows by id, and this shape lets it map a day back to its plan. */
+export const planDayId = (planId: string, dayOfWeek: number): string => `${planId}#${dayOfWeek}`;
 
 interface DayRow {
   plan_id: string;
@@ -32,6 +37,7 @@ export async function listPlans(): Promise<TrainingPlan[]> {
     description: p.description,
     source: p.source,
     visibility: p.visibility,
+    localOnly: Boolean(p.local_only),
     days: days
       .filter((d) => d.plan_id === p.id)
       .map((d): TrainingPlanDay => ({
@@ -74,9 +80,15 @@ export async function setPlanDay(
     ]);
   } else {
     await db.run(
-      `INSERT OR REPLACE INTO training_plan_days (plan_id, day_of_week, workout_id, is_rest_day)
-       VALUES (?, ?, ?, ?)`,
-      [planId, dayOfWeek, value === 'rest' ? null : value.workoutId, value === 'rest' ? 1 : 0],
+      `INSERT OR REPLACE INTO training_plan_days (id, plan_id, day_of_week, workout_id, is_rest_day)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        planDayId(planId, dayOfWeek),
+        planId,
+        dayOfWeek,
+        value === 'rest' ? null : value.workoutId,
+        value === 'rest' ? 1 : 0,
+      ],
     );
   }
   await persist();
@@ -95,6 +107,25 @@ export async function updatePlanDescription(id: string, description: string): Pr
 export async function setPlanVisibility(id: string, visibility: PlanVisibility): Promise<void> {
   const db = await getDb();
   await db.run('UPDATE training_plans SET visibility = ? WHERE id = ?', [visibility, id]);
+  await persist();
+}
+
+/** Pin a plan to this device (or un-pin it). Pinning enqueues DELETE ops so
+ * the next sync removes the server copy; un-pinning enqueues upserts so the
+ * plan and its days flow back out. The UPDATE's own trigger row is
+ * overwritten by these explicit ops (same primary key). */
+export async function setPlanLocalOnly(id: string, localOnly: boolean): Promise<void> {
+  const db = await getDb();
+  await db.run('UPDATE training_plans SET local_only = ? WHERE id = ?', [localOnly ? 1 : 0, id]);
+  const op = localOnly ? 'delete' : 'upsert';
+  const mark = `INSERT INTO sync_pending (entity, row_id, op, changed_at)
+     VALUES (?, ?, '${op}', strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     ON CONFLICT(entity, row_id) DO UPDATE SET op = excluded.op, changed_at = excluded.changed_at`;
+  await db.run(mark, ['training_plans', id]);
+  const dayIds = (
+    await db.query('SELECT id FROM training_plan_days WHERE plan_id = ?', [id])
+  ).values as { id: string }[];
+  for (const day of dayIds) await db.run(mark, ['training_plan_days', day.id]);
   await persist();
 }
 
@@ -175,9 +206,10 @@ export async function importPlanPayload(payload: SharedPlanPayload): Promise<str
   for (const day of payload.days) {
     if (!day.workout && !day.isRestDay) continue;
     await db.run(
-      `INSERT OR REPLACE INTO training_plan_days (plan_id, day_of_week, workout_id, is_rest_day)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO training_plan_days (id, plan_id, day_of_week, workout_id, is_rest_day)
+       VALUES (?, ?, ?, ?, ?)`,
       [
+        planDayId(planId, day.dayOfWeek),
         planId,
         day.dayOfWeek,
         day.workout ? workoutIds.get(day.workout.name) : null,

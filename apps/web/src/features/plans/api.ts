@@ -19,6 +19,7 @@ import {
   importPlanPayload,
   listPlans,
   setPlanDay,
+  setPlanLocalOnly,
   setPlanVisibility,
   updatePlanDescription,
 } from './repository';
@@ -48,6 +49,10 @@ export const useUpdatePlanDescription = () =>
     updatePlanDescription(args.planId, args.description),
   );
 export const useDeletePlan = () => usePlanMutation(deletePlan);
+export const useSetPlanLocalOnly = () =>
+  usePlanMutation((args: { planId: string; localOnly: boolean }) =>
+    setPlanLocalOnly(args.planId, args.localOnly),
+  );
 export const useSetPlanDay = () =>
   usePlanMutation(
     (args: { planId: string; dayOfWeek: number; value: { workoutId: string } | 'rest' | null }) =>
