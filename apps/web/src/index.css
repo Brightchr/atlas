@@ -7,36 +7,53 @@
    Themes: aurora (light, default) · mint (light) · midnight (dark) · carbon (dark)
 --------------------------------------------------------------------------- */
 
-/* The 2026 redesign themes — exact values from the approved design canvas.
-   Indigo Night is the default; Tide is the second dark; Glacier and Meadow
-   are the cool/warm lights. */
+/* Six themes in two families around the kept favorite, Glacier:
+   RUSTIC — Old Growth (dark) and Timberline (light): mountain-pine neutrals,
+   moss/pine accents, campfire-amber secondaries.
+   TECH — Volt (dark), Ion (dark), Prism (light): near-black or near-white
+   grounds with hard contrast and electric accents.
+   Volt is the default dark. */
 :root,
-:root[data-theme='indigo-night'] {
+:root[data-theme='volt'] {
   color-scheme: dark;
-  --bg: #14151d;
-  --surface: #1d1f2b;
-  --elev: #262a3a;
-  --line: #31344a;
-  --ink: #e8e9f2;
-  --muted: #a3a8bd;
-  --accent: #818cf8;
-  --accent-2: #a78bfa;
-  --accent-ink: #14151d;
-  --accent-soft: #262a48;
+  --bg: #08090f;
+  --surface: #10121c;
+  --elev: #181b29;
+  --line: #262a3f;
+  --ink: #f0f3ff;
+  --muted: #8b93b8;
+  --accent: #22d3ee;
+  --accent-2: #e879f9;
+  --accent-ink: #08090f;
+  --accent-soft: #0e2b38;
 }
 
-:root[data-theme='tide'] {
+:root[data-theme='old-growth'] {
   color-scheme: dark;
-  --bg: #0d1417;
-  --surface: #151d21;
-  --elev: #1d272c;
-  --line: #2a363c;
-  --ink: #e6eef0;
-  --muted: #93a6ad;
-  --accent: #2dd4bf;
-  --accent-2: #38bdf8;
-  --accent-ink: #0d1417;
-  --accent-soft: #123230;
+  --bg: #11150e;
+  --surface: #191f15;
+  --elev: #222b1c;
+  --line: #2f3a28;
+  --ink: #e9eddf;
+  --muted: #a0ab90;
+  --accent: #8fb573;
+  --accent-2: #d9a05b;
+  --accent-ink: #11150e;
+  --accent-soft: #26331e;
+}
+
+:root[data-theme='ion'] {
+  color-scheme: dark;
+  --bg: #0a0d0a;
+  --surface: #121712;
+  --elev: #1a221a;
+  --line: #29342a;
+  --ink: #ecf5ec;
+  --muted: #93a596;
+  --accent: #a3e635;
+  --accent-2: #2dd4bf;
+  --accent-ink: #0a0d0a;
+  --accent-soft: #1d2f14;
 }
 
 :root[data-theme='glacier'] {
@@ -53,18 +70,32 @@
   --accent-soft: #dbeafe;
 }
 
-:root[data-theme='meadow'] {
+:root[data-theme='timberline'] {
   color-scheme: light;
-  --bg: #f9f9f4;
-  --surface: #ffffff;
-  --elev: #efeee3;
-  --line: #e3e2d4;
-  --ink: #1e241b;
-  --muted: #6d7263;
-  --accent: #047857;
-  --accent-2: #4d7c0f;
+  --bg: #f6f4ec;
+  --surface: #fdfcf7;
+  --elev: #ece8db;
+  --line: #ddd7c4;
+  --ink: #232a1e;
+  --muted: #68705c;
+  --accent: #3d6b46;
+  --accent-2: #8b5e34;
   --accent-ink: #ffffff;
-  --accent-soft: #d3ecdd;
+  --accent-soft: #dbe7d3;
+}
+
+:root[data-theme='prism'] {
+  color-scheme: light;
+  --bg: #fafbfe;
+  --surface: #ffffff;
+  --elev: #eceef8;
+  --line: #dfe2f0;
+  --ink: #0d0f1c;
+  --muted: #4e5470;
+  --accent: #7c3aed;
+  --accent-2: #db2777;
+  --accent-ink: #ffffff;
+  --accent-soft: #ece4fd;
 }
 
 @theme inline {

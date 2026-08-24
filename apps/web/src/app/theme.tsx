@@ -2,24 +2,29 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 
 export const THEMES = [
-  { id: 'indigo-night', label: 'Indigo Night', mode: 'dark', swatch: ['#14151d', '#818cf8'] },
-  { id: 'tide', label: 'Tide', mode: 'dark', swatch: ['#0d1417', '#2dd4bf'] },
+  { id: 'volt', label: 'Volt', mode: 'dark', swatch: ['#08090f', '#22d3ee'] },
+  { id: 'old-growth', label: 'Old Growth', mode: 'dark', swatch: ['#11150e', '#8fb573'] },
+  { id: 'ion', label: 'Ion', mode: 'dark', swatch: ['#0a0d0a', '#a3e635'] },
   { id: 'glacier', label: 'Glacier', mode: 'light', swatch: ['#f4f6fa', '#2563eb'] },
-  { id: 'meadow', label: 'Meadow', mode: 'light', swatch: ['#f9f9f4', '#047857'] },
+  { id: 'timberline', label: 'Timberline', mode: 'light', swatch: ['#f6f4ec', '#3d6b46'] },
+  { id: 'prism', label: 'Prism', mode: 'light', swatch: ['#fafbfe', '#7c3aed'] },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];
 
 const STORAGE_KEY = 'arcadia-theme';
-const DEFAULT_THEME: ThemeId = 'indigo-night';
+const DEFAULT_THEME: ThemeId = 'volt';
 
-/** The 2026 redesign renamed every theme; carry old choices to their nearest
+/** Theme lineups have been renamed twice; carry old choices to their nearest
  * new home instead of silently resetting to the default. */
 const LEGACY_THEMES: Record<string, ThemeId> = {
   aurora: 'glacier',
-  mint: 'meadow',
-  midnight: 'indigo-night',
-  carbon: 'tide',
+  mint: 'timberline',
+  midnight: 'volt',
+  carbon: 'volt',
+  'indigo-night': 'volt',
+  tide: 'ion',
+  meadow: 'timberline',
 };
 
 function readStoredTheme(): ThemeId {
