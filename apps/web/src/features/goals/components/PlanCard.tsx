@@ -14,8 +14,15 @@ import {
   useUnits,
   weightUnit,
 } from '@/lib/units';
-import { getProfile, getWeightHistory, saveProfile, saveTargets, upsertTargetGoal } from '../repository';
-import { bmi, computeTargets, type DietType, type Profile, type Sex } from '../targets';
+import {
+  getProfile,
+  getSavedTargets,
+  getWeightHistory,
+  saveProfile,
+  saveTargets,
+  upsertTargetGoal,
+} from '../repository';
+import { bmi, computeTargets, type DailyTargets, type DietType, type Profile, type Sex } from '../targets';
 
 const DEFAULT_PROFILE: Profile = {
   sex: 'male',
@@ -55,6 +62,12 @@ export function PlanCard() {
     if (profileQuery.data) setProfile(profileQuery.data);
   }, [profileQuery.data]);
 
+  // Custom overrides: some people run coach-given or personal numbers — the
+  // formula is a starting point, never a cage.
+  const savedTargetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
+  const [customizing, setCustomizing] = useState(false);
+  const [custom, setCustom] = useState({ kcal: '', proteinG: '', carbsG: '', fatG: '' });
+
   // Typed weight is in the preferred unit; stored history is kg.
   const latestWeight =
     (Number(weight) ? parseWeight(Number(weight), units) : 0) ||
@@ -79,6 +92,50 @@ export function PlanCard() {
 
   const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
     setProfile((p) => ({ ...p, [key]: value }));
+
+  const openCustomizer = () => {
+    const base = savedTargetsQuery.data ?? targets;
+    setCustom({
+      kcal: base ? String(base.kcal) : '',
+      proteinG: base ? String(base.proteinG) : '',
+      carbsG: base ? String(base.carbsG) : '',
+      fatG: base ? String(base.fatG) : '',
+    });
+    setCustomizing(true);
+  };
+
+  const customValid =
+    Number(custom.kcal) > 0 &&
+    Number(custom.proteinG) >= 0 &&
+    Number(custom.carbsG) >= 0 &&
+    Number(custom.fatG) >= 0;
+
+  const applyCustom = useMutation({
+    mutationFn: async () => {
+      const kcal = Math.round(Number(custom.kcal));
+      const base = savedTargetsQuery.data ?? targets;
+      const next: DailyTargets = {
+        kcal,
+        proteinG: Math.round(Number(custom.proteinG)),
+        carbsG: Math.round(Number(custom.carbsG)),
+        fatG: Math.round(Number(custom.fatG)),
+        // Micro guidance stays formula-derived from the chosen calories.
+        sugarMaxG: Math.round((kcal * 0.1) / 4),
+        fiberG: Math.round((kcal / 1000) * 14),
+        sodiumMaxG: 2.3,
+        bmr: base?.bmr ?? 0,
+        tdee: base?.tdee ?? 0,
+      };
+      await saveTargets(next);
+      await upsertTargetGoal('calorie_target', 'Daily calorie budget', next.kcal);
+      await upsertTargetGoal('protein_target', 'Daily protein', next.proteinG);
+    },
+    onSuccess: () => {
+      setCustomizing(false);
+      void queryClient.invalidateQueries({ queryKey: ['goals'] });
+      void queryClient.invalidateQueries({ queryKey: ['targets'] });
+    },
+  });
 
   return (
     <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
@@ -219,6 +276,83 @@ export function PlanCard() {
       ) : (
         <p className="mt-3 text-sm text-muted">Enter your weight to see recommended targets.</p>
       )}
+
+      <div className="mt-3 border-t border-line pt-3">
+        {!customizing ? (
+          <button
+            type="button"
+            onClick={openCustomizer}
+            className="text-xs font-medium text-accent hover:underline"
+          >
+            Prefer your own numbers? Set custom targets
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted">
+              Custom daily targets — yours beat the formula. Sugar and fiber guidance re-derive
+              from your calories.
+            </p>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              <Field label="Calories (kcal)">
+                <input
+                  type="number"
+                  min="800"
+                  value={custom.kcal}
+                  onChange={(e) => setCustom((c) => ({ ...c, kcal: e.target.value }))}
+                  className={selectClasses}
+                />
+              </Field>
+              <Field label="Protein (g)">
+                <input
+                  type="number"
+                  min="0"
+                  value={custom.proteinG}
+                  onChange={(e) => setCustom((c) => ({ ...c, proteinG: e.target.value }))}
+                  className={selectClasses}
+                />
+              </Field>
+              <Field label="Carbs (g)">
+                <input
+                  type="number"
+                  min="0"
+                  value={custom.carbsG}
+                  onChange={(e) => setCustom((c) => ({ ...c, carbsG: e.target.value }))}
+                  className={selectClasses}
+                />
+              </Field>
+              <Field label="Fat (g)">
+                <input
+                  type="number"
+                  min="0"
+                  value={custom.fatG}
+                  onChange={(e) => setCustom((c) => ({ ...c, fatG: e.target.value }))}
+                  className={selectClasses}
+                />
+              </Field>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!customValid || applyCustom.isPending}
+                onClick={() => applyCustom.mutate()}
+                className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                Save custom targets
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomizing(false)}
+                className="rounded-xl px-3 py-2 text-sm text-muted transition-colors hover:text-ink"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {applyCustom.isSuccess && !customizing && (
+          <p className="mt-1.5 text-xs text-accent">Custom targets saved ✓</p>
+        )}
+      </div>
     </section>
   );
 }

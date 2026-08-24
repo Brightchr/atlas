@@ -52,8 +52,6 @@ export function GoalsPage() {
     return [...map].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
-  const hasWeightGoal = progress.data?.some((p) => p.goal.type === 'weight_target') ?? false;
-
   const handleCreate = (template: (typeof templates)[number]) => {
     // Weight targets are typed in the preferred unit but stored in kg.
     const isWeight = template.type === 'weight_target';
@@ -114,7 +112,9 @@ export function GoalsPage() {
         ))}
       </ul>
 
-      {hasWeightGoal && (
+      {/* Always available — weight is the shared thread between training,
+          nutrition and the dashboard's weekly pulse, goal or no goal. */}
+      {(
         <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
           <Scale size={17} className="shrink-0 text-muted" aria-hidden />
           <input
