@@ -111,6 +111,50 @@ export const WORKOUT_WHY: Record<string, string> = {
     'Strength and engine in one session: explosive cleans and heavy chins while fresh, then a fifteen-minute run when tired — teaching the body to endure after it has produced force, which is what "being in shape" means in practice.',
   'fit-total-challenge':
     'A benchmark day: heavy pulls, high-rep pushing, jumps and a timed row. Repeat it monthly and the logbook tells you plainly whether the training between attempts worked.',
+  'ulppl-upper':
+    'Heavy fives on bench and row while you are freshest all week — strength work leads the hybrid because it degrades fastest with fatigue. The 8–10 rep accessories behind it start the volume bill that the PPL back-half of the week finishes.',
+  'ulppl-lower':
+    'Squat fives then an 8-rep hinge: the two patterns that carry the lower body, at two intensities, in one day. Machines and calves mop up because they cost little recovery two days before the volume leg day.',
+  'ulppl-push':
+    'The second chest-and-shoulders exposure of the week runs lighter and higher-rep on purpose: Monday built strength, today builds size on top of it, finishing with push-ups because an honest AMRAP set is the cheapest volume there is.',
+  'ulppl-pull':
+    'Deadlift triples-to-fives open the day, then the back gets its width and thickness volume. Arms come last and get real attention — this is the only day of the week they are trained fresh enough to matter.',
+  'ulppl-legs':
+    'Front squats force the upright posture Monday’s back squats let you cheat; split squats find the leg-to-leg gaps; hip thrusts load the glutes at the top where hinges cannot. The week ends with legs because Sunday is for recovering from it.',
+  'shred-chest-tri':
+    'The trick is what happens between sets: 60 seconds of jump rope, marching or step-ups instead of sitting down. Lifting keeps the muscle; the never-stopping keeps the heart rate — and the calorie bill — high for the whole hour.',
+  'shred-back-bi':
+    'Pulling volume at pace: rows and pulldowns hold muscle through the deficit while the cardio minutes between sets do the burning. Face pulls stay in even here, because shoulder health does not take weeks off.',
+  'shred-legs':
+    'High-rep squats, lunges and hinges are the most expensive movements in the gym, metabolically — which is exactly why they anchor the shred week. Nothing burns more or defends muscle better.',
+  'shred-shoulders':
+    'Delts, traps and core at circuit pace. The direct core block sits here because it is the shortest lifting day — and abs are trained, not found, even in a deficit.',
+  'shred-circuit':
+    'The week ends with everything at once: eight stations, three rounds, then a ten-minute treadmill finisher. When form degrades from fatigue, drop the weight — not the standard.',
+  'hiit-tabata':
+    'The original 1996 Tabata protocol produced its famous results at genuinely maximal effort — 20 seconds all-out, 10 off, eight times. Four exercises, four blocks, and the honest version of “all-out” is the entire secret.',
+  'hiit-kb-clock':
+    'EMOM structure is self-regulating: work fast and you earn rest, slow down and the clock takes it away. Swings, squats, push-ups and presses cover the whole body while the minute format keeps intensity honest.',
+  'hiit-chipper':
+    'AMRAP scoring turns a circuit into a benchmark — the round count is your fitness, measured. Pace it steady: the goal is a score you can beat next week, not a first round you cannot repeat.',
+  'hiit-102030':
+    'The Copenhagen 10-20-30 study made runners faster on half their usual mileage: 30 easy, 20 cruising, 10 sprinting, five times, then walk. The 10-second surges work even at 80% — this is the interval session for people who hate interval sessions.',
+  'mob-cooldown':
+    'Static stretching lands best on warm tissue, which is why this lives at the end of training days: 20–30 second holds, top-down so nothing gets skipped, following the ACSM guidance of 2–4 rounds per muscle across the week.',
+  'mob-hips':
+    'Hips stiffen from sitting and pay it back during squats. The 90/90, deep squat holds, hip-flexor kneels and the World’s Greatest Stretch are the highest-yield positions physios prescribe — five minutes of them beats an hour of wishing.',
+  'mob-desk':
+    'Eight desk hours pull the head forward and the chest closed; this sequence pulls both back. Chest openers, upper-back extension, neck range and wrist care — run it on breaks or before upper-body days.',
+  'run-c25k':
+    'Every session is the same shape — walk, run/walk intervals, walk — while the intervals grow week by week. The plan guide holds the full nine-week table; your only job is conversational pace and showing up three times a week.',
+  'cardio-5mile':
+    'Distance as the whole workout: five miles of steady, conversational effort. The elliptical carries it by default because it is the joint-friendliest way to spend an hour — treadmill walking works the same shift.',
+  'cb-upper':
+    'Every load here is chosen to be moved with rhythmic breathing — exhale on the press, inhale on the return, never a breath-hold grind. Rows and band pull-aparts outnumber presses on purpose: back strength is the project. Ends on the elliptical, because on this plan cardio is non-negotiable.',
+  'cb-lower':
+    'Goblet squats and RDLs at loads you can breathe through, single-leg work for the joints, then swings for hip power. Bridges and dead bugs train the trunk without the abdominal compression sit-ups bring — the core work here protects, not provokes.',
+  'cb-fullbody':
+    'Every pattern once at moderate effort, then the trunk work that matters: carries for bracing under breath, supermans for the back line, dead bugs for control. Upright, breathing, repeatable — the Friday session that ends the training week strong.',
 };
 
 /* -------------------------------- Plans -------------------------------- */
@@ -197,7 +241,109 @@ const BALANCED_DAY_SHAPE = [
   { meal: 'Dinner', guidance: 'Protein plus two vegetables; fish on at least two nights of the week.' },
 ];
 
+const COMEBACK_SHOPPING: DietItem[] = [
+  { name: 'Chicken breast & thighs', quantity: '2 kg', why: 'The lean-protein backbone — 190–200 g of protein a day starts here.' },
+  { name: 'Salmon or white fish', quantity: '800 g', why: 'Protein plus omega-3s; the least reflux-provoking dinner protein.' },
+  { name: 'Lean ground beef (93%+)', quantity: '1 kg', why: 'Iron-rich variety so lean eating never gets boring enough to quit.' },
+  { name: 'Eggs', quantity: '18', why: 'The break-fast staple — satiating protein to open the 9am eating window.' },
+  { name: 'Plain Greek yogurt (2%)', quantity: '1 kg', why: 'Slow casein protein that stretches amino availability into the evening fast.' },
+  { name: 'Cottage cheese', quantity: '500 g', why: 'The 3:30pm final-meal protein on fast days.' },
+  { name: 'Whey protein', quantity: '1 tub', why: 'The post-lift shake on Mon/Wed/Fri — check the label for corn syrup solids.' },
+  { name: 'Spinach, peppers, zucchini, broccoli', quantity: 'a week’s worth', why: 'Organic where it matters — high-volume plates that make 2,700 kcal feel like plenty.' },
+  { name: 'Berries, apples, melon', quantity: 'a week’s worth', why: 'The fruit priority, and dessert that fits a deficit.' },
+  { name: 'Avocados & olive oil', quantity: '4 + 1 bottle', why: 'The approved fats — no seed oils to label-check when these are the default.' },
+  { name: 'Potatoes & rice', quantity: '1.5 kg', why: 'The modest carb allowance, placed on lifting days where it earns its keep.' },
+  { name: 'Electrolyte packets (unsweetened)', quantity: '1 box', why: 'For fast-day evening cardio — water and electrolytes carry the 5-milers.' },
+];
+
+const COMEBACK_DAY_SHAPE = [
+  { meal: 'Lifting days (Mon/Wed/Fri)', guidance: 'Four meals plus a post-lift whey shake, ~2,700–2,800 kcal, carbs clustered around training. Last meal ends 3 h before bed.' },
+  { meal: 'Fast days (Tue/Thu, eat 9am–4pm)', guidance: 'Three dense feedings, protein front-loaded (~50–60 g each); final meal by 3:45pm with slow proteins. Then water and electrolytes only.' },
+  { meal: 'Fast-day evening', guidance: 'The 5-mile session at ~6:30pm lands 2.5–3 h after the last meal — empty stomach, minimal reflux, steady state handles fasting fine.' },
+  { meal: 'Weekend', guidance: 'Saturday normal eating plus the stretch session; Sunday is the lowest-carb, lowest-calorie day of the week (~2,500).' },
+  { meal: 'Always', guidance: 'No corn in any form, no seeds (watch seeded breads, granola, bars, whole-grain mustard, hummus); fruit, vegetables and organic first.' },
+];
+
+const COMEBACK_DIET_WHY = [
+  'The math for a 6\'4", 330 lb frame: maintenance sits near 3,700 kcal, so 2,700–2,800 kcal creates the 700–900 kcal daily deficit that averages ~1.4 lb/week — exactly the pace that reaches ~220 lb in 18 months, and comfortably inside the safe 1–2 lb band. Recalibrate monthly against the scale: under 1 lb/week for a month, drop ~150 kcal; over 2.5, add them back.',
+  'Protein is the muscle insurance: 190–200 g/day (about 0.9 g per pound of goal weight), split across 4–5 feedings. Lower-carb is the adherence tool, not magic — ~130–150 g of carbs fuels the five cardio days while protein and fat keep hunger quiet.',
+  'The Tue/Thu 4pm–9am fast (~17 h) is working with the body, not against it: intermittent fasting measurably reduced nighttime acid exposure in GERD studies, largely because nothing is in the stomach at bedtime — which is precisely what a hiatal hernia wants. Training fasted in the evening steady-state zone costs nothing as long as the day\'s protein was banked before 4pm.',
+];
+
 export const PLAN_GUIDES: Record<string, PlanGuide> = {
+  'plan-fat-comeback': {
+    writeup: [
+      'This plan is built around a constraint most programs ignore: a hiatal hernia. The rule that matters is pressure, not effort — sharp spikes of intra-abdominal pressure (breath-holding under load, crunching the torso, heavy grinding reps, anything head-below-stomach) are what push a hernia around. So every lift here lives in the 8–12+ rep range at loads you can move while breathing rhythmically: exhale on the exertion, inhale on the return, never hold a breath to finish a rep. That costs essentially nothing for muscle growth — it only rules out max-effort singles, which were never the point of a fat-loss year.',
+      'The core and back work is chosen the same way: dead bugs, Pallof presses, carries, bridges and supermans train bracing, anti-rotation and the posterior chain without the abdominal compression of sit-ups and crunches — those stay out until the weight is down and the hernia is repaired. Also out: decline positions, long prone planks, and grinding overhead work. Also in, always: wait 2.5–3 hours after a full meal before training.',
+      'The week: Monday upper + 30 elliptical minutes, Tuesday five miles as the whole workout, Wednesday lower + 30, Thursday five miles again, Friday full body + 30, Saturday the cool-down stretch (mobility is part of the program, not an accessory), Sunday completely off. Cardio five days a week, exactly as prescribed — the elliptical carries it because at a big bodyweight it is the highest-volume, lowest-risk engine there is.',
+      'Progress in phases. Months 1–3: build to the full five miles (start at 2.5–3 if needed, add half a mile a week) and keep every lift at 2–3 reps in reserve — which doubles as hernia protection. Months 4–9: apply the 2-for-2 rule (two extra reps beyond target on the last set, two sessions running → add 5 lb upper / 10 lb lower); when the 35 lb dumbbells cap out, shift those lifts to the barbell at the same breathing standard. Months 10–18: this is the likely window for hernia repair once the weight is well down — after surgical clearance, planks, hanging core work and heavier lifting come off the banned list, and visible abs become a realistic finish line.',
+    ],
+    diet: {
+      headline: 'Lean protein, lower carb, twice-weekly 17-hour fasts — engineered for a 110 lb loss',
+      why: COMEBACK_DIET_WHY,
+      macros: 'Phase 1 (months 1–6): ~2,700–2,800 kcal · protein 190–200 g · fat ~100 g · carbs 130–150 g. Step down ~200 kcal at months 7 and 13 as maintenance falls. No corn, no seeds; olive oil and avocado are the fats.',
+      dayShape: COMEBACK_DAY_SHAPE,
+      shopping: COMEBACK_SHOPPING,
+    },
+  },
+  'plan-mus-ulppl': {
+    writeup: [
+      'The two most popular intermediate splits stitched into one five-day week: Upper/Lower up front for heavy strength work while you are fresh, Push/Pull/Legs at the back for the volume that grows muscle. Every muscle gets trained twice a week — the frequency sweet spot the research keeps landing on — without the recovery tax of a six-day grind.',
+      'The intensity split is deliberate: days one and two run 4×5 on the big barbell lifts with long rests (2–3 minutes); days four through six run 8–15 rep hypertrophy work with shorter rests (60–90 seconds). Strength feeds the volume days — a heavier five-rep bench in March means heavier ten-rep sets in April.',
+      'Progress the fives with weight (add 5 lb upper / 10 lb lower when all sets hit) and the volume work with reps first: reach the top of the rep range on every set, then add load and drop back down. Wednesday and Sunday are off on purpose — guard them.',
+    ],
+    diet: {
+      headline: 'High protein at a small surplus — five training days need feeding',
+      why: MUSCLE_DIET_WHY,
+      macros: 'Protein 1.6–2.2 g/kg · calories at maintenance +200–300 · carbs biased around the five training days · fats to fill the rest.',
+      dayShape: MUSCLE_DAY_SHAPE,
+      shopping: HIGH_PROTEIN_SHOPPING,
+    },
+  },
+  'plan-fat-shred5': {
+    writeup: [
+      'Metabolic lifting, borrowed from the cardio-acceleration playbook: you never actually rest. Every between-set break is 60 seconds of jump rope, running in place, step-ups or light dumbbell work — so an hour of lifting carries an hour of elevated heart rate, and the calorie bill of a cardio session rides along with the muscle-keeping stimulus of a lifting one.',
+      'The week runs a body-part split at high pace — chest/triceps, back/biceps, legs, shoulders/core — and ends with a full-body circuit plus treadmill finisher. Run it as a six-week cycle: weeks 1–2 in the 9–11 rep range, 3–4 at 12–15, 5–6 at 15–20 on accessories while the first compound of each day stays heavier.',
+      'Two honest warnings. This is an advanced plan: the work capacity to lift well while breathless takes months to build — if form degrades, drop the weight, never the standard. And it only works alongside the deficit: the training defends muscle and spends calories, but the eating creates the loss.',
+    ],
+    diet: {
+      headline: 'A protected deficit — protein up, calories down, satiety everywhere',
+      why: DEFICIT_DIET_WHY,
+      macros: 'A 300–500 kcal deficit · protein 1.8–2.4 g/kg · carbs concentrated before the day\'s session · high-volume, high-fiber everything else.',
+      dayShape: DEFICIT_DAY_SHAPE,
+      shopping: DEFICIT_SHOPPING,
+    },
+  },
+  'plan-run-c25k': {
+    writeup: [
+      'The plan that has taken millions of people from the sofa to a 30-minute run, in nine weeks of walk/run intervals that grow so gradually you barely notice. Three runs a week, a rest day between every one, and every session bracketed by a 5-minute warm-up walk and cool-down walk. Same run all week except weeks 5 and 6, which escalate within the week.',
+      'The intervals — run/walk, repeated through ~20 minutes: Week 1: run 60 s / walk 90 s ×8. Week 2: run 90 s / walk 2 min ×6. Week 3: two rounds of [90 s run, 90 s walk, 3 min run, 3 min walk]. Week 4: run 3, walk 1½, run 5, walk 2½, run 3, walk 1½, run 5.',
+      'Week 5 escalates per run: (1) 5 run / 3 walk / 5 / 3 / 5 · (2) 8 run / 5 walk / 8 · (3) the famous 20-minute continuous run. Week 6: (1) 5/3/8/3/5 · (2) 10 run / 3 walk / 10 · (3) 25 minutes continuous — the last walk break of the program. Week 7: 25 continuous, all runs. Week 8: 28. Week 9: 30 minutes continuous — graduation.',
+      'Two rules carry the whole plan: conversational pace (if you cannot speak a full sentence, slow down — slower than feels dignified is correct), and never skip the rest day. Repeat a week any time it felt like a scrape rather than a step; nine weeks is the minimum, not the deadline.',
+    ],
+    diet: {
+      headline: 'Balanced maintenance eating — fuel the habit, not a transformation',
+      why: BALANCED_DIET_WHY,
+      macros: 'Maintenance calories · protein ~1.6 g/kg · carbs comfortably around run days · fiber ~14 g per 1,000 kcal.',
+      dayShape: BALANCED_DAY_SHAPE,
+      shopping: BALANCED_SHOPPING,
+    },
+  },
+  'plan-fit-365': {
+    writeup: [
+      'A year of showing up, structured as four 13-week phases that each raise the bar just enough. The premise, borrowed from year-long challenge programs: commit to one progressive plan, whole foods, and 7–8 hours of sleep — and refuse to program-hop. The weekly template in this plan is the Phase 1 shape; the phases below evolve it.',
+      'Phase 1 — Show Up (weeks 1–13): three sessions a week, any type — the only win that counts is attendance. Start at 20 minutes if needed; by week 13, three 30–45 minute sessions should feel automatic. Milestones: first perfect week (wk 4), 20 workouts (wk 8), 35+ (wk 13).',
+      'Phase 2 — Build (weeks 14–26): four sessions — two or three strength with tracked weights, the rest conditioning. Beat last week by a rep or a couple of kilos. Milestones: +10% on your main lifts (wk 18), 85+ total workouts at halfway (wk 26). Phase 3 — Push (weeks 27–39): five sessions — three strength, one HIIT, one endurance or mobility — plus one monthly challenge workout (max push-up test, 5K time trial). This is the peak-volume quarter.',
+      'Phase 4 — Own It (weeks 40–52): two deload weeks, then retest every Phase 1 baseline — push-ups, 5K, main lifts, resting heart rate — and hold a 3-session minimum through the holidays. The finish line: around 200 workouts, twelve months, not a single zero-week. Swap the template\'s workouts freely as you level up; the streak is the program.',
+    ],
+    diet: {
+      headline: 'Balanced, boring, sustainable — the eating that survives 52 weeks',
+      why: BALANCED_DIET_WHY,
+      macros: 'Maintenance calories · protein ~1.6 g/kg · fiber ~14 g per 1,000 kcal · nothing forbidden, defaults made easy.',
+      dayShape: BALANCED_DAY_SHAPE,
+      shopping: BALANCED_SHOPPING,
+    },
+  },
   'plan-str-beg': {
     writeup: [
       'This is the classic novice linear progression: two alternating full-body sessions, three days a week, built around the barbell lifts because they let a beginner add weight every single session — a privilege that only exists for the first few months of training and that this plan is designed to milk completely.',

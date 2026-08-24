@@ -52,7 +52,7 @@ function coachDirections(w: CatalogWorkout): string[] {
 /** ~45s of work per set plus its rest. */
 function estimateMinutes(w: CatalogWorkout): number {
   const seconds = w.exercises.reduce(
-    (sum, e) => sum + e.sets * ((e.minutes ? e.minutes * 60 : 45) + e.restSec),
+    (sum, e) => sum + e.sets * ((e.seconds ?? (e.minutes ? e.minutes * 60 : 45)) + e.restSec),
     0,
   );
   return Math.max(10, Math.round(seconds / 60 / 5) * 5);
@@ -212,9 +212,11 @@ export function CatalogWorkoutPage() {
                     </p>
                   </div>
                   <span className="shrink-0 text-xs tabular-nums text-muted">
-                    {item.minutes
-                      ? `${item.sets} × ${item.minutes} min`
-                      : `${item.sets} × ${item.reps}`}
+                    {item.seconds
+                      ? `${item.sets} × ${item.seconds}s`
+                      : item.minutes
+                        ? `${item.sets} × ${item.minutes} min`
+                        : `${item.sets} × ${item.reps}`}
                     {` · rest ${item.restSec}s`}
                   </span>
                 </Link>

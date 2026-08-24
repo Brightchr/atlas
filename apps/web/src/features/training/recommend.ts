@@ -95,7 +95,7 @@ export async function importCatalogWorkout(w: CatalogWorkout): Promise<string> {
         position,
         item.sets,
         item.reps ?? null,
-        item.minutes ? item.minutes * 60 : null,
+        item.seconds ?? (item.minutes ? item.minutes * 60 : null),
         item.restSec,
       ],
     );
@@ -131,9 +131,15 @@ export async function importCatalogPlan(p: CatalogPlan): Promise<string> {
     const key = p.days[day];
     if (!key) continue;
     await db.run(
-      `INSERT OR REPLACE INTO training_plan_days (plan_id, day_of_week, workout_id, is_rest_day)
-       VALUES (?, ?, ?, ?)`,
-      [planId, day, key === 'rest' ? null : (workoutIds.get(key) ?? null), key === 'rest' ? 1 : 0],
+      `INSERT OR REPLACE INTO training_plan_days (id, plan_id, day_of_week, workout_id, is_rest_day)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        `${planId}#${day}`,
+        planId,
+        day,
+        key === 'rest' ? null : (workoutIds.get(key) ?? null),
+        key === 'rest' ? 1 : 0,
+      ],
     );
   }
   await persist();
