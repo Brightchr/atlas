@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpenText, NotebookPen, Plus, ShoppingCart, X } from 'lucide-react';
+import { BookOpenText, Cookie, Moon, NotebookPen, Plus, ShoppingCart, Sun, Sunrise, X } from 'lucide-react';
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
@@ -16,6 +16,13 @@ import { getFoodsByIds, scaleMacros } from '../repository';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+const MEAL_META: Record<MealType, { Icon: typeof Sunrise; tint: string }> = {
+  breakfast: { Icon: Sunrise, tint: 'bg-amber-500/15 text-amber-500' },
+  lunch: { Icon: Sun, tint: 'bg-orange-500/15 text-orange-500' },
+  dinner: { Icon: Moon, tint: 'bg-indigo-500/15 text-indigo-400' },
+  snack: { Icon: Cookie, tint: 'bg-teal-500/15 text-teal-600' },
+};
 
 /** Today as a 0 = Monday … 6 = Sunday index (JS Date has 0 = Sunday). */
 const todayIndex = () => (new Date().getDay() + 6) % 7;
@@ -258,10 +265,16 @@ export function MealPlanPage() {
       <div className="space-y-3">
         {MEALS.map((meal) => {
           const slotItems = dayItems.filter((i) => i.meal === meal);
+          const { Icon, tint } = MEAL_META[meal];
           return (
             <section key={meal} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold capitalize">{meal}</h2>
+                <span className="flex items-center gap-2.5">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}>
+                    <Icon size={16} strokeWidth={1.8} aria-hidden />
+                  </span>
+                  <h2 className="text-sm font-semibold capitalize">{meal}</h2>
+                </span>
                 <button
                   type="button"
                   onClick={() => setOpenSlot(openSlot === meal ? null : meal)}

@@ -15,6 +15,7 @@ import { WorkoutSessionPage } from '@/features/workouts/pages/WorkoutSessionPage
 import { MealPlanPage } from '@/features/nutrition/pages/MealPlanPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
+import { RecipeDetailPage } from '@/features/nutrition/pages/RecipeDetailPage';
 import { PlanDetailPage } from '@/features/plans/pages/PlanDetailPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
@@ -72,6 +73,7 @@ export const router = createBrowserRouter([
           { path: '/eat', element: <NutritionPage /> },
           { path: '/eat/meal-plan', element: <MealPlanPage /> },
           { path: '/eat/recipes', element: <RecipesPage /> },
+          { path: '/eat/recipes/:id', element: <RecipeDetailPage /> },
           { path: '/eat/shopping', element: <ShoppingPage /> },
         ],
       },

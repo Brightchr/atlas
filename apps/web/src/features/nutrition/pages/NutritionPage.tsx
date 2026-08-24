@@ -4,14 +4,19 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import {
   Beef,
   ChevronDown,
+  Cookie,
   Copy,
   Droplet,
   Flame,
+  Moon,
   PlusCircle,
   Search,
+  Sun,
+  Sunrise,
   Trash2,
   UtensilsCrossed,
   Wheat,
+  X,
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
 import { fetchServing, searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
@@ -33,6 +38,13 @@ function todayIso(): string {
 }
 
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+const MEAL_META: Record<MealType, { Icon: typeof Sunrise; tint: string }> = {
+  breakfast: { Icon: Sunrise, tint: 'bg-amber-500/15 text-amber-500' },
+  lunch: { Icon: Sun, tint: 'bg-orange-500/15 text-orange-500' },
+  dinner: { Icon: Moon, tint: 'bg-indigo-500/15 text-indigo-400' },
+  snack: { Icon: Cookie, tint: 'bg-teal-500/15 text-teal-600' },
+};
 
 const tiles = [
   { key: 'kcal', label: 'Calories', unit: '', Icon: Flame, tint: 'bg-orange-500/15 text-orange-500' },
@@ -285,7 +297,7 @@ function CreateFoodCard({ onCreated }: { onCreated: (food: Food) => void }) {
   const label = 'block text-xs font-medium text-muted';
 
   return (
-    <div className="space-y-3 border-t border-line pt-3">
+    <div className="space-y-3">
       <div className="grid gap-2.5 sm:grid-cols-2">
         <label className={label}>
           Name *
@@ -461,61 +473,69 @@ export function NutritionPage() {
       </header>
 
 
-      {/* Prominent, self-explanatory logging entry point */}
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-2.5 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Search size={17} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">Log a food</p>
-            <p className="text-xs text-muted">
-              Search thousands of products — tap a result for full nutrition facts, then log it to a
-              meal.
-            </p>
-          </div>
+      {/* Prominent, self-explanatory logging entry point — search-first, like Explore. */}
+      <div>
+        <div className="relative">
+          <Search size={16} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input
+            ref={searchRef}
+            type="search"
+            value={term}
+            onChange={(e) => {
+              setTerm(e.target.value);
+              setFoodPage(1);
+            }}
+            placeholder={
+              mealTarget
+                ? `Add to ${mealTarget} — search foods…`
+                : 'Log a food — try “oats”, “nutella”, or any brand…'
+            }
+            aria-label="Search foods to log"
+            className="w-full rounded-2xl border border-line bg-surface py-3 pr-10 pl-11 text-sm shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+          {searching && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setTerm('')}
+              className="absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-elev hover:text-ink"
+            >
+              <X size={15} aria-hidden />
+            </button>
+          )}
         </div>
-        <input
-          ref={searchRef}
-          type="search"
-          value={term}
-          onChange={(e) => {
-            setTerm(e.target.value);
-            setFoodPage(1);
-          }}
-          placeholder={
-            mealTarget ? `Add to ${mealTarget} — search foods…` : 'Try “oats”, “nutella”, or any brand…'
-          }
-          className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
-        />
-        {mealTarget && (
+        <div className="mt-2 flex flex-wrap items-center gap-2.5">
+          {mealTarget && (
+            <button
+              type="button"
+              onClick={() => setMealTarget(null)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent capitalize"
+            >
+              Logging to {mealTarget} — tap to clear ✕
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setMealTarget(null)}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent capitalize"
+            aria-expanded={creating}
+            onClick={() => setCreating(!creating)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
           >
-            Logging to {mealTarget} — tap to clear ✕
+            <PlusCircle size={13} aria-hidden />
+            Can't find it? Create a food from its label
           </button>
-        )}
-        <button
-          type="button"
-          aria-expanded={creating}
-          onClick={() => setCreating(!creating)}
-          className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
-        >
-          <PlusCircle size={13} aria-hidden />
-          Can't find it? Create a food from its label
-        </button>
+        </div>
         {creating && (
-          <CreateFoodCard
-            onCreated={(food) => {
-              setCreating(false);
-              setCreatedFood(food);
-              void queryClient.invalidateQueries({ queryKey: ['foods', 'local'] });
-            }}
-          />
+          <section className="mt-3 rounded-2xl border border-accent/40 bg-surface p-4 shadow-sm">
+            <CreateFoodCard
+              onCreated={(food) => {
+                setCreating(false);
+                setCreatedFood(food);
+                void queryClient.invalidateQueries({ queryKey: ['foods', 'local'] });
+              }}
+            />
+          </section>
         )}
-      </section>
+      </div>
 
       {createdFood && (
         <section className="space-y-1.5">
@@ -636,9 +656,21 @@ export function NutritionPage() {
               {targetsQuery.data ? ' of ≤2300' : ''} mg sodium
             </p>
           )}
-          {!targetsQuery.data && (
+          {targetsQuery.data ? (
             <p className="text-xs text-muted">
-              Tip: set up “Your plan” on the Goals page to get recommended daily targets here.
+              Targets come from <span className="font-medium">Your plan</span> on the Goals page —{' '}
+              <Link to="/you/goals" className="text-accent hover:underline">
+                recalculate or set custom numbers
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="text-xs text-muted">
+              Tip:{' '}
+              <Link to="/you/goals" className="text-accent hover:underline">
+                set up “Your plan” on the Goals page
+              </Link>{' '}
+              to get recommended daily targets here — or enter your own custom numbers there.
             </p>
           )}
 
@@ -669,16 +701,25 @@ export function NutritionPage() {
             const hasPlanToday = Object.keys(plannedQuery.data ?? {}).length > 0;
             const overBy = planned !== undefined ? subtotal - planned : 0;
             const unplanned = hasPlanToday && planned === undefined && entries.length > 0;
+            const { Icon, tint } = MEAL_META[mealName];
             return (
-              <section key={mealName}>
-                <div className="mb-1.5 flex items-center gap-2">
-                  <h2 className="text-sm font-bold capitalize">{mealName}</h2>
-                  {entries.length > 0 && (
-                    <span className="text-xs text-muted tabular-nums">
-                      {subtotal} kcal
-                      {planned !== undefined && ` of ~${planned} planned`}
-                    </span>
-                  )}
+              <section
+                key={mealName}
+                className="rounded-2xl border border-line bg-surface shadow-sm"
+              >
+                <div className="flex items-center gap-2.5 p-3.5 pb-0">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}>
+                    <Icon size={16} strokeWidth={1.8} aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold capitalize">{mealName}</h2>
+                    {entries.length > 0 && (
+                      <p className="text-xs text-muted tabular-nums">
+                        {subtotal} kcal
+                        {planned !== undefined && ` of ~${planned} planned`}
+                      </p>
+                    )}
+                  </div>
                   {planned !== undefined && overBy > 75 && (
                     <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-600">
                       +{overBy} kcal over plan
@@ -701,13 +742,15 @@ export function NutritionPage() {
                   <button
                     type="button"
                     onClick={() => addToMeal(mealName)}
-                    className="springy w-full rounded-2xl border border-dashed border-line px-3 py-2.5 text-left text-xs text-muted hover:bg-elev"
+                    className="springy m-3.5 mt-2.5 block w-[calc(100%-1.75rem)] rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-xs text-muted hover:bg-elev"
                   >
                     Nothing logged{planned !== undefined ? ` — ~${planned} kcal planned` : ''} · tap
                     to add {mealName === 'snack' ? 'a snack' : mealName}
                   </button>
                 ) : (
-                  <ul className="space-y-2">{entries.map(renderEntry)}</ul>
+                  <ul className="mt-1.5 divide-y divide-line px-1.5 pb-1.5">
+                    {entries.map(renderEntry)}
+                  </ul>
                 )}
               </section>
             );
@@ -729,15 +772,16 @@ export function NutritionPage() {
     </div>
   );
 
-  /** One diary entry row — expandable to full stats, re-log and delete. */
+  /** One diary entry row — expandable to full stats, re-log and delete.
+   * Rows live inside the meal card, so no border of their own. */
   function renderEntry(entry: NonNullable<typeof diaryQuery.data>[number]) {
     return (
-      <li key={entry.id} className="rounded-2xl border border-line bg-surface shadow-sm">
+      <li key={entry.id}>
                 <button
                   type="button"
                   onClick={() => setOpenEntry(openEntry === entry.id ? null : entry.id)}
                   aria-expanded={openEntry === entry.id}
-                  className="flex w-full items-center gap-3 p-3 text-left"
+                  className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-elev"
                 >
                   {entry.imageUrl ? (
                     <img src={entry.imageUrl} alt="" loading="lazy" className="h-12 w-12 shrink-0 rounded-xl bg-white object-contain" />
@@ -760,7 +804,7 @@ export function NutritionPage() {
                   />
                 </button>
                 {openEntry === entry.id && (
-                  <div className="space-y-3 border-t border-line p-3">
+                  <div className="space-y-3 p-2.5 pt-0">
                     <StatsGrid per100g={entry.macros} caption={`for ${entry.grams} g logged`} />
                     <div className="flex gap-2">
                       <button
