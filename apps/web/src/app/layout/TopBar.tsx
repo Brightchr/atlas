@@ -110,7 +110,10 @@ function IconButton({
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="absolute top-full right-0 z-50 mt-2 w-72 rounded-2xl border border-line bg-surface p-2 shadow-xl shadow-black/10">
+    // On phones, right-aligning to the button pushes the leftmost menus off
+    // the left edge — so panels pin to the viewport (fixed, inset-x) instead
+    // and only anchor to their button from sm: up.
+    <div className="fixed inset-x-3 top-14 z-50 rounded-2xl border border-line bg-surface p-2 shadow-xl shadow-black/10 sm:absolute sm:top-full sm:right-0 sm:inset-x-auto sm:mt-2 sm:w-72">
       <p className="px-2.5 pt-1.5 pb-2 text-xs font-semibold tracking-wide text-muted uppercase">
         {title}
       </p>
