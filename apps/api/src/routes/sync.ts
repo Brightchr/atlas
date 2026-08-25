@@ -12,9 +12,30 @@ import { requireAuth, type AppEnv } from '../middleware/auth';
 const MAX_CHANGES_PER_PUSH = 400;
 const MAX_PAYLOAD_BYTES = 16_000;
 const PULL_PAGE_SIZE = 300;
-// Entities are table names the *client* owns; the server only sanity-checks
-// the shape so junk can't be stored under arbitrary keys.
-const ENTITY_RE = /^[a-z_]{1,64}$/;
+// The entity allowlist: exactly the client tables that sync (keep in step
+// with SYNCED_TABLES / EXTRA_SYNC_TABLES / TRAINING_SYNC_TABLES in
+// apps/web/src/lib/db/schema.ts). An open pattern here would let any account
+// fill the log under arbitrary keys forever.
+const ALLOWED_ENTITIES = new Set([
+  'foods',
+  'diary_entries',
+  'recipes',
+  'recipe_ingredients',
+  'meal_plan_items',
+  'shopping_items',
+  'body_weight_logs',
+  'goals',
+  'settings',
+  'workouts',
+  'workout_exercises',
+  'training_plans',
+  'training_plan_days',
+  'workout_sessions',
+  'logged_sets',
+]);
+// Storage quota: a generous ceiling for real usage (years of daily logging
+// sits far below it), a hard wall for abuse.
+const MAX_ROWS_PER_USER = 200_000;
 // A device clock ahead of the server would win every last-write-wins conflict
 // forever. Timestamps further ahead than this are clamped to server time.
 const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
@@ -118,7 +139,9 @@ syncRoutes.post('/push', async (c) => {
 
   const now = Date.now();
   for (const ch of body.changes) {
-    if (!ch.entity || !ENTITY_RE.test(ch.entity)) return c.json({ error: 'Invalid entity' }, 400);
+    if (!ch.entity || !ALLOWED_ENTITIES.has(ch.entity)) {
+      return c.json({ error: 'Invalid entity' }, 400);
+    }
     if (!ch.rowId || ch.rowId.length > 128) return c.json({ error: 'Invalid rowId' }, 400);
     const changedAtMs = ch.changedAt ? Date.parse(ch.changedAt) : NaN;
     if (Number.isNaN(changedAtMs)) return c.json({ error: 'Invalid changedAt' }, 400);
@@ -142,6 +165,16 @@ syncRoutes.post('/push', async (c) => {
         return c.json({ error: 'Payload too large' }, 413);
       }
     }
+  }
+
+  // Quota gate — an index-only count on (user_id, seq). Upserts of existing
+  // rows don't grow the table, so only block once the ceiling is truly hit.
+  const countRows = await query<{ n: string }>(
+    'SELECT count(*) AS n FROM sync_rows WHERE user_id = $1',
+    [user.id],
+  );
+  if (Number(countRows[0]!.n) >= MAX_ROWS_PER_USER) {
+    return c.json({ error: 'Sync storage quota exceeded' }, 403);
   }
 
   // One transaction per batch: a push is all-or-nothing, so the client can

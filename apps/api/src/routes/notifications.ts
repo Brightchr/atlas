@@ -23,8 +23,12 @@ notificationRoutes.get('/', async (c) => {
       LIMIT 20`,
     [user.id],
   );
-  const unread = notifications.filter((n) => !n.read).length;
-  return c.json({ notifications, unread });
+  // Counted in SQL — the visible page alone would undercount the badge.
+  const unreadRows = await query<{ n: string }>(
+    'SELECT count(*) FILTER (WHERE NOT read) AS n FROM notifications WHERE user_id = $1',
+    [user.id],
+  );
+  return c.json({ notifications, unread: Number(unreadRows[0]?.n ?? 0) });
 });
 
 notificationRoutes.post('/read-all', async (c) => {

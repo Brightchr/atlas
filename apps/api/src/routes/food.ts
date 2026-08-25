@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { env } from '../lib/env';
 import { fatSecretConfigured, searchFatSecret, type FsFood } from '../lib/fatsecret';
 import { rateLimit } from '../lib/rate-limit';
+import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Server-side food search, merged per page from up to three sources:
  *
@@ -287,11 +288,15 @@ if (!fatSecretConfigured()) {
   );
 }
 
-export const foodRoutes = new Hono();
+export const foodRoutes = new Hono<AppEnv>();
+
+// Signed-in only: this endpoint spends PAID upstream quota (FatSecret, FDC)
+// — an open proxy would let anyone on the internet burn it dry.
+foodRoutes.use('*', requireAuth);
 
 // The search box fires a query per keystroke (per-term cached client-side),
 // so the ceiling is sized for typing bursts, not one request per search.
-foodRoutes.get('/search', rateLimit({ windowMs: 60_000, max: 60 }), async (c) => {
+foodRoutes.get('/search', rateLimit({ windowMs: 60_000, max: 60, by: 'user' }), async (c) => {
   const term = (c.req.query('q') ?? '').trim();
   if (term.length < 2) return c.json({ products: [], page: 1, pageCount: 1 });
   const page = Math.min(Math.max(Number.parseInt(c.req.query('page') ?? '1', 10) || 1, 1), MAX_PAGES);

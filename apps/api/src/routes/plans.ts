@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
+import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Shared workout plans. Devices publish a plan as one JSON payload (days +
@@ -22,6 +23,9 @@ const MAX_COMMENT_LENGTH = 1_000;
 export const planRoutes = new Hono<AppEnv>();
 
 planRoutes.use('*', requireAuth);
+// Per-user ceiling on publish/review/share churn — generous for humans,
+// a wall for notification-spam loops.
+planRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 
 /** WHERE fragment: plans the caller may see — public, their own, sent to
  * them directly, or friends-only plans of an accepted friend. The parameter
@@ -226,19 +230,24 @@ planRoutes.post('/:id/reviews', async (c) => {
     return c.json({ error: "You can't review your own plan" }, 400);
   }
 
-  await query(
+  const upserted = await query<{ inserted: boolean }>(
     `INSERT INTO plan_reviews (plan_id, user_id, rating, comment)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (plan_id, user_id)
-     DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()`,
+     DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = now()
+     RETURNING (xmax = 0) AS inserted`,
     [plan[0].id, user.id, rating, comment],
   );
-  await createNotification(
-    plan[0].owner_user_id,
-    'plan_review',
-    `${user.username} rated "${plan[0].name}" ${rating}/5`,
-    comment,
-  );
+  // Notify on the FIRST review only — re-saving a review must not let one
+  // user generate unlimited notifications for the owner.
+  if (upserted[0]?.inserted) {
+    await createNotification(
+      plan[0].owner_user_id,
+      'plan_review',
+      `${user.username} rated "${plan[0].name}" ${rating}/5`,
+      comment,
+    );
+  }
   return c.json({ ok: true });
 });
 
@@ -265,17 +274,22 @@ planRoutes.post('/:id/share', async (c) => {
   if (!recipient[0]) return c.json({ error: 'No user with that username' }, 404);
   if (recipient[0].id === user.id) return c.json({ error: "That's you" }, 400);
 
-  await query(
+  const inserted = await query<{ id: string }>(
     `INSERT INTO plan_shares (plan_id, from_user_id, to_user_id)
-     VALUES ($1, $2, $3) ON CONFLICT (plan_id, to_user_id) DO NOTHING`,
+     VALUES ($1, $2, $3) ON CONFLICT (plan_id, to_user_id) DO NOTHING
+     RETURNING id`,
     [plan[0].id, user.id, recipient[0].id],
   );
-  await createNotification(
-    recipient[0].id,
-    'plan_shared',
-    `${user.username} sent you the plan "${plan[0].name}"`,
-    'Find it under Training → Plans → Community.',
-  );
+  // Only a NEW share notifies — re-sending the same plan in a loop must not
+  // become a notification firehose.
+  if (inserted[0]) {
+    await createNotification(
+      recipient[0].id,
+      'plan_shared',
+      `${user.username} sent you the plan "${plan[0].name}"`,
+      'Find it under Training → Plans → Community.',
+    );
+  }
   return c.json({ ok: true });
 });
 

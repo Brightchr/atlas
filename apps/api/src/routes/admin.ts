@@ -192,7 +192,9 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   if (target.role === 'admin') return c.json({ error: 'Cannot impersonate an admin' }, 403);
 
   await logAudit(admin.id, 'impersonate', 'user', target.id, { username: target.username });
-  const { token, expiresAt } = await createSession(target.id, admin.id);
+  // Masquerade tokens are bearer credentials for someone ELSE's account —
+  // they live one hour, not the standard thirty days.
+  const { token, expiresAt } = await createSession(target.id, admin.id, 60 * 60 * 1000);
   setSessionCookie(c, token, expiresAt);
   return c.json({ user: target, token });
 });

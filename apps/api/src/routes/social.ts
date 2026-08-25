@@ -11,6 +11,7 @@ import type {
 } from '@arcadia/shared';
 import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
+import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** The friends system: Discord-style mutual requests, workout groups, and
@@ -30,7 +31,12 @@ const MAX_STATS_BYTES = 8_000;
 
 export const socialRoutes = new Hono<AppEnv>();
 
-socialRoutes.use('*', requireAuth);
+// Scoped to this group's own prefixes — a use('*') here would become a /v1/*
+// middleware at the mount point and gate unrelated routes by accident.
+for (const prefix of ['/friends', '/friends/*', '/groups', '/groups/*', '/stats']) {
+  socialRoutes.use(prefix, requireAuth);
+  socialRoutes.use(prefix, rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
+}
 
 interface UserRow {
   id: string;

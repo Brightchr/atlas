@@ -1,5 +1,5 @@
 import type { Food, Macros } from '@arcadia/shared';
-import { env } from '@/lib/env';
+import { apiFetch } from '@/lib/api';
 
 /** Open Food Facts client (https://world.openfoodfacts.org — ODbL license,
  * attribution shown on the Nutrition page). Text search goes through our API
@@ -90,16 +90,13 @@ export interface FoodSearchPage {
 }
 
 /** Full-text product search — returns snapshot-ready foods with images,
- * paginated (20 per page, page count capped by the API). */
+ * paginated (20 per page, page count capped by the API). Goes through
+ * apiFetch so credentials ride along — the endpoint is signed-in only (it
+ * spends paid upstream quota). */
 export async function searchOpenFoodFacts(term: string, page = 1): Promise<FoodSearchPage> {
-  const url = `${env.apiUrl}/v1/food/search?q=${encodeURIComponent(term)}&page=${page}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open Food Facts search failed (${res.status})`);
-  const data = (await res.json()) as {
-    products?: OffProduct[];
-    page?: number;
-    pageCount?: number;
-  };
+  const data = await apiFetch<{ products?: OffProduct[]; page?: number; pageCount?: number }>(
+    `/v1/food/search?q=${encodeURIComponent(term)}&page=${page}`,
+  );
   return {
     foods: (data.products ?? []).map(toSnapshot).filter((s): s is FoodSnapshot => s !== null),
     page: data.page ?? page,

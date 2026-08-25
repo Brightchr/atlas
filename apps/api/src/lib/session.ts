@@ -20,9 +20,11 @@ function hashToken(token: string): string {
 export async function createSession(
   userId: string,
   impersonatorId?: string,
+  /** Override for short-lived sessions (admin masquerade); default 30 days. */
+  ttlMs?: number,
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + (ttlMs ?? SESSION_DAYS * 24 * 60 * 60 * 1000));
   await query(
     'INSERT INTO sessions (user_id, token_hash, expires_at, impersonator_user_id) VALUES ($1, $2, $3, $4)',
     [userId, hashToken(token), expiresAt, impersonatorId ?? null],

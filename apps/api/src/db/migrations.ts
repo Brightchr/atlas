@@ -258,30 +258,64 @@ const migrations: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    id: '010_hardening',
+    sql: `
+      -- Usernames are matched with lower() everywhere (friend requests, plan
+      -- shares, profile pages) but were only unique case-SENSITIVELY: "Bob"
+      -- could register next to "bob" and intercept things addressed to the
+      -- other. The functional unique index closes the hole and makes the
+      -- lower() lookups indexed. Emails are stored lowercased by the auth
+      -- routes; the CHECK makes the database enforce it.
+      CREATE UNIQUE INDEX users_username_lower_idx ON users (lower(username));
+      UPDATE users SET email = lower(email);
+      ALTER TABLE users ADD CONSTRAINT users_email_lowercase CHECK (email = lower(email));
+
+      -- Indexes for hot read paths that only had their write-side constraints.
+      CREATE INDEX stat_grants_grantee_idx ON stat_grants (grantee_user_id);
+      CREATE INDEX plan_reviews_user_idx ON plan_reviews (user_id, updated_at DESC);
+      CREATE INDEX notifications_user_created_idx ON notifications (user_id, created_at DESC);
+      CREATE INDEX audit_log_created_idx ON audit_log (created_at DESC);
+      CREATE INDEX sessions_expires_idx ON sessions (expires_at);
+    `,
+  },
 ];
 
-export async function runMigrations(): Promise<void> {
-  await pool.query(
-    'CREATE TABLE IF NOT EXISTS schema_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())',
-  );
-  const applied = new Set(
-    (await pool.query<{ id: string }>('SELECT id FROM schema_migrations')).rows.map((r) => r.id),
-  );
+/** A constant app-wide lock key — any number, stable forever. */
+const MIGRATION_LOCK_KEY = 727_001;
 
-  for (const migration of migrations) {
-    if (applied.has(migration.id)) continue;
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(migration.sql);
-      await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [migration.id]);
-      await client.query('COMMIT');
-      console.log(`migration applied: ${migration.id}`);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+export async function runMigrations(): Promise<void> {
+  // Serialize across instances: overlapping deploys (or 2+ replicas booting)
+  // racing CREATE TABLE would crash-loop. The advisory lock is held on a
+  // dedicated connection for the whole run.
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
+    await pool.query(
+      'CREATE TABLE IF NOT EXISTS schema_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())',
+    );
+    const applied = new Set(
+      (await pool.query<{ id: string }>('SELECT id FROM schema_migrations')).rows.map((r) => r.id),
+    );
+
+    for (const migration of migrations) {
+      if (applied.has(migration.id)) continue;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(migration.sql);
+        await client.query('INSERT INTO schema_migrations (id) VALUES ($1)', [migration.id]);
+        await client.query('COMMIT');
+        console.log(`migration applied: ${migration.id}`);
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     }
+  } finally {
+    await lockClient.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_KEY]).catch(() => {});
+    lockClient.release();
   }
 }
