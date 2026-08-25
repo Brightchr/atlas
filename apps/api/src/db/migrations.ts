@@ -358,6 +358,35 @@ const migrations: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    id: '016_reports',
+    sql: `
+      -- User-filed reports feeding the admin moderation queue. target_id is
+      -- text, not a foreign key: targets span tables (users, plans, reviews)
+      -- and a report must outlive its target's deletion as evidence.
+      CREATE TABLE reports (
+        id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        reporter_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        target_type      text NOT NULL
+                         CHECK (target_type IN ('user', 'plan', 'review', 'other')),
+        target_id        text NOT NULL,
+        reason           text NOT NULL
+                         CHECK (reason IN ('spam', 'harassment', 'inappropriate', 'cheating', 'other')),
+        detail           text NOT NULL DEFAULT '' CHECK (char_length(detail) <= 1000),
+        status           text NOT NULL DEFAULT 'open'
+                         CHECK (status IN ('open', 'resolved', 'dismissed')),
+        resolved_by      uuid REFERENCES users(id) ON DELETE SET NULL,
+        resolved_at      timestamptz,
+        resolution_note  text NOT NULL DEFAULT '' CHECK (char_length(resolution_note) <= 500),
+        created_at       timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX reports_status_idx ON reports(status, created_at DESC);
+      -- One OPEN report per reporter per target — re-reporting while it sits
+      -- in the queue is a no-op instead of queue spam.
+      CREATE UNIQUE INDEX reports_open_dedup_idx
+        ON reports(reporter_user_id, target_type, target_id) WHERE status = 'open';
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

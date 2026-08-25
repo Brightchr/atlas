@@ -2,6 +2,8 @@ import { Link, useParams } from 'react-router';
 import { CalendarDays, MessageSquare, Star, TrendingUp } from 'lucide-react';
 import { bannerCss, usePublicProfile } from '../api';
 import { AvatarIcon } from '../avatars';
+import { useCurrentUser } from '@/features/auth/api';
+import { ReportButton } from '@/features/reports/components/ReportButton';
 import { DIET_LABELS, GOAL_LABELS, LEVEL_LABELS } from '@/features/training/profile';
 
 function Stars({ rating }: { rating: number }) {
@@ -26,6 +28,7 @@ function Stars({ rating }: { rating: number }) {
 export function PublicProfilePage() {
   const { username } = useParams<{ username: string }>();
   const profile = usePublicProfile(username);
+  const { data: me } = useCurrentUser();
 
   if (profile.isError) {
     return (
@@ -76,6 +79,11 @@ export function PublicProfilePage() {
               <span className="rounded-full bg-elev px-3 py-1.5 text-xs font-semibold tabular-nums">
                 {p.stats.reviewCount} review{p.stats.reviewCount === 1 ? '' : 's'} received
               </span>
+            </div>
+          )}
+          {me && me.username !== p.username && (
+            <div className="mt-3">
+              <ReportButton targetType="user" targetId={p.username} label={`@${p.username}`} />
             </div>
           )}
         </div>

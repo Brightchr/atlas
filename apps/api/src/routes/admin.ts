@@ -413,6 +413,85 @@ adminRoutes.patch('/users/:id/role', zValidator('json', roleSchema), async (c) =
   return c.json({ ok: true, role: rows[0]!.role });
 });
 
+/* ---- Moderation queue: user-filed reports ---- */
+
+adminRoutes.get('/reports', async (c) => {
+  const status = c.req.query('status') ?? 'open';
+  if (!['open', 'resolved', 'dismissed', 'all'].includes(status)) {
+    return c.json({ error: 'Invalid status filter' }, 400);
+  }
+  const rows = await query<{
+    id: string;
+    target_type: string;
+    target_id: string;
+    target_label: string | null;
+    reason: string;
+    detail: string;
+    status: string;
+    reporter: string | null;
+    created_at: string;
+    resolved_by: string | null;
+    resolved_at: string | null;
+    resolution_note: string;
+  }>(
+    `SELECT r.id, r.target_type, r.target_id, r.reason, r.detail, r.status,
+            r.created_at, r.resolved_at, r.resolution_note,
+            reporter.username AS reporter,
+            resolver.username AS resolved_by,
+            -- Best-effort display label; reports on deleted targets keep the raw id.
+            CASE WHEN r.target_type = 'user' THEN target_user.username END AS target_label
+       FROM reports r
+       LEFT JOIN users reporter ON reporter.id = r.reporter_user_id
+       LEFT JOIN users resolver ON resolver.id = r.resolved_by
+       LEFT JOIN users target_user
+              ON r.target_type = 'user' AND target_user.id::text = r.target_id
+      WHERE $1 = 'all' OR r.status = $1
+      ORDER BY r.created_at DESC
+      LIMIT 200`,
+    [status],
+  );
+  return c.json({
+    reports: rows.map((r) => ({
+      id: r.id,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      targetLabel: r.target_label,
+      reason: r.reason,
+      detail: r.detail,
+      status: r.status,
+      reporter: r.reporter,
+      createdAt: r.created_at,
+      resolvedBy: r.resolved_by,
+      resolvedAt: r.resolved_at,
+      resolutionNote: r.resolution_note,
+    })),
+  });
+});
+
+const reportUpdateSchema = z.object({
+  status: z.enum(['open', 'resolved', 'dismissed']),
+  note: z.string().trim().max(500).default(''),
+});
+
+adminRoutes.patch('/reports/:id', zValidator('json', reportUpdateSchema), async (c) => {
+  const admin = c.get('user')!;
+  const { status, note } = c.req.valid('json');
+  const reopened = status === 'open';
+  const rows = await query<{ id: string }>(
+    `UPDATE reports
+        SET status = $1,
+            resolution_note = $2,
+            resolved_by = CASE WHEN $3 THEN NULL ELSE $4::uuid END,
+            resolved_at = CASE WHEN $3 THEN NULL ELSE now() END
+      WHERE id = $5
+      RETURNING id`,
+    [status, reopened ? '' : note, reopened, admin.id, c.req.param('id')],
+  );
+  if (rows.length === 0) return c.json({ error: 'Report not found' }, 404);
+  await logAudit(admin.id, 'update_report', 'report', rows[0]!.id, { status, note });
+  return c.json({ ok: true });
+});
+
 adminRoutes.get('/audit', async (c) => {
   const entries = await query<{
     id: string;
