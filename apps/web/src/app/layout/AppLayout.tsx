@@ -17,6 +17,7 @@ import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
+import { startStatsPublisher } from '@/features/social/stats';
 import { startSync } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
 import { useTrainingProfile } from '@/features/training/profile';
@@ -99,6 +100,13 @@ export function AppLayout() {
   useEffect(() => {
     if (!user?.id) return;
     return startSync(user.id);
+  }, [user?.id]);
+
+  // The friends stats snapshot publishes on the same lifecycle (throttled;
+  // no-ops when the user shares with nobody — the server gates visibility).
+  useEffect(() => {
+    if (!user?.id) return;
+    return startStatsPublisher();
   }, [user?.id]);
 
   // New-user onboarding: until a training profile exists, everything funnels

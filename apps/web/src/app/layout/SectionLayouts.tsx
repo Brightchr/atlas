@@ -10,6 +10,7 @@ import {
   Soup,
   Target,
   TrendingUp,
+  UsersRound,
 } from 'lucide-react';
 import { SegmentedTabs, type SegmentTab } from '@/components/SegmentedTabs';
 
@@ -74,6 +75,7 @@ const youTabs: SegmentTab[] = [
     match: ['/you/history'],
   },
   { to: '/you/goals', label: 'Goals', Icon: Target },
+  { to: '/you/friends', label: 'Friends', Icon: UsersRound, match: ['/you/groups'] },
 ];
 
 export function YouLayout() {

@@ -16,6 +16,8 @@ import { MealPlanPage } from '@/features/nutrition/pages/MealPlanPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
 import { RecipeDetailPage } from '@/features/nutrition/pages/RecipeDetailPage';
+import { FriendsPage } from '@/features/social/pages/FriendsPage';
+import { GroupPage } from '@/features/social/pages/GroupPage';
 import { PlanDetailPage } from '@/features/plans/pages/PlanDetailPage';
 import { SettingsPage } from '@/features/settings/pages/SettingsPage';
 import { ShoppingPage } from '@/features/shopping/pages/ShoppingPage';
@@ -83,6 +85,8 @@ export const router = createBrowserRouter([
         children: [
           { path: '/you', element: <ProgressPage /> },
           { path: '/you/goals', element: <GoalsPage /> },
+          { path: '/you/friends', element: <FriendsPage /> },
+          { path: '/you/groups/:id', element: <GroupPage /> },
           { path: '/you/history/:sessionId', element: <SessionDetailPage /> },
         ],
       },

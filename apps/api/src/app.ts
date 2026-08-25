@@ -10,6 +10,7 @@ import { healthRoutes } from './routes/health';
 import { notificationRoutes } from './routes/notifications';
 import { planRoutes } from './routes/plans';
 import { profileRoutes } from './routes/profile';
+import { socialRoutes } from './routes/social';
 import { syncRoutes } from './routes/sync';
 
 /** App is split from the server entry (index.ts) so route handlers can be
@@ -35,6 +36,9 @@ app.route('/v1/plans', planRoutes);
 app.route('/v1/sync', syncRoutes);
 app.route('/v1/profiles', profileRoutes);
 app.route('/v1/admin', adminRoutes);
+// Mounted LAST on purpose: its use('*') requireAuth becomes a /v1/* middleware,
+// and only registration order keeps it from gating the public routes above.
+app.route('/v1', socialRoutes);
 
 // Future route groups (community workouts, votes, comments, moderation) mount here.
 

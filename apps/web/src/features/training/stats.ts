@@ -275,6 +275,198 @@ export async function adherenceStats(weeksBack = 4): Promise<AdherenceStats> {
   };
 }
 
+/* ------------------------------- Gains ------------------------------- */
+
+export interface StrengthGain {
+  exerciseName: string;
+  exerciseId: number;
+  /** Best estimated 1RM in the first 4 weeks of logging this exercise. */
+  baselineKg: number;
+  /** All-time best estimated 1RM. */
+  bestKg: number;
+  /** Percent improvement of best over baseline (≥ 0 — never framed down). */
+  gainPct: number;
+  /** "since May" — when the baseline window started. */
+  sinceLabel: string;
+}
+
+/** Strength gains framed the encouraging way: all-time best vs the lifter's
+ * own first month. Percent-since-start only ever grows — it survives a bad
+ * week, unlike week-vs-week deltas (the framing the UX research warns
+ * about). Exercises still in their first month are skipped: no baseline,
+ * no judgment. */
+export async function strengthGains(limit = 4): Promise<StrengthGain[]> {
+  const db = await getDb();
+  const rows = (
+    await db.query(
+      `WITH per_set AS (
+         SELECT exercise_name, exercise_id, completed_at,
+                weight_kg * (1 + COALESCE(reps, 1) / 30.0) AS est
+           FROM logged_sets
+          WHERE weight_kg IS NOT NULL AND weight_kg > 0
+       ),
+       firsts AS (
+         SELECT exercise_name, MIN(completed_at) AS first_at
+           FROM per_set GROUP BY exercise_name
+       )
+       SELECT p.exercise_name,
+              MIN(p.exercise_id) AS exercise_id,
+              MIN(f.first_at) AS first_at,
+              MAX(p.est) AS best,
+              MAX(CASE WHEN p.completed_at <= datetime(f.first_at, '+28 days')
+                       THEN p.est END) AS baseline
+         FROM per_set p JOIN firsts f ON f.exercise_name = p.exercise_name
+        WHERE f.first_at <= datetime('now', '-28 days')
+        GROUP BY p.exercise_name`,
+    )
+  ).values as {
+    exercise_name: string;
+    exercise_id: number;
+    first_at: string;
+    best: number;
+    baseline: number | null;
+  }[];
+
+  return rows
+    .filter((r) => r.baseline !== null && r.baseline > 0)
+    .map((r) => ({
+      exerciseName: r.exercise_name,
+      exerciseId: r.exercise_id,
+      baselineKg: Math.round(r.baseline! * 10) / 10,
+      bestKg: Math.round(r.best * 10) / 10,
+      gainPct: Math.max(0, Math.round(((r.best - r.baseline!) / r.baseline!) * 100)),
+      sinceLabel: new Date(r.first_at).toLocaleDateString([], { month: 'long' }),
+    }))
+    .sort((a, b) => b.gainPct - a.gainPct || b.bestKg - a.bestKg)
+    .slice(0, limit);
+}
+
+export interface PersonalRecord {
+  exerciseName: string;
+  exerciseId: number;
+  weightKg: number;
+  reps: number | null;
+  estimatedOneRepMaxKg: number;
+  date: string;
+}
+
+/** Recent PR moments: sets whose estimated 1RM beat everything that lifter
+ * had ever logged for that exercise before that moment. */
+export async function recentPersonalRecords(days = 30, limit = 6): Promise<PersonalRecord[]> {
+  const db = await getDb();
+  const rows = (
+    await db.query(
+      `SELECT exercise_name, exercise_id, weight_kg, reps, completed_at,
+              weight_kg * (1 + COALESCE(reps, 1) / 30.0) AS est
+         FROM logged_sets
+        WHERE weight_kg IS NOT NULL AND weight_kg > 0
+        ORDER BY completed_at ASC`,
+    )
+  ).values as {
+    exercise_name: string;
+    exercise_id: number;
+    weight_kg: number;
+    reps: number | null;
+    completed_at: string;
+    est: number;
+  }[];
+
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  const runningBest = new Map<string, number>();
+  const records: PersonalRecord[] = [];
+  for (const r of rows) {
+    const prior = runningBest.get(r.exercise_name) ?? 0;
+    if (r.est > prior) {
+      runningBest.set(r.exercise_name, r.est);
+      // Only a PR when it beats real history — the very first set of an
+      // exercise is a starting point, not a record.
+      if (prior > 0 && r.completed_at >= cutoff) {
+        records.push({
+          exerciseName: r.exercise_name,
+          exerciseId: r.exercise_id,
+          weightKg: Math.round(r.weight_kg * 10) / 10,
+          reps: r.reps,
+          estimatedOneRepMaxKg: Math.round(r.est * 10) / 10,
+          date: r.completed_at.slice(0, 10),
+        });
+      }
+    }
+  }
+  return records.reverse().slice(0, limit);
+}
+
+export interface WeightProgress {
+  startKg: number;
+  currentKg: number;
+  targetKg: number;
+  /** Toward-goal progress, 0..1. */
+  fraction: number;
+  /** Milestones of the journey (8 splits); how many are banked. */
+  milestonesDone: number;
+  milestonesTotal: number;
+  /** Smoothed kg/week, positive = moving toward the goal. */
+  towardGoalPerWeekKg: number | null;
+}
+
+/** Weight journey vs the active weight_target goal, framed Happy-Scale
+ * style: milestones banked and a smoothed weekly trend toward the goal —
+ * direction-aware, so gaining toward a gain goal counts as progress. */
+export async function weightProgress(): Promise<WeightProgress | null> {
+  const db = await getDb();
+  const goalRows = (
+    await db.query(
+      `SELECT target FROM goals WHERE type = 'weight_target' AND archived = 0
+        ORDER BY created_at DESC LIMIT 1`,
+    )
+  ).values as { target: number | null }[];
+  const targetKg = goalRows[0]?.target;
+  if (!targetKg) return null;
+
+  const logs = (
+    await db.query('SELECT date, weight_kg FROM body_weight_logs ORDER BY date ASC')
+  ).values as { date: string; weight_kg: number }[];
+  if (logs.length < 2) return null;
+
+  const startKg = logs[0]!.weight_kg;
+  // 7-entry moving average against daily noise.
+  const tail = logs.slice(-7);
+  const currentKg = tail.reduce((s, l) => s + l.weight_kg, 0) / tail.length;
+
+  const total = Math.abs(startKg - targetKg);
+  const towardGoal =
+    Math.sign(targetKg - startKg) === Math.sign(currentKg - startKg)
+      ? Math.abs(currentKg - startKg)
+      : 0;
+  const fraction = total === 0 ? 1 : Math.min(1, towardGoal / total);
+
+  // Smoothed weekly rate: current average vs the average ~28 days back.
+  let towardGoalPerWeekKg: number | null = null;
+  const cutoff = new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
+  const older = logs.filter((l) => l.date <= cutoff).slice(-7);
+  if (older.length > 0) {
+    const olderAvg = older.reduce((s, l) => s + l.weight_kg, 0) / older.length;
+    const olderDate = older[older.length - 1]!.date;
+    const weeksApart = Math.max(
+      1,
+      (Date.parse(logs[logs.length - 1]!.date) - Date.parse(olderDate)) / (7 * 86_400_000),
+    );
+    const perWeek = (currentKg - olderAvg) / weeksApart;
+    towardGoalPerWeekKg =
+      Math.round((Math.sign(targetKg - startKg) || 1) * perWeek * 100) / 100;
+  }
+
+  const milestonesTotal = 8;
+  return {
+    startKg: Math.round(startKg * 10) / 10,
+    currentKg: Math.round(currentKg * 10) / 10,
+    targetKg,
+    fraction,
+    milestonesDone: Math.floor(fraction * milestonesTotal),
+    milestonesTotal,
+    towardGoalPerWeekKg,
+  };
+}
+
 export interface WeightPoint {
   date: string;
   label: string;

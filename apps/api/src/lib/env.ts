@@ -1,3 +1,27 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/** Minimal .env loader (no dotenv dependency): KEY=VALUE lines, # comments,
+ * optional surrounding quotes. Real environment variables always win — on
+ * Railway there is no .env file and this is a no-op; locally it makes
+ * apps/api/.env actually take effect (it silently never did before). */
+function loadDotEnv(): void {
+  let raw: string;
+  try {
+    raw = readFileSync(resolve(process.cwd(), '.env'), 'utf8');
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+    if (!m || line.trimStart().startsWith('#')) continue;
+    const key = m[1]!;
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = m[2]!.replace(/^(['"])(.*)\1$/, '$2');
+  }
+}
+loadDotEnv();
+
 /** Central place for reading environment configuration.
  * Railway injects PORT and DATABASE_URL automatically; the defaults below match
  * the local docker-compose Postgres so `npm run dev:api` works out of the box. */

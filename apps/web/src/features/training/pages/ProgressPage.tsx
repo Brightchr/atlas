@@ -15,6 +15,7 @@ import {
 import { useUnits } from '@/lib/units';
 import { getSavedTargets } from '@/features/goals/repository';
 import { nutritionDiscipline } from '@/features/nutrition/stats';
+import { GainsHero } from '../components/GainsHero';
 import {
   listSessionHistory,
   muscleSetsThisWeek,
@@ -85,6 +86,8 @@ export function ProgressPage() {
           Finish your first workout and your charts start here.
         </p>
       )}
+
+      <GainsHero />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title={`Weekly volume (${unitLabel} lifted)`} Icon={TrendingUp}>

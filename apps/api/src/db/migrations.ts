@@ -197,6 +197,67 @@ const migrations: { id: string; sql: string }[] = [
           CHECK (pg_column_size(profile) <= 8192);
     `,
   },
+  {
+    id: '009_social',
+    sql: `
+      -- Discord-style friend graph: one row per request, accepted = friends.
+      -- A request in each direction never coexists — sending a request while
+      -- the reverse is pending auto-accepts it (route logic).
+      CREATE TABLE friendships (
+        id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        requester_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        addressee_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status       text NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'accepted')),
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        responded_at timestamptz,
+        UNIQUE (requester_id, addressee_id),
+        CHECK (requester_id <> addressee_id)
+      );
+      CREATE INDEX friendships_addressee_idx ON friendships(addressee_id, status);
+      CREATE INDEX friendships_requester_idx ON friendships(requester_id, status);
+
+      -- Workout groups: a named crew that sees each other's shared stats.
+      CREATE TABLE groups (
+        id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name          text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 60),
+        owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at    timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE group_members (
+        group_id    uuid NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status      text NOT NULL DEFAULT 'invited'
+                    CHECK (status IN ('invited', 'member')),
+        -- Joining a group means sharing stats to it by default (disclosed in
+        -- the invite UI); members can switch it off per group.
+        share_stats boolean NOT NULL DEFAULT true,
+        invited_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at  timestamptz NOT NULL DEFAULT now(),
+        joined_at   timestamptz,
+        PRIMARY KEY (group_id, user_id)
+      );
+      CREATE INDEX group_members_user_idx ON group_members(user_id, status);
+
+      -- Person-to-person stat sharing: owner grants grantee sight of their
+      -- stats snapshot. OFF by default — a friendship alone reveals nothing.
+      CREATE TABLE stat_grants (
+        owner_user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        grantee_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (owner_user_id, grantee_user_id)
+      );
+
+      -- One compact stats snapshot per user, computed and published by the
+      -- client (the server never derives stats from opaque sync payloads).
+      -- Who may SEE it is decided at read time from grants + groups.
+      CREATE TABLE user_stats (
+        user_id    uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        payload    jsonb NOT NULL CHECK (pg_column_size(payload) <= 8192),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -9,8 +9,8 @@ import { requireAuth, type AppEnv } from '../middleware/auth';
  * (goal, difficulty, paired diet), accumulate reviews, and can be sent
  * directly to another user — direct shares grant that user (and only them)
  * view/import access, which requires being signed in by construction.
- * 'friends' visibility is accepted but resolves to owner-only until the
- * friends system exists. */
+ * 'friends' visibility resolves through the friendships table: accepted
+ * friends of the owner see the plan. */
 
 const VISIBILITIES = new Set(['private', 'friends', 'public']);
 const DIFFICULTIES = new Set(['beginner', 'intermediate', 'advanced']);
@@ -23,12 +23,18 @@ export const planRoutes = new Hono<AppEnv>();
 
 planRoutes.use('*', requireAuth);
 
-/** WHERE fragment: plans the caller may see — public, their own, or sent to
- * them directly. $VIS is interpolated with the caller's id placeholder. */
+/** WHERE fragment: plans the caller may see — public, their own, sent to
+ * them directly, or friends-only plans of an accepted friend. The parameter
+ * is interpolated as a placeholder reference, never a value. */
 const VISIBLE_TO = (userParam: string) => `(
   p.visibility = 'public'
   OR p.owner_user_id = ${userParam}
   OR EXISTS (SELECT 1 FROM plan_shares s WHERE s.plan_id = p.id AND s.to_user_id = ${userParam})
+  OR (p.visibility = 'friends' AND EXISTS (
+        SELECT 1 FROM friendships f
+         WHERE f.status = 'accepted'
+           AND ((f.requester_id = p.owner_user_id AND f.addressee_id = ${userParam})
+             OR (f.addressee_id = p.owner_user_id AND f.requester_id = ${userParam}))))
 )`;
 
 interface SummaryRow {
