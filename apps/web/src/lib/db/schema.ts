@@ -4,9 +4,10 @@
 
 export const DB_NAME = 'arcadia';
 
-/** Tables mirrored to the server when sync is on. Adding a table here (plus a
- * new schema version calling syncTriggerStatements + a backfill seed) is all
- * it takes to sync a new domain — the engine and server are entity-agnostic. */
+/** Tables mirrored to the server when sync is on. FROZEN as of v7 — this
+ * array is baked into the v7/v8 migration statements, so changing its
+ * membership would corrupt fresh installs. New synced domains get their own
+ * group (see EXTRA_SYNC_TABLES) with their own migration. */
 export const SYNCED_TABLES = [
   'foods',
   'diary_entries',
@@ -17,9 +18,13 @@ export const SYNCED_TABLES = [
   'body_weight_logs',
 ] as const;
 
-/** Training tables sync only when the user opts in (off by default — see the
- * trainingSync flag in sync_meta). Their triggers are always installed; the
- * engine decides per sync whether these entities are pushed/applied. */
+/** Synced since v10: goals and the settings key/value store (daily targets,
+ * training profile, equipment…). Settings rows are addressed by id = key. */
+export const EXTRA_SYNC_TABLES = ['goals', 'settings'] as const;
+
+/** Training tables sync BY DEFAULT (trainingSync flag in sync_meta is an
+ * opt-out). Their triggers are always installed; the engine decides per sync
+ * whether these entities are pushed/applied. */
 export const TRAINING_SYNC_TABLES = [
   'workouts',
   'workout_exercises',
@@ -344,6 +349,42 @@ export const upgradeStatements = [
       // engine simply drops these entities from push/pull, and the pending
       // rows self-clear. Enabling training sync seeds the backfill.
       ...TRAINING_SYNC_TABLES.flatMap(syncTriggerStatements),
+    ],
+  },
+  {
+    toVersion: 10,
+    statements: [
+      // Sync-by-default: goals and settings join the synced set, and training
+      // sync flips to opt-OUT (engine-side default change). settings has no
+      // id column — it gains one mirroring its key, with hand-written
+      // triggers that COALESCE to the key so a writer that forgets the id
+      // can never break its own INSERT.
+      `ALTER TABLE settings ADD COLUMN id TEXT;`,
+      `UPDATE settings SET id = key;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_id ON settings(id);`,
+      `CREATE TRIGGER IF NOT EXISTS trg_sync_settings_ins AFTER INSERT ON settings
+         WHEN ${NOT_APPLYING} BEGIN
+         INSERT INTO sync_pending (entity, row_id, op, changed_at)
+           VALUES ('settings', COALESCE(NEW.id, NEW.key), 'upsert', ${NOW_ISO})
+           ON CONFLICT(entity, row_id) DO UPDATE SET op = excluded.op, changed_at = excluded.changed_at;
+         END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_sync_settings_upd AFTER UPDATE ON settings
+         WHEN ${NOT_APPLYING} BEGIN
+         INSERT INTO sync_pending (entity, row_id, op, changed_at)
+           VALUES ('settings', COALESCE(NEW.id, NEW.key), 'upsert', ${NOW_ISO})
+           ON CONFLICT(entity, row_id) DO UPDATE SET op = excluded.op, changed_at = excluded.changed_at;
+         END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_sync_settings_del AFTER DELETE ON settings
+         WHEN ${NOT_APPLYING} BEGIN
+         INSERT INTO sync_pending (entity, row_id, op, changed_at)
+           VALUES ('settings', COALESCE(OLD.id, OLD.key), 'delete', ${NOW_ISO})
+           ON CONFLICT(entity, row_id) DO UPDATE SET op = excluded.op, changed_at = excluded.changed_at;
+         END;`,
+      ...syncTriggerStatements('goals'),
+      // Backfill everything that now syncs by default, so devices upgrading
+      // to v10 push their full training + goals + settings state on the next
+      // sync instead of only future edits.
+      ...seedPendingStatements([...TRAINING_SYNC_TABLES, 'goals', 'settings']),
     ],
   },
 ];

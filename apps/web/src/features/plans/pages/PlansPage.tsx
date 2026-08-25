@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
   Download,
@@ -13,7 +12,6 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
-import { isTrainingSyncEnabled } from '@/lib/sync/engine';
 import type {
   PlanDiet,
   PlanDifficulty,
@@ -150,7 +148,6 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
   const setDay = useSetPlanDay();
   const deletePlan = useDeletePlan();
   const setLocalOnly = useSetPlanLocalOnly();
-  const trainingSync = useQuery({ queryKey: ['sync', 'training'], queryFn: isTrainingSyncEnabled });
   const share = useSharePlan();
   const sendPlan = useSendPlan();
   const shared = useSharedPlans();
@@ -257,38 +254,44 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
       <div className="mt-3 space-y-2 border-t border-line pt-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted">Sharing</span>
+          {/* One control, four levels: the first three all sync to your
+              account and differ only in who can SEE the plan; "device only"
+              is the odd one out — it un-syncs the plan entirely. */}
           <select
-            value={plan.visibility}
-            onChange={(e) => republish({ visibility: e.target.value as PlanVisibility })}
+            value={plan.localOnly ? 'device' : plan.visibility}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === 'device') {
+                setLocalOnly.mutate({ planId: plan.id, localOnly: true });
+                // Un-publish too — a device-only plan shouldn't stay visible.
+                if (plan.visibility !== 'private') republish({ visibility: 'private' });
+              } else {
+                if (plan.localOnly) setLocalOnly.mutate({ planId: plan.id, localOnly: false });
+                republish({ visibility: value as PlanVisibility });
+              }
+            }}
             aria-label={`${plan.name} visibility`}
-            className="rounded-xl border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
+            className="min-w-0 max-w-full rounded-xl border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
           >
-            <option value="private">
-              {trainingSync.data ? 'Private — just you, synced to your devices' : 'Private — only this device'}
-            </option>
-            <option value="friends">Friends (coming with the friends system)</option>
+            <option value="private">Private — just you, still syncs</option>
+            <option value="friends">Friends only — syncs (coming soon)</option>
             <option value="public">Public — anyone can import</option>
+            <option value="device">Device only — never syncs</option>
           </select>
-          {share.isPending && <span className="text-xs text-muted">Saving…</span>}
+          {(share.isPending || setLocalOnly.isPending) && (
+            <span className="text-xs text-muted">Saving…</span>
+          )}
           {share.isError && <span className="text-xs text-rose-500">{share.error.message}</span>}
           {share.isSuccess && !share.isPending && (
             <span className="text-xs text-accent">Sharing updated ✓</span>
           )}
+          {plan.localOnly && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <MonitorSmartphone size={12} aria-hidden />
+              pinned to this device
+            </span>
+          )}
         </div>
-
-        {trainingSync.data && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
-            <input
-              type="checkbox"
-              checked={plan.localOnly}
-              disabled={setLocalOnly.isPending}
-              onChange={(e) => setLocalOnly.mutate({ planId: plan.id, localOnly: e.target.checked })}
-              className="h-3.5 w-3.5"
-            />
-            <MonitorSmartphone size={13} aria-hidden />
-            Keep this plan on this device only (removes it from sync and other devices)
-          </label>
-        )}
 
         {plan.visibility !== 'private' && (
           <>

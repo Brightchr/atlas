@@ -68,8 +68,8 @@ export async function readTrainingProfile(): Promise<TrainingProfile | null> {
 async function writeTrainingProfile(profile: TrainingProfile): Promise<void> {
   const db = await getDb();
   await db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [KEY, JSON.stringify(profile)],
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [KEY, KEY, JSON.stringify(profile)],
   );
   await persist();
 }

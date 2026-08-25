@@ -37,8 +37,8 @@ async function readSetup(): Promise<TrainingSetup> {
 async function writeSetup(setup: TrainingSetup): Promise<void> {
   const db = await getDb();
   await db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [KEY, JSON.stringify(setup)],
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [KEY, KEY, JSON.stringify(setup)],
   );
   await persist();
 }

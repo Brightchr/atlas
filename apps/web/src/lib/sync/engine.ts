@@ -1,7 +1,12 @@
 import { queryClient } from '@/app/providers';
 import { apiFetch } from '@/lib/api';
 import { getDb, newId, onPersist, persist } from '@/lib/db';
-import { SYNCED_TABLES, TRAINING_SYNC_TABLES, seedPendingStatements } from '@/lib/db/schema';
+import {
+  EXTRA_SYNC_TABLES,
+  SYNCED_TABLES,
+  TRAINING_SYNC_TABLES,
+  seedPendingStatements,
+} from '@/lib/db/schema';
 
 /** Device sync engine — local-first with a server relay.
  *
@@ -19,14 +24,16 @@ import { SYNCED_TABLES, TRAINING_SYNC_TABLES, seedPendingStatements } from '@/li
 const PUSH_BATCH = 400;
 const WRITE_DEBOUNCE_MS = 2_500;
 const PERIODIC_MS = 5 * 60 * 1000;
+const BASE_TABLES = [...SYNCED_TABLES, ...EXTRA_SYNC_TABLES];
+
 /** The entities this sync pass covers — refreshed at the start of every
  * syncNow because training sync is a user setting, not a constant. */
-let SYNCED = new Set<string>(SYNCED_TABLES);
+let SYNCED = new Set<string>(BASE_TABLES);
 
 async function refreshSyncedSet(): Promise<void> {
   SYNCED = (await isTrainingSyncEnabled())
-    ? new Set<string>([...SYNCED_TABLES, ...TRAINING_SYNC_TABLES])
-    : new Set<string>(SYNCED_TABLES);
+    ? new Set<string>([...BASE_TABLES, ...TRAINING_SYNC_TABLES])
+    : new Set<string>(BASE_TABLES);
 }
 
 export interface SyncState {
@@ -86,10 +93,10 @@ export async function isSyncEnabled(): Promise<boolean> {
   return (await getMeta('enabled')) !== '0'; // on by default
 }
 
-/** Training data (plans, workouts, session history) is an opt-in: OFF by
- * default, so training stays on-device unless the user asks for sync. */
+/** Training data (plans, workouts, session history) syncs BY DEFAULT — the
+ * flag is an opt-out for people who want training kept on-device. */
 export async function isTrainingSyncEnabled(): Promise<boolean> {
-  return (await getMeta('trainingSync')) === '1';
+  return (await getMeta('trainingSync')) !== '0';
 }
 
 /** Plans the user pinned to this device — never pushed, and remote changes
@@ -413,8 +420,8 @@ export async function syncNow(): Promise<void> {
  * tables plus training when its opt-in is on. */
 async function activeSeedStatements(): Promise<string[]> {
   const tables = (await isTrainingSyncEnabled())
-    ? [...SYNCED_TABLES, ...TRAINING_SYNC_TABLES]
-    : [...SYNCED_TABLES];
+    ? [...BASE_TABLES, ...TRAINING_SYNC_TABLES]
+    : [...BASE_TABLES];
   return seedPendingStatements(tables);
 }
 

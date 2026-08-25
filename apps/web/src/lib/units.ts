@@ -57,8 +57,8 @@ async function readUnits(): Promise<UnitSystem> {
 async function writeUnits(units: UnitSystem): Promise<void> {
   const db = await getDb();
   await db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [UNITS_KEY, units],
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [UNITS_KEY, UNITS_KEY, units],
   );
   await persist();
 }

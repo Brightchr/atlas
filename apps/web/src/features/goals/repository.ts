@@ -14,8 +14,8 @@ async function getSetting<T>(key: string): Promise<T | null> {
 async function setSetting(key: string, value: unknown): Promise<void> {
   const db = await getDb();
   await db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [key, JSON.stringify(value)],
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [key, key, JSON.stringify(value)],
   );
   await persist();
 }

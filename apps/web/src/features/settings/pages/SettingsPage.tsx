@@ -52,7 +52,7 @@ function SyncSection() {
     queryKey: ['sync', 'training'],
     queryFn: isTrainingSyncEnabled,
   });
-  const trainingOn = trainingQuery.data ?? false;
+  const trainingOn = trainingQuery.data ?? true;
   const toggleTraining = useMutation({
     mutationFn: setTrainingSyncEnabled,
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['sync', 'training'] }),
@@ -118,11 +118,11 @@ function SyncSection() {
         <div className="mt-3 rounded-xl border border-line bg-elev/40 p-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold">Also sync training</p>
+              <p className="text-sm font-semibold">Sync training data</p>
               <p className="text-xs text-muted">
-                Off by default — workout plans, workouts and logged sessions stay on this device
-                unless you opt in. Turn it on and they follow you across devices too (private to
-                your account; sharing stays a separate, per-plan choice).
+                On by default — workout plans, workouts and logged sessions follow you across
+                devices, private to your account. Turn it off to keep training on this device
+                only; individual plans can also be pinned per-plan from the Plans page.
               </p>
             </div>
             <button
@@ -143,10 +143,10 @@ function SyncSection() {
               />
             </button>
           </div>
-          {trainingOn && (
-            <p className="mt-2 text-xs text-muted">
-              Individual plans can still be pinned to one device from the Plans page. Turning this
-              off stops future syncing but leaves what's already backed up.
+          {!trainingOn && (
+            <p className="mt-2 text-xs text-amber-600">
+              Training sync is off — new workouts, plans and sessions stay on this device.
+              What's already backed up stays on the server.
             </p>
           )}
         </div>

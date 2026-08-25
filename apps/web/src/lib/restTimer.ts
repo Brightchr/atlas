@@ -18,8 +18,8 @@ async function readEnabled(): Promise<boolean> {
 async function writeEnabled(enabled: boolean): Promise<void> {
   const db = await getDb();
   await db.run(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [KEY, enabled ? '1' : '0'],
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [KEY, KEY, enabled ? '1' : '0'],
   );
   await persist();
 }
