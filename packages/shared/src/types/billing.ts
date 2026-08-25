@@ -7,6 +7,8 @@ export interface BillingStatus {
   planExpiresAt: string | null;
   trialEndsAt: string | null;
   membership: MembershipStatus;
+  /** Admin-granted complimentary access — membership resolves to 'pro'. */
+  comped: boolean;
   /** Monthly price in whole USD (display; the processor is authoritative). */
   priceUsd: number;
   redemptions: PromoRedemption[];

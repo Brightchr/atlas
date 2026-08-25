@@ -11,6 +11,7 @@ import {
   useAdminUsers,
   useBanUser,
   useImpersonate,
+  useSetExempt,
   useSetPlan,
   useSetRole,
   useUnbanUser,
@@ -31,11 +32,23 @@ function StatusBadge({ user }: { user: AdminUser }) {
       </span>
     );
   }
-  const membership = resolveMembership(user.plan, user.planExpiresAt, user.trialEndsAt);
+  const membership = resolveMembership(
+    user.plan,
+    user.planExpiresAt,
+    user.trialEndsAt,
+    user.comped,
+  );
   if (user.role !== 'user') {
     return (
       <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
         Staff
+      </span>
+    );
+  }
+  if (user.comped) {
+    return (
+      <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-semibold text-violet-500">
+        Comped
       </span>
     );
   }
@@ -144,6 +157,7 @@ export function UsersSection({ me }: { me: AuthUser }) {
   const impersonate = useImpersonate();
   const setRole = useSetRole();
   const setPlan = useSetPlan();
+  const setExempt = useSetExempt();
 
   return (
     <section className="space-y-3">
@@ -220,6 +234,17 @@ export function UsersSection({ me }: { me: AuthUser }) {
                       </option>
                     ))}
                   </select>
+                  <label
+                    className="mt-1.5 flex items-center gap-1.5 text-xs text-muted"
+                    title="Full access without a subscription (owner, friends, partners)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={u.comped}
+                      onChange={(e) => setExempt.mutate({ userId: u.id, comped: e.target.checked })}
+                    />
+                    Exempt
+                  </label>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-muted">
                   {new Date(u.createdAt).toLocaleDateString()}

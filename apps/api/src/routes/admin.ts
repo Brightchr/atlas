@@ -33,10 +33,11 @@ interface AuthUserRow {
   plan: MembershipPlan;
   plan_expires_at: string | null;
   trial_ends_at: string | null;
+  comped: boolean;
   created_at: string;
 }
 const AUTH_USER_COLUMNS =
-  'id, email, username, role, plan, plan_expires_at, trial_ends_at, created_at';
+  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, created_at';
 
 function toAuthUser(row: AuthUserRow): AuthUser {
   return {
@@ -46,7 +47,7 @@ function toAuthUser(row: AuthUserRow): AuthUser {
     role: row.role,
     plan: effectivePlan(row.plan, row.plan_expires_at),
     trialEndsAt: row.trial_ends_at,
-    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at),
+    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
     createdAt: row.created_at,
   };
 }
@@ -128,6 +129,7 @@ adminRoutes.get('/users', async (c) => {
     plan: string;
     plan_expires_at: string | null;
     trial_ends_at: string | null;
+    comped: boolean;
     status: string;
     banned_at: string | null;
     ban_reason: string | null;
@@ -137,7 +139,7 @@ adminRoutes.get('/users', async (c) => {
     last_ip: string | null;
   }>(
     `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
-            u.status, u.banned_at, u.ban_reason, u.created_at,
+            u.comped, u.status, u.banned_at, u.ban_reason, u.created_at,
             count(s.id) FILTER (WHERE s.expires_at > now()) AS active_sessions,
             max(s.created_at) AS last_login,
             (array_agg(s.ip ORDER BY s.created_at DESC) FILTER (WHERE s.ip IS NOT NULL))[1] AS last_ip
@@ -158,6 +160,7 @@ adminRoutes.get('/users', async (c) => {
       plan: u.plan,
       planExpiresAt: u.plan_expires_at,
       trialEndsAt: u.trial_ends_at,
+      comped: u.comped,
       status: u.status,
       bannedAt: u.banned_at,
       banReason: u.ban_reason,
@@ -167,6 +170,23 @@ adminRoutes.get('/users', async (c) => {
       lastIp: u.last_ip,
     })),
   });
+});
+
+const exemptSchema = z.object({ comped: z.boolean() });
+
+/** Complimentary access: full membership without a subscription (owner,
+ * friends, partners). Takes effect on the target's next session load. */
+adminRoutes.patch('/users/:id/exempt', zValidator('json', exemptSchema), async (c) => {
+  const admin = c.get('user')!;
+  const targetId = c.req.param('id');
+  const { comped } = c.req.valid('json');
+  const rows = await query<{ id: string }>(
+    'UPDATE users SET comped = $1 WHERE id = $2 RETURNING id',
+    [comped, targetId],
+  );
+  if (rows.length === 0) return c.json({ error: 'User not found' }, 404);
+  await logAudit(admin.id, 'set_comped', 'user', targetId, { comped });
+  return c.json({ ok: true, comped });
 });
 
 /* ---- Bans: account-level lockout, effective on the next request ---- */

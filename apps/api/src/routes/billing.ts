@@ -20,10 +20,12 @@ billingRoutes.use('*', requireAuth);
 
 billingRoutes.get('/', async (c) => {
   const user = c.get('user')!;
-  const [row] = await query<{ plan: 'free' | 'pro'; plan_expires_at: string | null; trial_ends_at: string | null }>(
-    'SELECT plan, plan_expires_at, trial_ends_at FROM users WHERE id = $1',
-    [user.id],
-  );
+  const [row] = await query<{
+    plan: 'free' | 'pro';
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
+    comped: boolean;
+  }>('SELECT plan, plan_expires_at, trial_ends_at, comped FROM users WHERE id = $1', [user.id]);
   if (!row) return c.json({ error: 'User not found' }, 404);
 
   const redemptions = await query<{
@@ -43,7 +45,8 @@ billingRoutes.get('/', async (c) => {
     plan: effectivePlan(row.plan, row.plan_expires_at),
     planExpiresAt: row.plan_expires_at,
     trialEndsAt: row.trial_ends_at,
-    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at),
+    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
+    comped: row.comped,
     priceUsd: MONTHLY_PRICE_USD,
     redemptions: redemptions.map((r) => ({
       code: r.code,

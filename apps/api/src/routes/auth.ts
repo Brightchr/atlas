@@ -99,11 +99,13 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     plan: 'free' | 'pro';
     plan_expires_at: string | null;
     trial_ends_at: string | null;
+    comped: boolean;
     status: string;
     created_at: string;
     password_hash: string;
   }>(
-    `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, status, created_at, password_hash
+    `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status,
+            created_at, password_hash
        FROM users WHERE email = $1`,
     [email],
   );
@@ -136,7 +138,7 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       role: user.role,
       plan: effectivePlan(user.plan, user.plan_expires_at),
       trialEndsAt: user.trial_ends_at,
-      membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at),
+      membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at, user.comped),
       createdAt: user.created_at,
     },
     token,

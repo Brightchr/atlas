@@ -387,6 +387,15 @@ const migrations: { id: string; sql: string }[] = [
         ON reports(reporter_user_id, target_type, target_id) WHERE status = 'open';
     `,
   },
+  {
+    id: '017_comped',
+    sql: `
+      -- Complimentary access: an admin-granted exemption from the
+      -- subscription (owner, friends, partners). A separate axis from plan so
+      -- comping never fights the payment processor's idea of what was bought.
+      ALTER TABLE users ADD COLUMN comped boolean NOT NULL DEFAULT false;
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

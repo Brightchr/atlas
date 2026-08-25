@@ -7,7 +7,11 @@ function membershipLine(status: {
   membership: string;
   planExpiresAt: string | null;
   trialEndsAt: string | null;
+  comped: boolean;
 }): string {
+  if (status.comped) {
+    return 'Complimentary access — no subscription needed.';
+  }
   if (status.membership === 'pro') {
     return status.planExpiresAt
       ? `Full access until ${new Date(status.planExpiresAt).toLocaleDateString()}.`

@@ -43,11 +43,12 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
     plan: AuthUser['plan'];
     plan_expires_at: string | null;
     trial_ends_at: string | null;
+    comped: boolean;
     created_at: string;
     impersonator_user_id: string | null;
   }>(
     `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
-            u.created_at, s.impersonator_user_id
+            u.comped, u.created_at, s.impersonator_user_id
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()
         -- A ban takes effect on the very next request, on every device.
@@ -66,7 +67,7 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
       // downstream (requirePro, membership gates, the UI) sees resolved values.
       plan: effectivePlan(row.plan, row.plan_expires_at),
       trialEndsAt: row.trial_ends_at,
-      membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at),
+      membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
       createdAt: row.created_at,
     },
     impersonatorId: row.impersonator_user_id,

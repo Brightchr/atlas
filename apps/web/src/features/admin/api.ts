@@ -28,6 +28,7 @@ export interface AdminUser {
   plan: MembershipPlan;
   planExpiresAt: string | null;
   trialEndsAt: string | null;
+  comped: boolean;
   status: 'active' | 'banned';
   bannedAt: string | null;
   banReason: string | null;
@@ -127,6 +128,18 @@ export function useTogglePromotion() {
         body: JSON.stringify({ active }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'promotions'] }),
+  });
+}
+
+export function useSetExempt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, comped }: { userId: string; comped: boolean }) =>
+      apiFetch<{ ok: boolean }>(`/v1/admin/users/${userId}/exempt`, {
+        method: 'PATCH',
+        body: JSON.stringify({ comped }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
   });
 }
 
