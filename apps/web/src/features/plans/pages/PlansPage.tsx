@@ -274,7 +274,7 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
             className="min-w-0 max-w-full rounded-xl border border-line bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
           >
             <option value="private">Private — just you, still syncs</option>
-            <option value="friends">Friends only — syncs (coming soon)</option>
+            <option value="friends">Friends only — syncs, friends can see it</option>
             <option value="public">Public — anyone can import</option>
             <option value="device">Device only — never syncs</option>
           </select>
