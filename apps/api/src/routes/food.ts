@@ -56,7 +56,9 @@ interface SourcePage {
 
 async function searchOff(term: string, page: number): Promise<SourcePage> {
   const url = new URL(SEARCH_URL);
-  url.searchParams.set('q', term);
+  // US-market filter: OFF's international community data is where the noisy
+  // entries and stray photos come from; the app's audience is US-first.
+  url.searchParams.set('q', `${term} countries_tags:"en:united-states"`);
   url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', '20');
   url.searchParams.set('fields', FIELDS);
@@ -188,8 +190,12 @@ async function searchFood(term: string, page: number): Promise<SearchResult> {
   const fdcPage = fdc.status === 'fulfilled' ? fdc.value : { products: [], pageCount: 1 };
   const offPage = off.status === 'fulfilled' ? off.value : { products: [], pageCount: 1 };
 
+  // USDA leads; OFF only fills the gaps. When FDC delivered a real page,
+  // community rows are capped so curated data dominates the list — OFF only
+  // takes over fully when USDA had nothing (or its request failed).
+  const offCap = fdcPage.products.length >= 8 ? 6 : 20;
   const seen = new Set<string>();
-  const products = [...fdcPage.products, ...offPage.products].filter((p) => {
+  const products = [...fdcPage.products, ...offPage.products.slice(0, offCap)].filter((p) => {
     if (seen.has(p.code)) return false;
     seen.add(p.code);
     return true;
@@ -208,6 +214,15 @@ async function searchFood(term: string, page: number): Promise<SearchResult> {
   }
   cache.set(key, { at: Date.now(), result });
   return result;
+}
+
+// A missing key silently degrades search to community data only — the exact
+// failure users report as "the food database is bad". Make it loud.
+if (env.fdcApiKey === 'DEMO_KEY') {
+  console.warn(
+    'FDC_API_KEY is not set — USDA food search runs on DEMO_KEY (~50 requests/day, exhausts in minutes). ' +
+      'Get a free key at https://fdc.nal.usda.gov/api-key-signup.html and set FDC_API_KEY.',
+  );
 }
 
 export const foodRoutes = new Hono();
