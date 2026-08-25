@@ -8,6 +8,7 @@ import { env } from './lib/env';
 import { sessionMiddleware, type AppEnv } from './middleware/auth';
 import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
+import { billingRoutes } from './routes/billing';
 import { foodRoutes } from './routes/food';
 import { healthRoutes } from './routes/health';
 import { notificationRoutes } from './routes/notifications';
@@ -56,6 +57,7 @@ app.route('/v1/plans', planRoutes);
 app.route('/v1/sync', syncRoutes);
 app.route('/v1/profiles', profileRoutes);
 app.route('/v1/admin', adminRoutes);
+app.route('/v1/billing', billingRoutes);
 // The social group's requireAuth is scoped to its own prefixes (friends,
 // groups, stats), so mount order is a style choice here, not load-bearing.
 app.route('/v1', socialRoutes);

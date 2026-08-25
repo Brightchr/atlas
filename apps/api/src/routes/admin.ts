@@ -157,7 +157,16 @@ adminRoutes.get('/promotions', async (c) => {
     active: boolean;
     starts_at: string;
     ends_at: string | null;
-  }>('SELECT * FROM promotions ORDER BY created_at DESC LIMIT 100');
+    max_redemptions: number | null;
+    grant_days: number | null;
+    redemptions: string;
+  }>(
+    `SELECT p.*, count(r.id) AS redemptions
+       FROM promotions p LEFT JOIN promo_redemptions r ON r.promotion_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+      LIMIT 100`,
+  );
   return c.json({
     promotions: rows.map((p) => ({
       id: p.id,
@@ -167,6 +176,9 @@ adminRoutes.get('/promotions', async (c) => {
       active: p.active,
       startsAt: p.starts_at,
       endsAt: p.ends_at,
+      maxRedemptions: p.max_redemptions,
+      grantDays: p.grant_days,
+      redemptions: Number(p.redemptions),
     })),
   });
 });
@@ -179,15 +191,23 @@ const promotionSchema = z.object({
     .regex(/^[A-Z0-9_-]+$/i, 'Letters, numbers, dashes'),
   description: z.string().max(200).default(''),
   discountPercent: z.number().int().min(1).max(100),
+  maxRedemptions: z.number().int().min(1).max(1_000_000).nullish(),
+  grantDays: z.number().int().min(1).max(3650).nullish(),
 });
 
 adminRoutes.post('/promotions', zValidator('json', promotionSchema), async (c) => {
   const admin = c.get('user')!;
   const body = c.req.valid('json');
   const rows = await query<{ id: string }>(
-    `INSERT INTO promotions (code, description, discount_percent)
-     VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING RETURNING id`,
-    [body.code.toUpperCase(), body.description, body.discountPercent],
+    `INSERT INTO promotions (code, description, discount_percent, max_redemptions, grant_days)
+     VALUES ($1, $2, $3, $4, $5) ON CONFLICT (code) DO NOTHING RETURNING id`,
+    [
+      body.code.toUpperCase(),
+      body.description,
+      body.discountPercent,
+      body.maxRedemptions ?? null,
+      body.grantDays ?? null,
+    ],
   );
   if (rows.length === 0) return c.json({ error: 'Code already exists' }, 409);
   await logAudit(admin.id, 'create_promotion', 'promotion', rows[0]!.id, { code: body.code });

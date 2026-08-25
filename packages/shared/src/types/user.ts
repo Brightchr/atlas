@@ -31,4 +31,10 @@ export interface Promotion {
   active: boolean;
   startsAt: string;
   endsAt: string | null;
+  /** Redemption cap across all users; null = unlimited. */
+  maxRedemptions: number | null;
+  /** Days of pro granted instantly on redemption; null = checkout discount. */
+  grantDays: number | null;
+  /** How many users have redeemed it (admin listing). */
+  redemptions: number;
 }

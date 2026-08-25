@@ -301,6 +301,29 @@ const migrations: { id: string; sql: string }[] = [
       UPDATE users SET trial_ends_at = now() + interval '7 days';
     `,
   },
+  {
+    id: '013_promo_redemptions',
+    sql: `
+      -- Redemption controls. max_redemptions NULL = unlimited. grant_days set
+      -- means the code grants pro time immediately on redemption (comp/launch
+      -- codes); NULL means it is a checkout discount, held until the payment
+      -- processor lands and applied to the first invoice.
+      ALTER TABLE promotions
+        ADD COLUMN max_redemptions integer CHECK (max_redemptions > 0),
+        ADD COLUMN grant_days integer CHECK (grant_days > 0);
+
+      -- One redemption per user per code, enforced by the database — the
+      -- application check alone would race under concurrent requests.
+      CREATE TABLE promo_redemptions (
+        id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        promotion_id uuid NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+        user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (promotion_id, user_id)
+      );
+      CREATE INDEX promo_redemptions_user_idx ON promo_redemptions(user_id, created_at DESC);
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */
