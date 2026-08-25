@@ -27,14 +27,15 @@ export default defineConfig({
     exclude: ['jeep-sqlite'],
   },
   server: {
-    // 5174: this machine's WSL relay tends to squat on 5173
-    port: 5174,
+    // 5174: this machine's WSL relay tends to squat on 5173. PORT lets a
+    // second checkout (git worktree) run its own dev server alongside.
+    port: Number(process.env.PORT ?? 5174),
     // Same-origin API in dev: the browser calls /v1/* on this server, which
     // forwards to the API. 127.0.0.1 (not localhost) dodges IPv6 resolution
     // quirks where another process squats on ::1.
     proxy: {
-      '/v1': 'http://127.0.0.1:3000',
-      '/health': 'http://127.0.0.1:3000',
+      '/v1': process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3000',
+      '/health': process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:3000',
     },
   },
 });
