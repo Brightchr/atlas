@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { AuthUser } from '@arcadia/shared';
+import { effectivePlan, resolveMembership, type AuthUser } from '@arcadia/shared';
 import { query } from '../db/pool';
 
 const SESSION_DAYS = 30;
@@ -39,12 +39,13 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
     username: string;
     role: AuthUser['role'];
     plan: AuthUser['plan'];
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
     created_at: string;
     impersonator_user_id: string | null;
   }>(
-    `SELECT u.id, u.email, u.username, u.role, u.created_at, s.impersonator_user_id,
-            CASE WHEN u.plan = 'pro' AND u.plan_expires_at IS NOT NULL AND u.plan_expires_at < now()
-                 THEN 'free' ELSE u.plan END AS plan
+    `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
+            u.created_at, s.impersonator_user_id
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()`,
     [hashToken(token)],
@@ -57,7 +58,11 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
       email: row.email,
       username: row.username,
       role: row.role,
-      plan: row.plan,
+      // Plan expiry and trial windows are applied here, once — everything
+      // downstream (requirePro, membership gates, the UI) sees resolved values.
+      plan: effectivePlan(row.plan, row.plan_expires_at),
+      trialEndsAt: row.trial_ends_at,
+      membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at),
       createdAt: row.created_at,
     },
     impersonatorId: row.impersonator_user_id,

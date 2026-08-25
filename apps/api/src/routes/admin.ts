@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { effectivePlan, resolveMembership, type AuthUser, type MembershipPlan, type UserRole } from '@arcadia/shared';
 import { query } from '../db/pool';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
@@ -20,6 +21,34 @@ function setSessionCookie(c: Context, token: string, expiresAt: Date) {
 
 export const adminRoutes = new Hono<AppEnv>();
 
+/** Row → AuthUser for endpoints whose response lands in the client's session
+ * cache (impersonation) — must match what /auth/me returns. */
+interface AuthUserRow {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  plan: MembershipPlan;
+  plan_expires_at: string | null;
+  trial_ends_at: string | null;
+  created_at: string;
+}
+const AUTH_USER_COLUMNS =
+  'id, email, username, role, plan, plan_expires_at, trial_ends_at, created_at';
+
+function toAuthUser(row: AuthUserRow): AuthUser {
+  return {
+    id: row.id,
+    email: row.email,
+    username: row.username,
+    role: row.role,
+    plan: effectivePlan(row.plan, row.plan_expires_at),
+    trialEndsAt: row.trial_ends_at,
+    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at),
+    createdAt: row.created_at,
+  };
+}
+
 /** Ending a masquerade must work for the *impersonated* (non-admin) session,
  * so it only requires auth — everything else below requires the admin role. */
 adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
@@ -33,11 +62,11 @@ adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
   // Hand the admin a fresh session of their own so they land back seamlessly.
   const { token: adminToken, expiresAt } = await createSession(impersonatorId);
   setSessionCookie(c, adminToken, expiresAt);
-  const rows = await query<{ id: string; email: string; username: string; role: string; plan: string; created_at: string }>(
-    'SELECT id, email, username, role, plan, created_at FROM users WHERE id = $1',
+  const rows = await query<AuthUserRow>(
+    `SELECT ${AUTH_USER_COLUMNS} FROM users WHERE id = $1`,
     [impersonatorId],
   );
-  return c.json({ user: rows[0] ?? null, token: adminToken });
+  return c.json({ user: rows[0] ? toAuthUser(rows[0]) : null, token: adminToken });
 });
 
 adminRoutes.use('*', requireRole('admin'));
@@ -181,8 +210,8 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
 
-  const rows = await query<{ id: string; email: string; username: string; role: string; plan: string; created_at: string }>(
-    'SELECT id, email, username, role, plan, created_at FROM users WHERE id = $1',
+  const rows = await query<AuthUserRow>(
+    `SELECT ${AUTH_USER_COLUMNS} FROM users WHERE id = $1`,
     [targetId],
   );
   const target = rows[0];
@@ -196,7 +225,7 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   // they live one hour, not the standard thirty days.
   const { token, expiresAt } = await createSession(target.id, admin.id, 60 * 60 * 1000);
   setSessionCookie(c, token, expiresAt);
-  return c.json({ user: target, token });
+  return c.json({ user: toAuthUser(target), token });
 });
 
 const roleSchema = z.object({ role: z.enum(['user', 'moderator', 'admin']) });

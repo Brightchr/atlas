@@ -288,6 +288,19 @@ const migrations: { id: string; sql: string }[] = [
       ALTER TABLE users ADD COLUMN last_seen_at timestamptz;
     `,
   },
+  {
+    id: '012_trial',
+    sql: `
+      -- Every signup starts a 7-day trial (the default fires at INSERT time,
+      -- so registration needs no extra step). Membership is derived at read
+      -- time: paid plan > unexpired trial > expired. Existing accounts get a
+      -- fresh 7 days from this deploy rather than a retroactive window that
+      -- could lock them out the moment the paywall ships.
+      ALTER TABLE users
+        ADD COLUMN trial_ends_at timestamptz DEFAULT (now() + interval '7 days');
+      UPDATE users SET trial_ends_at = now() + interval '7 days';
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

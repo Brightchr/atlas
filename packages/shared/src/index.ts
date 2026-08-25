@@ -6,3 +6,4 @@ export * from './types/nutrition';
 export * from './types/plan';
 export * from './types/shopping';
 export * from './types/social';
+export * from './membership';

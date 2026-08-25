@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { effectivePlan, resolveMembership } from '@arcadia/shared';
 import { query } from '../db/pool';
 import { env } from '../lib/env';
 import { createNotification } from '../lib/notify';
@@ -47,11 +48,11 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
   const email = body.email.trim().toLowerCase();
   const passwordHash = await hashPassword(body.password);
 
-  const rows = await query<{ id: string; created_at: string }>(
+  const rows = await query<{ id: string; created_at: string; trial_ends_at: string }>(
     `INSERT INTO users (email, username, password_hash)
      VALUES ($1, $2, $3)
      ON CONFLICT DO NOTHING
-     RETURNING id, created_at`,
+     RETURNING id, created_at, trial_ends_at`,
     [email, body.username, passwordHash],
   );
   if (rows.length === 0) {
@@ -74,6 +75,8 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
         username: body.username,
         role: 'user',
         plan: 'free',
+        trialEndsAt: rows[0]!.trial_ends_at,
+        membership: 'trial', // the INSERT default just started the 7-day window
         createdAt: rows[0]!.created_at,
       },
       // Also returned in the body for the native app, which uses Bearer auth
@@ -93,11 +96,14 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     email: string;
     username: string;
     role: string;
-    plan: string;
+    plan: 'free' | 'pro';
+    plan_expires_at: string | null;
+    trial_ends_at: string | null;
     created_at: string;
     password_hash: string;
   }>(
-    'SELECT id, email, username, role, plan, created_at, password_hash FROM users WHERE email = $1',
+    `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, created_at, password_hash
+       FROM users WHERE email = $1`,
     [email],
   );
   const user = rows[0];
@@ -121,7 +127,9 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       email: user.email,
       username: user.username,
       role: user.role,
-      plan: user.plan,
+      plan: effectivePlan(user.plan, user.plan_expires_at),
+      trialEndsAt: user.trial_ends_at,
+      membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at),
       createdAt: user.created_at,
     },
     token,
