@@ -198,7 +198,10 @@ export function AppLayout() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />
-          <main className="flex-1 overflow-y-auto pb-28 md:pb-6">
+          {/* overflow-x-hidden: one over-wide component must never give the
+              whole app a sideways scroll on phones — wide content scrolls
+              inside its own overflow-x-auto container instead. */}
+          <main className="flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-6">
             <Outlet />
           </main>
         </div>

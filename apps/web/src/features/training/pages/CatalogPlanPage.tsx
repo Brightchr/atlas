@@ -215,8 +215,11 @@ export function CatalogPlanPage() {
           </div>
           <ul className="mt-2 divide-y divide-line">
             {guide.diet.shopping.map((item) => (
-              <li key={item.name} className="flex items-baseline gap-3 py-1.5">
-                <span className="w-44 shrink-0 text-sm font-medium">
+              <li
+                key={item.name}
+                className="flex flex-col gap-0.5 py-1.5 sm:flex-row sm:items-baseline sm:gap-3"
+              >
+                <span className="shrink-0 text-sm font-medium sm:w-44">
                   {item.name}
                   <span className="ml-1.5 text-xs font-normal text-muted">{item.quantity}</span>
                 </span>
