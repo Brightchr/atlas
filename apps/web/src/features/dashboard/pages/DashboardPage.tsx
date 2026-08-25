@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
+  Check,
   ChevronRight,
   Dumbbell,
+  LayoutGrid,
+  RotateCcw,
   Search,
   ShoppingCart,
   Target,
@@ -25,9 +29,17 @@ import { StatTile } from '@/components/StatTile';
 import { RingTile } from '@/components/Ring';
 import { WeekStrip } from '@/components/WeekStrip';
 import { TodayCard } from '@/features/training/TodayCard';
+import { ArrangeableList, type ArrangeableItem } from '../components/ArrangeableList';
 import { PromoBanner } from '../components/PromoBanner';
 import { GoalsCard, VolumeCard, WeightCard } from '../components/ProgressCards';
 import { WeeklyPulse } from '../components/WeeklyPulse';
+import {
+  isDefaultOrder,
+  loadCardOrder,
+  resetCardOrder,
+  saveCardOrder,
+  type DashboardCardId,
+} from '../layout';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -92,9 +104,221 @@ export function DashboardPage() {
   const plannedMealsToday = (mealPlanQuery.data ?? []).filter((m) => m.dayOfWeek === todayDow);
   const toBuy = (shoppingQuery.data ?? []).filter((i) => i.status === 'needed').length;
 
+  // The user's layout: card order persists per device; arrange mode overlays
+  // drag + move controls. The promo banner above stays pinned — it's ours.
+  const [order, setOrder] = useState<DashboardCardId[]>(loadCardOrder);
+  const [arranging, setArranging] = useState(false);
+  const move = (from: number, to: number) => {
+    setOrder((current) => {
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved!);
+      saveCardOrder(next);
+      return next;
+    });
+  };
+
+  const cardNodes: Record<DashboardCardId, { label: string; node: React.ReactNode | null }> = {
+    today: { label: 'Today', node: <TodayCard /> },
+    week: {
+      label: 'This week',
+      node: thisWeek ? <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} /> : null,
+    },
+    pulse: { label: 'Weekly pulse', node: <WeeklyPulse /> },
+    glance: {
+      label: 'At a glance',
+      node: (
+        <section aria-label="Today at a glance" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <RingTile
+            progress={targets ? totals.kcal / targets.kcal : 0}
+            centerLabel={targets ? `${Math.round((totals.kcal / targets.kcal) * 100)}%` : '—'}
+            title={`${Math.round(totals.kcal).toLocaleString()} kcal`}
+            subtitle={targets ? `of ${targets.kcal.toLocaleString()}` : 'set targets in Goals'}
+            color="#fb923c"
+            alertOnOver
+            to="/eat"
+          />
+          <RingTile
+            progress={targets ? totals.proteinG / targets.proteinG : 0}
+            centerLabel={
+              targets ? `${Math.round((totals.proteinG / targets.proteinG) * 100)}%` : '—'
+            }
+            title={`${Math.round(totals.proteinG)} g protein`}
+            subtitle={targets ? `of ${targets.proteinG} g` : 'set targets in Goals'}
+            color="#fb7185"
+            to="/eat"
+          />
+          <RingTile
+            progress={daysTarget ? trainedDays / daysTarget : 0}
+            centerLabel={daysTarget ? `${trainedDays}/${daysTarget}` : `${trainedDays}`}
+            title="Workouts"
+            subtitle="this week"
+            to="/you"
+          />
+          <StatTile
+            label="Meals today"
+            value={`${(['breakfast', 'lunch', 'dinner'] as const).filter((m) => (diaryQuery.data ?? []).some((e) => e.meal === m)).length}/3`}
+            hint={`${(diaryQuery.data ?? []).filter((e) => e.meal === 'snack').length} snacks`}
+            Icon={UtensilsCrossed}
+            tint="emerald"
+            to="/eat"
+          />
+        </section>
+      ),
+    },
+    progress: {
+      label: 'Progress',
+      node: (
+        <section className="grid items-stretch gap-3 lg:grid-cols-3">
+          <VolumeCard />
+          <WeightCard />
+          <GoalsCard />
+        </section>
+      ),
+    },
+    logfood: {
+      label: 'Log food',
+      node: (
+        <Link
+          to="/eat"
+          className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <Search size={16} className="text-muted" aria-hidden />
+          <span className="grow text-sm text-muted">Log food — search or log again…</span>
+          <ChevronRight size={16} className="text-muted" aria-hidden />
+        </Link>
+      ),
+    },
+    planned: {
+      label: 'Planned & shopping',
+      node:
+        plannedMealsToday.length > 0 || toBuy > 0 ? (
+          <section className="grid gap-3 sm:grid-cols-2">
+            {plannedMealsToday.length > 0 && (
+              <Link
+                to="/eat/meal-plan"
+                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
+                    <UtensilsCrossed size={17} strokeWidth={1.8} aria-hidden />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">
+                      {plannedMealsToday.length} meal{plannedMealsToday.length > 1 ? 's' : ''}{' '}
+                      planned today
+                    </span>
+                    <span className="block text-xs text-muted">
+                      Open the meal plan to log them in one tap
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight size={16} className="text-muted" aria-hidden />
+              </Link>
+            )}
+            {toBuy > 0 && (
+              <Link
+                to="/eat/shopping"
+                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
+                    <ShoppingCart size={17} strokeWidth={1.8} aria-hidden />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">
+                      {toBuy} item{toBuy > 1 ? 's' : ''} on your shopping list
+                    </span>
+                    <span className="block text-xs text-muted">Groceries waiting to be bought</span>
+                  </span>
+                </span>
+                <ChevronRight size={16} className="text-muted" aria-hidden />
+              </Link>
+            )}
+          </section>
+        ) : null,
+    },
+    suggested: {
+      label: 'Suggested',
+      node: (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold">Suggested for you</h2>
+            <Link to="/you/goals" className="text-sm font-medium text-accent hover:underline">
+              Tune via goals
+            </Link>
+          </div>
+          {suggestedQuery.isError && (
+            <p className="text-sm text-rose-500">Could not reach the exercise database.</p>
+          )}
+          <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
+            {(suggestedQuery.data ?? []).map(({ exercise, reason }) => (
+              <li key={exercise.id} className="w-44 shrink-0 snap-start md:w-auto">
+                <Link
+                  to={`/exercises/${exercise.id}`}
+                  className="block h-full rounded-2xl border border-line bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-elev">
+                    {exercise.imageUrls[0] ? (
+                      <img
+                        src={exercise.imageUrls[0]}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <Dumbbell size={28} className="text-muted" strokeWidth={1.5} aria-hidden />
+                    )}
+                  </div>
+                  <p className="mt-2 truncate text-sm font-semibold">{exercise.name}</p>
+                  <p className="truncate text-xs font-medium text-accent">{reason}</p>
+                </Link>
+              </li>
+            ))}
+            {suggestedQuery.isLoading &&
+              Array.from({ length: 4 }, (_, i) => (
+                <li
+                  key={i}
+                  className="h-44 w-44 shrink-0 animate-pulse rounded-2xl bg-elev md:w-auto"
+                />
+              ))}
+          </ul>
+        </section>
+      ),
+    },
+    actions: {
+      label: 'Quick actions',
+      node: (
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold">Quick actions</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {quickActions.map(({ to, label, Icon }) => (
+              <li key={label}>
+                <Link
+                  to={to}
+                  className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
+                      <Icon size={17} strokeWidth={1.8} aria-hidden />
+                    </span>
+                    <span className="text-sm font-medium">{label}</span>
+                  </span>
+                  <ChevronRight size={16} className="text-muted" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ),
+    },
+  };
+
+  const items: ArrangeableItem[] = order.map((id) => ({ id, ...cardNodes[id] }));
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">{greeting()}</h1>
           <p className="mt-1 text-sm text-muted">
@@ -105,179 +329,39 @@ export function DashboardPage() {
             })}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          {arranging && !isDefaultOrder(order) && (
+            <button
+              type="button"
+              onClick={() => {
+                resetCardOrder();
+                setOrder(loadCardOrder());
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-elev hover:text-ink"
+            >
+              <RotateCcw size={14} aria-hidden />
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setArranging((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
+              arranging
+                ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
+                : 'border border-line text-muted hover:bg-elev hover:text-ink'
+            }`}
+          >
+            {arranging ? <Check size={14} aria-hidden /> : <LayoutGrid size={14} aria-hidden />}
+            {arranging ? 'Done' : 'Arrange'}
+          </button>
+        </div>
       </header>
 
-      {/* Hero slot — promotions and announcements we post; brand card otherwise. */}
+      {/* Hero slot — promotions and announcements we post; not arrangeable. */}
       <PromoBanner />
 
-      <TodayCard />
-
-      {thisWeek && <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} />}
-
-      <WeeklyPulse />
-
-      <section aria-label="Today at a glance" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <RingTile
-          progress={targets ? totals.kcal / targets.kcal : 0}
-          centerLabel={targets ? `${Math.round((totals.kcal / targets.kcal) * 100)}%` : '—'}
-          title={`${Math.round(totals.kcal).toLocaleString()} kcal`}
-          subtitle={targets ? `of ${targets.kcal.toLocaleString()}` : 'set targets in Goals'}
-          color="#fb923c"
-          alertOnOver
-          to="/eat"
-        />
-        <RingTile
-          progress={targets ? totals.proteinG / targets.proteinG : 0}
-          centerLabel={targets ? `${Math.round((totals.proteinG / targets.proteinG) * 100)}%` : '—'}
-          title={`${Math.round(totals.proteinG)} g protein`}
-          subtitle={targets ? `of ${targets.proteinG} g` : 'set targets in Goals'}
-          color="#fb7185"
-          to="/eat"
-        />
-        <RingTile
-          progress={daysTarget ? trainedDays / daysTarget : 0}
-          centerLabel={daysTarget ? `${trainedDays}/${daysTarget}` : `${trainedDays}`}
-          title="Workouts"
-          subtitle="this week"
-          to="/you"
-        />
-        <StatTile
-          label="Meals today"
-          value={`${(['breakfast', 'lunch', 'dinner'] as const).filter((m) => (diaryQuery.data ?? []).some((e) => e.meal === m)).length}/3`}
-          hint={`${(diaryQuery.data ?? []).filter((e) => e.meal === 'snack').length} snacks`}
-          Icon={UtensilsCrossed}
-          tint="emerald"
-          to="/eat"
-        />
-      </section>
-
-      {/* Progress, straight on the dashboard — the You section, distilled. */}
-      <section className="grid items-stretch gap-3 lg:grid-cols-3">
-        <VolumeCard />
-        <WeightCard />
-        <GoalsCard />
-      </section>
-
-      <Link
-        to="/eat"
-        className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-      >
-        <Search size={16} className="text-muted" aria-hidden />
-        <span className="grow text-sm text-muted">Log food — search or log again…</span>
-        <ChevronRight size={16} className="text-muted" aria-hidden />
-      </Link>
-
-      {(plannedMealsToday.length > 0 || toBuy > 0) && (
-        <section className="grid gap-3 sm:grid-cols-2">
-          {plannedMealsToday.length > 0 && (
-            <Link
-              to="/eat/meal-plan"
-              className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
-                  <UtensilsCrossed size={17} strokeWidth={1.8} aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold">
-                    {plannedMealsToday.length} meal{plannedMealsToday.length > 1 ? 's' : ''} planned
-                    today
-                  </span>
-                  <span className="block text-xs text-muted">
-                    Open the meal plan to log them in one tap
-                  </span>
-                </span>
-              </span>
-              <ChevronRight size={16} className="text-muted" aria-hidden />
-            </Link>
-          )}
-          {toBuy > 0 && (
-            <Link
-              to="/eat/shopping"
-              className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
-                  <ShoppingCart size={17} strokeWidth={1.8} aria-hidden />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold">
-                    {toBuy} item{toBuy > 1 ? 's' : ''} on your shopping list
-                  </span>
-                  <span className="block text-xs text-muted">Groceries waiting to be bought</span>
-                </span>
-              </span>
-              <ChevronRight size={16} className="text-muted" aria-hidden />
-            </Link>
-          )}
-        </section>
-      )}
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Suggested for you</h2>
-          <Link to="/you/goals" className="text-sm font-medium text-accent hover:underline">
-            Tune via goals
-          </Link>
-        </div>
-        {suggestedQuery.isError && (
-          <p className="text-sm text-rose-500">Could not reach the exercise database.</p>
-        )}
-        <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
-          {(suggestedQuery.data ?? []).map(({ exercise, reason }) => (
-            <li key={exercise.id} className="w-44 shrink-0 snap-start md:w-auto">
-              <Link
-                to={`/exercises/${exercise.id}`}
-                className="block h-full rounded-2xl border border-line bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-elev">
-                  {exercise.imageUrls[0] ? (
-                    <img
-                      src={exercise.imageUrls[0]}
-                      alt=""
-                      loading="lazy"
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <Dumbbell size={28} className="text-muted" strokeWidth={1.5} aria-hidden />
-                  )}
-                </div>
-                <p className="mt-2 truncate text-sm font-semibold">{exercise.name}</p>
-                <p className="truncate text-xs font-medium text-accent">{reason}</p>
-              </Link>
-            </li>
-          ))}
-          {suggestedQuery.isLoading &&
-            Array.from({ length: 4 }, (_, i) => (
-              <li
-                key={i}
-                className="h-44 w-44 shrink-0 animate-pulse rounded-2xl bg-elev md:w-auto"
-              />
-            ))}
-        </ul>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-bold">Quick actions</h2>
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {quickActions.map(({ to, label, Icon }) => (
-            <li key={label}>
-              <Link
-                to={to}
-                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <Icon size={17} strokeWidth={1.8} aria-hidden />
-                  </span>
-                  <span className="text-sm font-medium">{label}</span>
-                </span>
-                <ChevronRight size={16} className="text-muted" aria-hidden />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <ArrangeableList items={items} arranging={arranging} onMove={move} />
     </div>
   );
 }
