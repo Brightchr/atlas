@@ -66,6 +66,7 @@ export function useLogout() {
       // Evict all personal data from memory, not just the session — the next
       // user of this browser must not see the previous user's cached responses.
       queryClient.setQueryData(['auth', 'me'], null);
+      queryClient.removeQueries({ queryKey: ['billing'] });
       queryClient.removeQueries({ queryKey: ['notifications'] });
       queryClient.removeQueries({ queryKey: ['admin'] });
       queryClient.removeQueries({ queryKey: ['workouts'] });

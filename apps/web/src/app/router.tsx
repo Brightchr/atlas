@@ -3,7 +3,9 @@ import { ErrorPage } from '@/components/ErrorPage';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { EatLayout, TrainLayout, YouLayout } from '@/app/layout/SectionLayouts';
 import { RequireAuth } from '@/features/auth/components/RequireAuth';
+import { RequireMembership } from '@/features/billing/components/RequireMembership';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
+import { UpgradePage } from '@/features/billing/pages/UpgradePage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { GoalsPage } from '@/features/goals/pages/GoalsPage';
@@ -43,7 +45,9 @@ export const router = createBrowserRouter([
   {
     element: (
       <RequireAuth>
-        <AppLayout />
+        <RequireMembership>
+          <AppLayout />
+        </RequireMembership>
       </RequireAuth>
     ),
     errorElement: <ErrorPage />,
@@ -51,6 +55,7 @@ export const router = createBrowserRouter([
       { path: '/', element: <DashboardPage /> },
       { path: '/welcome', element: <WelcomePage /> },
       { path: '/admin', element: <AdminPage /> },
+      { path: '/upgrade', element: <UpgradePage /> },
 
       {
         element: <TrainLayout />,

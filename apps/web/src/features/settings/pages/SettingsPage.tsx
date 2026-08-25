@@ -18,6 +18,7 @@ import {
   type TrainingLocation,
 } from '@/lib/trainingSetup';
 import { useSetUnits, useUnits, type UnitSystem } from '@/lib/units';
+import { BillingSection } from '@/features/billing/components/BillingSection';
 
 const UNIT_OPTIONS: { id: UnitSystem; label: string; hint: string }[] = [
   { id: 'imperial', label: 'US units', hint: 'Pounds, feet & inches (default)' },
@@ -261,6 +262,8 @@ export function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted">Preferences for how the app displays your data.</p>
       </header>
+
+      <BillingSection />
 
       <SyncSection />
 
