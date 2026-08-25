@@ -84,18 +84,37 @@ adminRoutes.get('/stats', async (c) => {
     active_sessions: string;
     signups_7d: string;
     notifications: string;
+    pro_users: string;
+    trial_users: string;
+    banned_users: string;
+    open_reports: string;
+    ip_blocks: string;
   }>(
     `SELECT
        (SELECT count(*) FROM users) AS users,
        (SELECT count(*) FROM sessions WHERE expires_at > now()) AS active_sessions,
        (SELECT count(*) FROM users WHERE created_at > now() - interval '7 days') AS signups_7d,
-       (SELECT count(*) FROM notifications) AS notifications`,
+       (SELECT count(*) FROM notifications) AS notifications,
+       (SELECT count(*) FROM users
+         WHERE plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now())) AS pro_users,
+       (SELECT count(*) FROM users
+         WHERE trial_ends_at > now() AND status = 'active'
+           AND NOT (plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now()))) AS trial_users,
+       (SELECT count(*) FROM users WHERE status = 'banned') AS banned_users,
+       (SELECT count(*) FROM reports WHERE status = 'open') AS open_reports,
+       (SELECT count(*) FROM ip_blocks
+         WHERE expires_at IS NULL OR expires_at > now()) AS ip_blocks`,
   );
   return c.json({
     users: Number(stats!.users),
     activeSessions: Number(stats!.active_sessions),
     signups7d: Number(stats!.signups_7d),
     notifications: Number(stats!.notifications),
+    proUsers: Number(stats!.pro_users),
+    trialUsers: Number(stats!.trial_users),
+    bannedUsers: Number(stats!.banned_users),
+    openReports: Number(stats!.open_reports),
+    ipBlocks: Number(stats!.ip_blocks),
   });
 });
 
