@@ -12,7 +12,7 @@ import type {
 import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
 import { rateLimit } from '../lib/rate-limit';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 import { ONLINE_WINDOW_MS } from './profile';
 
 /** The friends system: Discord-style mutual requests, workout groups, and
@@ -36,6 +36,7 @@ export const socialRoutes = new Hono<AppEnv>();
 // middleware at the mount point and gate unrelated routes by accident.
 for (const prefix of ['/friends', '/friends/*', '/groups', '/groups/*', '/stats']) {
   socialRoutes.use(prefix, requireAuth);
+  socialRoutes.use(prefix, requireActiveMember);
   socialRoutes.use(prefix, rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 }
 

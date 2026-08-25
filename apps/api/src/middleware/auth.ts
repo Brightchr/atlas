@@ -69,6 +69,23 @@ export const requirePro: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
+/** Gate for the app's core features, which are paid-after-trial: an unexpired
+ * trial or an active pro plan passes. Staff always pass (they administer what
+ * they sell). 402 + upgrade:true tells the client to show the paywall.
+ * Auth-adjacent groups (auth, notifications, profiles, billing) stay open so
+ * an expired user can still sign in, read notices, and subscribe. */
+export const requireActiveMember: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ error: 'Authentication required' }, 401);
+  }
+  const staff = user.role === 'admin' || user.role === 'moderator';
+  if (!staff && user.membership === 'expired') {
+    return c.json({ error: 'Trial ended — a subscription is required', upgrade: true }, 402);
+  }
+  await next();
+};
+
 /** Gate for moderation/admin routes. Admins may do anything moderators can. */
 export function requireRole(role: 'moderator' | 'admin'): MiddlewareHandler<AppEnv> {
   return async (c, next) => {

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { pool, query } from '../db/pool';
 import { rateLimit } from '../lib/rate-limit';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Device sync. Each user's devices push local changes and pull everyone
  * else's (i.e. their other devices'), ordered by a per-user cursor. The
@@ -43,6 +43,7 @@ const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
 export const syncRoutes = new Hono<AppEnv>();
 
 syncRoutes.use('*', requireAuth);
+syncRoutes.use('*', requireActiveMember);
 // Sync is chatty by design (bursts after offline periods); the cap exists to
 // stop a runaway client loop, not to throttle normal use.
 syncRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120 }));

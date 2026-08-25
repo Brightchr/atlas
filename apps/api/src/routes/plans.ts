@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
 import { rateLimit } from '../lib/rate-limit';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Shared workout plans. Devices publish a plan as one JSON payload (days +
  * embedded workout definitions); other users browse public ones and import
@@ -23,6 +23,7 @@ const MAX_COMMENT_LENGTH = 1_000;
 export const planRoutes = new Hono<AppEnv>();
 
 planRoutes.use('*', requireAuth);
+planRoutes.use('*', requireActiveMember);
 // Per-user ceiling on publish/review/share churn — generous for humans,
 // a wall for notification-spam loops.
 planRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
