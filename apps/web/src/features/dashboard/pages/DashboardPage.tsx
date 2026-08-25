@@ -20,12 +20,13 @@ import { listMealPlanItems } from '@/features/nutrition/mealPlan';
 import { getDiaryForDate } from '@/features/nutrition/repository';
 import { listShoppingItems } from '@/features/shopping/repository';
 import { useTrainingProfile } from '@/features/training/profile';
-import { adherenceStats, weeklyTrainingStats } from '@/features/training/stats';
+import { adherenceStats } from '@/features/training/stats';
 import { StatTile } from '@/components/StatTile';
 import { RingTile } from '@/components/Ring';
 import { WeekStrip } from '@/components/WeekStrip';
 import { TodayCard } from '@/features/training/TodayCard';
 import { PromoBanner } from '../components/PromoBanner';
+import { GoalsCard, VolumeCard, WeightCard } from '../components/ProgressCards';
 import { WeeklyPulse } from '../components/WeeklyPulse';
 
 function todayIso(): string {
@@ -80,15 +81,9 @@ export function DashboardPage() {
   const mealPlanQuery = useQuery({ queryKey: ['meal-plan'], queryFn: listMealPlanItems });
   const shoppingQuery = useQuery({ queryKey: ['shopping'], queryFn: listShoppingItems });
   const adherence = useQuery({ queryKey: ['stats', 'adherence'], queryFn: () => adherenceStats(4) });
-  const volumeQuery = useQuery({
-    queryKey: ['stats', 'weekly'],
-    queryFn: () => weeklyTrainingStats(8),
-  });
   const thisWeek = adherence.data?.weeks[adherence.data.weeks.length - 1];
   const weekDone = thisWeek?.days.filter((d) => d.status === 'done').length ?? 0;
   const weekMissed = thisWeek?.days.filter((d) => d.status === 'missed').length ?? 0;
-  const volumeBars = volumeQuery.data ?? [];
-  const maxVolume = Math.max(1, ...volumeBars.map((w) => w.volumeKg));
 
   const targets = targetsQuery.data ?? null;
   const trainedDays = weekSessions.data?.length ?? 0;
@@ -156,34 +151,21 @@ export function DashboardPage() {
         />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <Link
-          to="/eat"
-          className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-        >
-          <Search size={16} className="text-muted" aria-hidden />
-          <span className="grow text-sm text-muted">Log food — search or log again…</span>
-          <ChevronRight size={16} className="text-muted" aria-hidden />
-        </Link>
-        <Link
-          to="/you"
-          className="springy block rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-        >
-          <div className="mb-1.5 flex items-baseline justify-between">
-            <span className="text-xs font-semibold">Volume · 8 weeks</span>
-            <span className="text-[11px] text-muted">tap for charts</span>
-          </div>
-          <div className="flex h-8 items-end gap-1">
-            {volumeBars.map((w, i) => (
-              <span
-                key={w.week}
-                className={`grow rounded-t ${i === volumeBars.length - 1 ? 'bg-linear-to-t from-accent to-accent-2' : 'bg-elev'}`}
-                style={{ height: `${Math.max(12, (w.volumeKg / maxVolume) * 100)}%` }}
-              />
-            ))}
-          </div>
-        </Link>
+      {/* Progress, straight on the dashboard — the You section, distilled. */}
+      <section className="grid items-stretch gap-3 lg:grid-cols-3">
+        <VolumeCard />
+        <WeightCard />
+        <GoalsCard />
       </section>
+
+      <Link
+        to="/eat"
+        className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+      >
+        <Search size={16} className="text-muted" aria-hidden />
+        <span className="grow text-sm text-muted">Log food — search or log again…</span>
+        <ChevronRight size={16} className="text-muted" aria-hidden />
+      </Link>
 
       {(plannedMealsToday.length > 0 || toBuy > 0) && (
         <section className="grid gap-3 sm:grid-cols-2">
