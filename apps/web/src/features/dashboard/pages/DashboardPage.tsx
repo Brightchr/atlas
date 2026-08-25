@@ -26,7 +26,6 @@ import { StatTile } from '@/components/StatTile';
 import { RingTile } from '@/components/Ring';
 import { WeekStrip } from '@/components/WeekStrip';
 import { TodayCard } from '@/features/training/TodayCard';
-import { FriendsCard } from '../components/FriendsCard';
 import { WeeklyPulse } from '../components/WeeklyPulse';
 
 function todayIso(): string {
@@ -144,8 +143,6 @@ export function DashboardPage() {
       {thisWeek && <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} />}
 
       <WeeklyPulse />
-
-      <FriendsCard />
 
       <section aria-label="Today at a glance" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <RingTile

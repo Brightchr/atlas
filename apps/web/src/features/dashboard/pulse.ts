@@ -59,14 +59,14 @@ export function weeklyPulse(input: PulseInput): PulseMessage[] {
     (p) => p.fraction >= 1 && p.goal.type !== 'calorie_target',
   );
   for (const p of completed.slice(0, 2)) {
-    messages.push({ tone: 'celebrate', text: `Goal complete: ${p.goal.title} 🏆` });
+    messages.push({ tone: 'celebrate', text: `Goal complete: ${p.goal.title}` });
   }
 
   const done = input.sessionDatesThisWeek.length;
   if (input.daysTarget && done >= input.daysTarget) {
     messages.push({
       tone: 'celebrate',
-      text: `Week complete — ${done} of ${input.daysTarget} workouts. Consistency is the whole game. 🎉`,
+      text: `Week complete — ${done} of ${input.daysTarget} workouts. Consistency is the whole game.`,
     });
   } else if (done > 0) {
     messages.push({
@@ -103,7 +103,7 @@ export function weeklyPulse(input: PulseInput): PulseMessage[] {
       }
     } else if (rate < 0) {
       if (delta <= -0.2) {
-        messages.push({ tone: 'celebrate', text: `Down ${magnitude} this week — right on pace. 📉` });
+        messages.push({ tone: 'celebrate', text: `Down ${magnitude} this week — right on pace.` });
       } else if (flat) {
         messages.push({
           tone: 'steady',
@@ -117,7 +117,7 @@ export function weeklyPulse(input: PulseInput): PulseMessage[] {
       }
     } else if (rate > 0) {
       if (delta >= 0.2) {
-        messages.push({ tone: 'celebrate', text: `Up ${magnitude} this week — lean gain on track. 📈` });
+        messages.push({ tone: 'celebrate', text: `Up ${magnitude} this week — lean gain on track.` });
       } else if (flat) {
         messages.push({
           tone: 'steady',
@@ -131,7 +131,7 @@ export function weeklyPulse(input: PulseInput): PulseMessage[] {
       }
     } else {
       if (Math.abs(delta) <= 0.35) {
-        messages.push({ tone: 'celebrate', text: 'Weight holding steady — exactly the plan. ⚖️' });
+        messages.push({ tone: 'celebrate', text: 'Weight holding steady — exactly the plan.' });
       } else {
         messages.push({
           tone: 'steady',

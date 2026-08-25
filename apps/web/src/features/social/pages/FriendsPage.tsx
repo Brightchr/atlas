@@ -26,7 +26,8 @@ import {
   useUnfriend,
 } from '../api';
 import { isWeightSharingEnabled, setWeightSharingEnabled } from '../stats';
-import { Avatar, StatChips } from '../components/StatChips';
+import { AvatarIcon } from '@/features/profile/avatars';
+import { StatChips } from '../components/StatChips';
 
 function FriendCard({ entry }: { entry: FriendEntry }) {
   const setSharing = useSetFriendSharing();
@@ -37,7 +38,7 @@ function FriendCard({ entry }: { entry: FriendEntry }) {
   return (
     <li className="rounded-2xl border border-line bg-surface p-3.5 shadow-sm">
       <div className="flex items-start gap-3">
-        <Avatar name={entry.user.username} />
+        <AvatarIcon name={entry.user.username} icon={entry.user.avatarIcon} tone={entry.user.avatarTone} online={entry.online} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Link to={`/users/${entry.user.username}`} className="truncate text-sm font-semibold hover:underline">
@@ -176,7 +177,7 @@ export function FriendsPage() {
           <ul className="space-y-1.5">
             {data!.incoming.map((r) => (
               <li key={r.id} className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-surface p-3 shadow-sm">
-                <Avatar name={r.user.username} size="sm" />
+                <AvatarIcon name={r.user.username} icon={r.user.avatarIcon} tone={r.user.avatarTone} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {r.user.displayName ?? r.user.username}
                 </span>
@@ -211,7 +212,7 @@ export function FriendsPage() {
           <ul className="space-y-1.5">
             {data!.outgoing.map((r) => (
               <li key={r.id} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">
-                <Avatar name={r.user.username} size="sm" />
+                <AvatarIcon name={r.user.username} icon={r.user.avatarIcon} tone={r.user.avatarTone} size="sm" />
                 <span className="min-w-0 flex-1 truncate text-sm text-muted">
                   {r.user.displayName ?? r.user.username} — pending
                 </span>

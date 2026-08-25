@@ -17,6 +17,7 @@ import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
+import { FriendsRail } from '@/features/social/components/FriendsRail';
 import { startStatsPublisher } from '@/features/social/stats';
 import { startSync } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
@@ -224,6 +225,9 @@ export function AppLayout() {
             <Outlet />
           </main>
         </div>
+
+        {/* Friends rail — desktop only, collapsible, presence + last workout. */}
+        <FriendsRail />
       </div>
 
       {/* Floating glass tab bar — mobile only */}

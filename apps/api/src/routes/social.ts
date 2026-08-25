@@ -13,6 +13,7 @@ import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
 import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
+import { ONLINE_WINDOW_MS } from './profile';
 
 /** The friends system: Discord-style mutual requests, workout groups, and
  * opt-in stat sharing.
@@ -42,13 +43,43 @@ interface UserRow {
   id: string;
   username: string;
   display_name: string | null;
+  profile?: unknown;
+  last_seen_at?: string | null;
 }
 
-const toFriendUser = (r: UserRow): FriendUser => ({
-  id: r.id,
-  username: r.username,
-  displayName: r.display_name,
-});
+/** Avatar + presence-visibility straight from the profile document (same
+ * shape normalizeProfile in profile.ts validates on write). */
+function profileBits(raw: unknown): { icon: string | null; tone: string | null; showOnline: boolean } {
+  const doc = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const show = (typeof doc.show === 'object' && doc.show !== null ? doc.show : {}) as Record<
+    string,
+    unknown
+  >;
+  return {
+    icon: typeof doc.avatarIcon === 'string' && doc.avatarIcon ? doc.avatarIcon : null,
+    tone: typeof doc.avatarTone === 'string' && doc.avatarTone ? doc.avatarTone : null,
+    showOnline: show.online !== false,
+  };
+}
+
+const toFriendUser = (r: UserRow): FriendUser => {
+  const bits = profileBits(r.profile);
+  return {
+    id: r.id,
+    username: r.username,
+    displayName: r.display_name,
+    avatarIcon: bits.icon,
+    avatarTone: bits.tone,
+  };
+};
+
+/** Presence, respecting the owner's show.online switch (null = hidden). */
+function onlineOf(r: UserRow): boolean | null {
+  if (!profileBits(r.profile).showOnline) return null;
+  return (
+    r.last_seen_at != null && Date.now() - Date.parse(r.last_seen_at) < ONLINE_WINDOW_MS
+  );
+}
 
 async function findUserByUsername(username: string): Promise<UserRow | null> {
   const rows = await query<UserRow>(
@@ -91,8 +122,8 @@ socialRoutes.get('/friends', async (c) => {
   const accepted = await query<
     UserRow & { friendship_id: string; responded_at: string; created_at: string }
   >(
-    `SELECT u.id, u.username, u.display_name, f.id AS friendship_id,
-            f.responded_at, f.created_at
+    `SELECT u.id, u.username, u.display_name, u.profile, u.last_seen_at,
+            f.id AS friendship_id, f.responded_at, f.created_at
        FROM friendships f
        JOIN users u ON u.id = CASE WHEN f.requester_id = $1 THEN f.addressee_id
                                    ELSE f.requester_id END
@@ -101,14 +132,14 @@ socialRoutes.get('/friends', async (c) => {
     [me.id],
   );
   const incoming = await query<UserRow & { friendship_id: string; created_at: string }>(
-    `SELECT u.id, u.username, u.display_name, f.id AS friendship_id, f.created_at
+    `SELECT u.id, u.username, u.display_name, u.profile, f.id AS friendship_id, f.created_at
        FROM friendships f JOIN users u ON u.id = f.requester_id
       WHERE f.addressee_id = $1 AND f.status = 'pending'
       ORDER BY f.created_at DESC`,
     [me.id],
   );
   const outgoing = await query<UserRow & { friendship_id: string; created_at: string }>(
-    `SELECT u.id, u.username, u.display_name, f.id AS friendship_id, f.created_at
+    `SELECT u.id, u.username, u.display_name, u.profile, f.id AS friendship_id, f.created_at
        FROM friendships f JOIN users u ON u.id = f.addressee_id
       WHERE f.requester_id = $1 AND f.status = 'pending'
       ORDER BY f.created_at DESC`,
@@ -139,6 +170,7 @@ socialRoutes.get('/friends', async (c) => {
       (r): FriendEntry => ({
         user: toFriendUser(r),
         friendedAt: r.responded_at ?? r.created_at,
+        online: onlineOf(r),
         sharingToThem: myGrants.has(r.id),
         sharingToMe: grantsToMe.has(r.id) || stats.has(r.id),
         stats: stats.get(r.id)?.stats ?? null,
@@ -365,7 +397,7 @@ socialRoutes.get('/groups/:id', async (c) => {
   const rows = await query<
     UserRow & { status: string; joined_at: string | null; owner_user_id: string; name: string; owner: string }
   >(
-    `SELECT u.id, u.username, u.display_name, gm.status, gm.joined_at,
+    `SELECT u.id, u.username, u.display_name, u.profile, u.last_seen_at, gm.status, gm.joined_at,
             g.owner_user_id, g.name, ou.username AS owner
        FROM group_members gm
        JOIN groups g ON g.id = gm.group_id
@@ -397,6 +429,7 @@ socialRoutes.get('/groups/:id', async (c) => {
       (r): GroupMemberEntry => ({
         user: toFriendUser(r),
         role: r.id === first.owner_user_id ? 'owner' : 'member',
+        online: onlineOf(r),
         stats: stats.get(r.id)?.stats ?? null,
         statsUpdatedAt: stats.get(r.id)?.updatedAt ?? null,
         joinedAt: r.joined_at,

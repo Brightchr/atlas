@@ -23,13 +23,17 @@ export interface SharedGoal {
 
 export interface ProfileDoc {
   bannerId: string;
-  avatarEmoji: string;
+  /** Icon avatar (see avatars.tsx). Empty = initial letter. */
+  avatarIcon: string;
+  avatarTone: string;
   show: {
     plans: boolean;
     stats: boolean;
     reviews: boolean;
     activity: boolean;
     goals: boolean;
+    /** Presence dot + last-seen visibility. */
+    online: boolean;
   };
   sharedGoals: SharedGoal[];
 }
@@ -61,7 +65,10 @@ export interface PublicProfile {
   bio: string;
   memberSince: string;
   bannerId: string;
-  avatarEmoji: string;
+  avatarIcon: string;
+  avatarTone: string;
+  /** null = the owner keeps presence private. */
+  online: boolean | null;
   stats: { rating: number | null; reviewCount: number; planCount: number } | null;
   plans: PublicPlanCard[];
   reviews: {

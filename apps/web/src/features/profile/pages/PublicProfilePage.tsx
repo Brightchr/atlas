@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router';
 import { CalendarDays, MessageSquare, Star, TrendingUp } from 'lucide-react';
 import { bannerCss, usePublicProfile } from '../api';
+import { AvatarIcon } from '../avatars';
 import { DIET_LABELS, GOAL_LABELS, LEVEL_LABELS } from '@/features/training/profile';
 
 function Stars({ rating }: { rating: number }) {
@@ -45,14 +46,21 @@ export function PublicProfilePage() {
       <header className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <div className="h-28 md:h-36" style={{ background: bannerCss(p.bannerId) }} />
         <div className="relative px-5 pt-0 pb-4">
-          <span className="absolute -top-7 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-surface bg-elev text-2xl shadow-md">
-            {p.avatarEmoji || p.username[0]?.toUpperCase()}
+          <span className="absolute -top-7 rounded-2xl border-4 border-surface bg-elev p-1 shadow-md">
+            <AvatarIcon
+              name={p.username}
+              icon={p.avatarIcon || null}
+              tone={p.avatarTone || null}
+              online={p.online}
+              size="lg"
+            />
           </span>
           <div className="pt-11">
             <h1 className="text-2xl font-bold">{p.displayName ?? p.username}</h1>
             <p className="text-sm text-muted">
               @{p.username} · member since{' '}
               {new Date(p.memberSince).toLocaleDateString([], { month: 'long', year: 'numeric' })}
+              {p.online === true && <span className="ml-1.5 font-medium text-emerald-500">· online</span>}
             </p>
             {p.bio && <p className="mt-2 text-sm">{p.bio}</p>}
           </div>

@@ -6,6 +6,9 @@ export interface FriendUser {
   id: string;
   username: string;
   displayName: string | null;
+  /** Icon-avatar choice from the profile document (icons, never emoji). */
+  avatarIcon: string | null;
+  avatarTone: string | null;
 }
 
 /** The client-published stats snapshot. Everything optional beyond the core
@@ -28,6 +31,8 @@ export interface FriendStats {
 export interface FriendEntry {
   user: FriendUser;
   friendedAt: string;
+  /** Presence: true/false when the friend shows it, null when they hide it. */
+  online: boolean | null;
   /** I share my stats with them. */
   sharingToThem: boolean;
   /** They share their stats with me (stats is null when false). */
@@ -62,6 +67,7 @@ export interface GroupSummary {
 export interface GroupMemberEntry {
   user: FriendUser;
   role: 'owner' | 'member';
+  online: boolean | null;
   stats: FriendStats | null;
   statsUpdatedAt: string | null;
   joinedAt: string | null;

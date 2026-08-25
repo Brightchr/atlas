@@ -279,6 +279,15 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX sessions_expires_idx ON sessions (expires_at);
     `,
   },
+  {
+    id: '011_presence',
+    sql: `
+      -- Presence: touched (throttled) by the session middleware. "Online" is
+      -- derived at read time (last_seen_at within a few minutes); visibility
+      -- is the owner's choice via the profile document's show.online switch.
+      ALTER TABLE users ADD COLUMN last_seen_at timestamptz;
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

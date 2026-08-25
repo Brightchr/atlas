@@ -10,7 +10,8 @@ import {
   useLeaveGroup,
   useSetGroupSharing,
 } from '../api';
-import { Avatar, StatChips } from '../components/StatChips';
+import { AvatarIcon } from '@/features/profile/avatars';
+import { StatChips } from '../components/StatChips';
 
 /** Normalized effort: percent of the member's OWN weekly goal — a 3x/week
  * beginner who hit 3 ties a 6x/week vet who hit 6 (the Apple-competition
@@ -127,7 +128,7 @@ export function GroupPage() {
               minutes
             </>
           )}
-          . 💪
+          .
         </p>
       </section>
 
@@ -142,7 +143,7 @@ export function GroupPage() {
                   <span className="w-5 shrink-0 text-center text-sm font-bold text-muted tabular-nums">
                     {pct >= 0 ? i + 1 : '·'}
                   </span>
-                  <Avatar name={m.user.username} size="sm" />
+                  <AvatarIcon name={m.user.username} icon={m.user.avatarIcon} tone={m.user.avatarTone} online={m.online} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                     {m.user.displayName ?? m.user.username}
                     {m.role === 'owner' && (
@@ -151,7 +152,7 @@ export function GroupPage() {
                   </span>
                   {pct >= 1 && (
                     <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent">
-                      goal hit 🎯
+                      goal hit
                     </span>
                   )}
                 </div>

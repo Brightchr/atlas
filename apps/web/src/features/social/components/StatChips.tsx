@@ -62,26 +62,3 @@ export function StatChips({ stats, updatedAt }: { stats: FriendStats; updatedAt:
   );
 }
 
-/** Round initial avatar — consistent color from the username. */
-export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
-  const tones = [
-    'bg-indigo-500/20 text-indigo-400',
-    'bg-teal-500/20 text-teal-500',
-    'bg-orange-500/20 text-orange-500',
-    'bg-sky-500/20 text-sky-500',
-    'bg-rose-500/20 text-rose-500',
-    'bg-emerald-500/20 text-emerald-500',
-  ];
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const tone = tones[hash % tones.length];
-  const dims = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm';
-  return (
-    <span
-      aria-hidden
-      className={`flex ${dims} shrink-0 items-center justify-center rounded-full font-bold uppercase ${tone}`}
-    >
-      {name.slice(0, 1)}
-    </span>
-  );
-}

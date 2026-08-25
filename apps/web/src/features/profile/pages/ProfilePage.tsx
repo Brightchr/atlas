@@ -2,19 +2,19 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { Eye, EyeOff, KeyRound, Palette, Target, UserRound } from 'lucide-react';
 import { BANNERS, useChangePassword, useMyProfile, useUpdateProfile, type ProfileDoc } from '../api';
+import { AVATAR_ICONS, AVATAR_TONES, AvatarIcon } from '../avatars';
 import { GOAL_LABELS, LEVEL_LABELS, useTrainingProfile } from '@/features/training/profile';
 import { useExerciseCatalog } from '@/features/exercises/api';
 import { useGoalProgress } from '@/features/goals/api';
 
 const SECTION_LABELS: { key: keyof ProfileDoc['show']; label: string; hint: string }[] = [
+  { key: 'online', label: 'Online status', hint: 'Green dot and last-seen, shown to visitors and friends' },
   { key: 'plans', label: 'Published plans', hint: 'The plans you share publicly' },
   { key: 'stats', label: 'Star rating & counts', hint: 'Your overall rating across plans' },
   { key: 'reviews', label: 'Your reviews', hint: 'Reviews you write on other plans' },
   { key: 'activity', label: 'Activity', hint: 'Recent publishes and reviews' },
   { key: 'goals', label: 'Training goals', hint: 'A snapshot of your current goals' },
 ];
-
-const AVATAR_SUGGESTIONS = ['💪', '🏋️', '🏃', '🔥', '⚡', '🎯'];
 
 /** Your profile: public identity (display name, bio), training goals, and
  * account security (password change). Public parts appear on /users/:name. */
@@ -137,8 +137,13 @@ export function ProfilePage() {
 
           {/* Live banner + avatar preview */}
           <div className="relative mb-3 h-20 overflow-hidden rounded-xl" style={{ background: (BANNERS.find((b) => b.id === doc.bannerId) ?? BANNERS[0]).css }}>
-            <span className="absolute bottom-2 left-3 flex h-12 w-12 items-center justify-center rounded-2xl border-2 border-white/60 bg-black/25 text-xl backdrop-blur-sm">
-              {doc.avatarEmoji || (profile.data?.username[0]?.toUpperCase() ?? '?')}
+            <span className="absolute bottom-2 left-3 rounded-2xl border-2 border-white/60 bg-black/25 p-0.5 backdrop-blur-sm">
+              <AvatarIcon
+                name={profile.data?.username ?? '?'}
+                icon={doc.avatarIcon || null}
+                tone={doc.avatarTone || null}
+                size="lg"
+              />
             </span>
           </div>
 
@@ -158,33 +163,44 @@ export function ProfilePage() {
           </div>
 
           <p className="mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Avatar</p>
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {AVATAR_SUGGESTIONS.map((emoji) => (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            {AVATAR_ICONS.map(({ id, Icon, label }) => (
               <button
-                key={emoji}
+                key={id}
                 type="button"
-                aria-pressed={doc.avatarEmoji === emoji}
-                onClick={() => setDoc({ ...doc, avatarEmoji: emoji })}
-                className={`springy flex h-9 w-9 items-center justify-center rounded-lg border text-base ${
-                  doc.avatarEmoji === emoji ? 'border-accent bg-accent-soft' : 'border-line bg-surface'
+                title={label}
+                aria-pressed={doc.avatarIcon === id}
+                onClick={() => setDoc({ ...doc, avatarIcon: id })}
+                className={`springy flex h-9 w-9 items-center justify-center rounded-lg border ${
+                  doc.avatarIcon === id
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line bg-surface text-muted hover:text-ink'
                 }`}
               >
-                {emoji}
+                <Icon size={17} strokeWidth={1.8} aria-hidden />
               </button>
             ))}
-            <input
-              value={doc.avatarEmoji}
-              onChange={(e) => setDoc({ ...doc, avatarEmoji: e.target.value.slice(0, 8) })}
-              placeholder="Or type any emoji"
-              className="w-36 rounded-lg border border-line bg-surface px-2.5 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
-            />
             <button
               type="button"
-              onClick={() => setDoc({ ...doc, avatarEmoji: '' })}
+              onClick={() => setDoc({ ...doc, avatarIcon: '' })}
               className="text-xs text-muted hover:text-ink"
             >
               Use initial
             </button>
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            {AVATAR_TONES.map(({ id, swatch }) => (
+              <button
+                key={id}
+                type="button"
+                title={id}
+                aria-pressed={doc.avatarTone === id}
+                onClick={() => setDoc({ ...doc, avatarTone: id })}
+                className={`springy h-7 w-7 rounded-full border-2 ${swatch} ${
+                  doc.avatarTone === id ? 'border-ink' : 'border-transparent'
+                }`}
+              />
+            ))}
           </div>
 
           <p className="mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">

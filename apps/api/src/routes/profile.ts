@@ -12,16 +12,34 @@ export const profileRoutes = new Hono<AppEnv>();
 profileRoutes.use('*', requireAuth);
 
 const BANNERS = new Set(['indigo', 'tide', 'ember', 'meadow', 'sunset', 'mono']);
+// Keep in step with AVATAR_ICONS / AVATAR_TONES in
+// apps/web/src/features/profile/avatars.tsx — icons render client-side.
+const AVATAR_ICONS = new Set([
+  'dumbbell', 'mountain', 'flame', 'zap', 'heart-pulse', 'trophy', 'target', 'bike',
+  'footprints', 'medal', 'rocket', 'swords', 'shield', 'star', 'waves', 'anchor',
+]);
+const AVATAR_TONES = new Set([
+  'indigo', 'teal', 'orange', 'sky', 'rose', 'emerald', 'amber', 'violet',
+]);
+
+/** "Online now" horizon over users.last_seen_at. */
+export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export interface ProfileDoc {
   bannerId: string;
-  avatarEmoji: string;
+  /** Icon-based avatar (design language: icons/SVGs, never emoji). Empty
+   * string = show the initial. avatarEmoji remains only for old documents
+   * and is no longer surfaced. */
+  avatarIcon: string;
+  avatarTone: string;
   show: {
     plans: boolean;
     stats: boolean;
     reviews: boolean;
     activity: boolean;
     goals: boolean;
+    /** Presence: green dot + last-seen for people who can see your profile. */
+    online: boolean;
   };
   sharedGoals: { title: string; label: string; pct: number }[];
 }
@@ -35,13 +53,15 @@ function normalizeProfile(raw: unknown): ProfileDoc {
   const goals = Array.isArray(doc.sharedGoals) ? doc.sharedGoals : [];
   return {
     bannerId: BANNERS.has(String(doc.bannerId)) ? String(doc.bannerId) : 'indigo',
-    avatarEmoji: typeof doc.avatarEmoji === 'string' ? doc.avatarEmoji.slice(0, 8) : '',
+    avatarIcon: AVATAR_ICONS.has(String(doc.avatarIcon)) ? String(doc.avatarIcon) : '',
+    avatarTone: AVATAR_TONES.has(String(doc.avatarTone)) ? String(doc.avatarTone) : '',
     show: {
       plans: show.plans !== false,
       stats: show.stats !== false,
       reviews: show.reviews !== false,
       activity: show.activity !== false,
       goals: show.goals === true,
+      online: show.online !== false,
     },
     sharedGoals: goals.slice(0, 6).flatMap((g) => {
       const goal = (typeof g === 'object' && g !== null ? g : {}) as Record<string, unknown>;
@@ -118,8 +138,9 @@ profileRoutes.get('/:username', async (c) => {
     bio: string;
     created_at: string;
     profile: unknown;
+    last_seen_at: string | null;
   }>(
-    'SELECT id, username, display_name, bio, created_at, profile FROM users WHERE lower(username) = lower($1)',
+    'SELECT id, username, display_name, bio, created_at, profile, last_seen_at FROM users WHERE lower(username) = lower($1)',
     [c.req.param('username')],
   );
   const person = rows[0];
@@ -132,7 +153,13 @@ profileRoutes.get('/:username', async (c) => {
     bio: person.bio,
     memberSince: person.created_at,
     bannerId: doc.bannerId,
-    avatarEmoji: doc.avatarEmoji,
+    avatarIcon: doc.avatarIcon,
+    avatarTone: doc.avatarTone,
+    // null = the owner keeps presence private.
+    online: doc.show.online
+      ? person.last_seen_at !== null &&
+        Date.now() - Date.parse(person.last_seen_at) < ONLINE_WINDOW_MS
+      : null,
   };
 
   // Overall reputation: the average across every review on their public plans.
