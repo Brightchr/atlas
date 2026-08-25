@@ -1,14 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { FriendsResponse, GroupDetail, GroupSummary } from '@arcadia/shared';
+import type { FriendStats, FriendsResponse, GroupDetail, GroupSummary } from '@arcadia/shared';
 import { apiFetch } from '@/lib/api';
 
 /** React-query surface for the friends system. All server-backed — nothing
  * here touches the local database. */
 
+/** Render-safety gate: the server validates snapshots on write, but stats
+ * are still remote, other-user-controlled data — a snapshot that doesn't
+ * hold the fields the cards dereference becomes null instead of a crash. */
+function safeStats(stats: FriendStats | null): FriendStats | null {
+  const week = (stats as { week?: { workouts?: unknown } } | null)?.week;
+  return typeof week?.workouts === 'number' ? stats : null;
+}
+
 export function useFriends() {
   return useQuery({
     queryKey: ['social', 'friends'],
     queryFn: () => apiFetch<FriendsResponse>('/v1/friends'),
+    select: (data): FriendsResponse => ({
+      ...data,
+      friends: data.friends.map((f) => ({ ...f, stats: safeStats(f.stats) })),
+    }),
     retry: 1,
   });
 }
@@ -25,6 +37,10 @@ export function useGroup(id: string | undefined) {
   return useQuery({
     queryKey: ['social', 'groups', id],
     queryFn: () => apiFetch<GroupDetail>(`/v1/groups/${id}`),
+    select: (data): GroupDetail => ({
+      ...data,
+      members: data.members.map((m) => ({ ...m, stats: safeStats(m.stats) })),
+    }),
     enabled: Boolean(id),
     retry: 1,
   });

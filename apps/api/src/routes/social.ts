@@ -500,21 +500,69 @@ socialRoutes.put('/groups/:id/sharing', async (c) => {
 
 /* ---------------------------------- Stats --------------------------------- */
 
-/** The client publishes its own snapshot; the server stores it opaquely and
- * only decides who may read it. Size-capped like every user payload. */
+/** Strict shape validation for the snapshot. The payload is echoed to OTHER
+ * users' clients, so a malformed one is stored, attacker-controlled data
+ * crossing a trust boundary — never store anything but the exact shape, and
+ * rebuild the object so unknown keys can't ride along. */
+function parseStatsPayload(value: unknown): FriendStats | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const week = v.week as Record<string, unknown> | undefined;
+  const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+  if (
+    typeof week !== 'object' ||
+    week === null ||
+    !num(week.workouts) ||
+    !num(week.volumeKg) ||
+    !num(week.cardioMin) ||
+    !num(v.streakDays) ||
+    !(v.weeklyTargetDays === null || num(v.weeklyTargetDays)) ||
+    !(v.weightDeltaKg === undefined || num(v.weightDeltaKg))
+  ) {
+    return null;
+  }
+  let lastWorkout: FriendStats['lastWorkout'] = null;
+  if (v.lastWorkout !== null && v.lastWorkout !== undefined) {
+    const lw = v.lastWorkout as Record<string, unknown>;
+    if (
+      typeof lw !== 'object' ||
+      typeof lw.name !== 'string' ||
+      lw.name.length > 120 ||
+      typeof lw.at !== 'string' ||
+      Number.isNaN(Date.parse(lw.at))
+    ) {
+      return null;
+    }
+    lastWorkout = { name: lw.name, at: lw.at };
+  }
+  const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+  return {
+    week: {
+      workouts: clamp(week.workouts, 0, 100),
+      volumeKg: clamp(week.volumeKg, 0, 1_000_000),
+      cardioMin: clamp(week.cardioMin, 0, 10_000),
+    },
+    streakDays: clamp(v.streakDays, 0, 10_000),
+    weeklyTargetDays: v.weeklyTargetDays === null ? null : clamp(v.weeklyTargetDays, 1, 7),
+    lastWorkout,
+    ...(v.weightDeltaKg !== undefined && { weightDeltaKg: clamp(v.weightDeltaKg, -50, 50) }),
+  };
+}
+
+/** The client publishes its own snapshot; the server validates the shape
+ * strictly (see parseStatsPayload) and decides who may read it. */
 socialRoutes.put('/stats', async (c) => {
   const me = c.get('user')!;
   const body = await c.req.text();
   if (body.length > MAX_STATS_BYTES) return c.json({ error: 'Stats payload too large' }, 413);
-  let payload: unknown;
+  let raw: unknown;
   try {
-    payload = JSON.parse(body);
+    raw = JSON.parse(body);
   } catch {
     return c.json({ error: 'Invalid JSON' }, 400);
   }
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return c.json({ error: 'Stats must be an object' }, 400);
-  }
+  const payload = parseStatsPayload(raw);
+  if (!payload) return c.json({ error: 'Stats payload does not match the expected shape' }, 400);
   await query(
     `INSERT INTO user_stats (user_id, payload, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (user_id) DO UPDATE SET payload = excluded.payload, updated_at = now()`,
