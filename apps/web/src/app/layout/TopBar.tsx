@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   MessageSquare,
-  Mountain,
   Settings,
   Sparkles,
   User,
@@ -54,11 +53,8 @@ export function TopBar() {
       className="relative z-40 flex items-center justify-between gap-3 border-b border-line bg-surface/70 px-4 py-2.5 backdrop-blur-sm md:justify-end"
     >
       {/* Brand — mobile only (desktop shows it in the sidebar) */}
-      <div className="flex items-center gap-2.5 md:hidden">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br from-accent to-accent-2 text-accent-ink">
-          <Mountain size={15} aria-hidden />
-        </span>
-        <span className="font-display font-bold tracking-tight">Arcadia Atlas</span>
+      <div className="flex items-center md:hidden">
+        <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-8 w-auto" />
       </div>
 
       <div className="flex items-center gap-1.5">

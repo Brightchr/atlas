@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Mountain } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { upsertTargetGoal } from '@/features/goals/repository';
 import {
   GOAL_OPTIONS,
@@ -51,9 +51,7 @@ export function WelcomePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 pt-8 md:p-6 md:pt-12">
       <header className="flex flex-col items-center gap-3 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-md">
-          <Mountain size={22} aria-hidden />
-        </span>
+        <img src="/favicon/android-chrome-192x192.png" alt="" className="h-12 w-12" />
         <div>
           <h1 className="text-2xl font-bold">What are you training for?</h1>
           <p className="mt-1 text-sm text-muted">

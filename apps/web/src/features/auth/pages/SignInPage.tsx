@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Navigate, useLocation } from 'react-router';
-import { Mountain } from 'lucide-react';
 import { useLogin, useRegister, useSession } from '../api';
 
 type Mode = 'signin' | 'register';
@@ -42,9 +41,7 @@ export function SignInPage() {
   return (
     <div className="mx-auto flex max-w-sm flex-col justify-center p-4 pt-10 md:pt-16">
       <div className="mb-6 flex flex-col items-center gap-3 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-md">
-          <Mountain size={22} aria-hidden />
-        </span>
+        <img src="/assets/logo/atlas_logo.png" alt="Atlas by Arcadia" className="h-14 w-auto" />
         <div>
           <h1 className="text-2xl font-bold">
             {mode === 'signin' ? 'Welcome back' : 'Create your account'}

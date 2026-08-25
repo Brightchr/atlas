@@ -5,7 +5,6 @@ import {
   Apple,
   Dumbbell,
   House,
-  Mountain,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
@@ -172,15 +171,16 @@ export function AppLayout() {
         }`}
       >
         <div
-          className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'gap-3 px-5'}`}
+          className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'px-5'}`}
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-sm">
-            <Mountain size={18} aria-hidden />
-          </span>
-          {!collapsed && (
-            <span className="font-display text-lg font-bold tracking-tight whitespace-nowrap">
-              Arcadia Atlas
-            </span>
+          {collapsed ? (
+            <img
+              src="/favicon/android-chrome-192x192.png"
+              alt="Arcadia Atlas"
+              className="h-9 w-9 shrink-0"
+            />
+          ) : (
+            <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-10 w-auto" />
           )}
         </div>
 
