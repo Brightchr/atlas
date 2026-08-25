@@ -7,7 +7,7 @@ import { query } from '../db/pool';
 import { env } from '../lib/env';
 import { createNotification } from '../lib/notify';
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../lib/password';
-import { rateLimit } from '../lib/rate-limit';
+import { clientIp, rateLimit } from '../lib/rate-limit';
 import { createSession, deleteOtherSessions, deleteSession } from '../lib/session';
 import { requireAuth, SESSION_COOKIE, type AppEnv } from '../middleware/auth';
 
@@ -59,7 +59,7 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
     return c.json({ error: 'Email or username is already in use' }, 409);
   }
 
-  const { token, expiresAt } = await createSession(rows[0]!.id);
+  const { token, expiresAt } = await createSession(rows[0]!.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
   await createNotification(
     rows[0]!.id,
@@ -99,10 +99,11 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     plan: 'free' | 'pro';
     plan_expires_at: string | null;
     trial_ends_at: string | null;
+    status: string;
     created_at: string;
     password_hash: string;
   }>(
-    `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, created_at, password_hash
+    `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, status, created_at, password_hash
        FROM users WHERE email = $1`,
     [email],
   );
@@ -119,7 +120,13 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     return c.json({ error: 'Invalid email or password' }, 401);
   }
 
-  const { token, expiresAt } = await createSession(user.id);
+  // Checked only after the password verified — the ban must not be
+  // discoverable by someone who doesn't hold the credentials.
+  if (user.status === 'banned') {
+    return c.json({ error: 'This account has been suspended' }, 403);
+  }
+
+  const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
   return c.json({
     user: {

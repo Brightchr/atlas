@@ -22,12 +22,14 @@ export async function createSession(
   impersonatorId?: string,
   /** Override for short-lived sessions (admin masquerade); default 30 days. */
   ttlMs?: number,
+  /** Client IP at sign-in — recorded for the admin abuse tooling. */
+  ip?: string,
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + (ttlMs ?? SESSION_DAYS * 24 * 60 * 60 * 1000));
   await query(
-    'INSERT INTO sessions (user_id, token_hash, expires_at, impersonator_user_id) VALUES ($1, $2, $3, $4)',
-    [userId, hashToken(token), expiresAt, impersonatorId ?? null],
+    'INSERT INTO sessions (user_id, token_hash, expires_at, impersonator_user_id, ip) VALUES ($1, $2, $3, $4, $5)',
+    [userId, hashToken(token), expiresAt, impersonatorId ?? null, ip ?? null],
   );
   return { token, expiresAt };
 }
@@ -47,7 +49,9 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
     `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
             u.created_at, s.impersonator_user_id
        FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = $1 AND s.expires_at > now()`,
+      WHERE s.token_hash = $1 AND s.expires_at > now()
+        -- A ban takes effect on the very next request, on every device.
+        AND u.status = 'active'`,
     [hashToken(token)],
   );
   const row = rows[0];

@@ -324,6 +324,24 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX promo_redemptions_user_idx ON promo_redemptions(user_id, created_at DESC);
     `,
   },
+  {
+    id: '014_moderation',
+    sql: `
+      -- Account standing — a third axis next to role (permissions) and plan
+      -- (payment). Banned accounts keep their data but every session lookup
+      -- excludes them, so access dies instantly across all devices.
+      ALTER TABLE users
+        ADD COLUMN status text NOT NULL DEFAULT 'active'
+          CHECK (status IN ('active', 'banned')),
+        ADD COLUMN banned_at timestamptz,
+        ADD COLUMN ban_reason text CHECK (char_length(ban_reason) <= 300);
+
+      -- Where each session was created from (register/login/impersonate).
+      -- Feeds abuse tooling: the admin "ban + block IPs" action reads the
+      -- target's recent session IPs.
+      ALTER TABLE sessions ADD COLUMN ip text;
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

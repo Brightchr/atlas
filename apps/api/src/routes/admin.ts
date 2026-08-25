@@ -6,6 +6,7 @@ import { effectivePlan, resolveMembership, type AuthUser, type MembershipPlan, t
 import { query } from '../db/pool';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
+import { clientIp } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
 import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
 
@@ -60,7 +61,12 @@ adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
   if (token) await deleteSession(token);
 
   // Hand the admin a fresh session of their own so they land back seamlessly.
-  const { token: adminToken, expiresAt } = await createSession(impersonatorId);
+  const { token: adminToken, expiresAt } = await createSession(
+    impersonatorId,
+    undefined,
+    undefined,
+    clientIp(c),
+  );
   setSessionCookie(c, adminToken, expiresAt);
   const rows = await query<AuthUserRow>(
     `SELECT ${AUTH_USER_COLUMNS} FROM users WHERE id = $1`,
@@ -101,13 +107,20 @@ adminRoutes.get('/users', async (c) => {
     role: string;
     plan: string;
     plan_expires_at: string | null;
+    trial_ends_at: string | null;
+    status: string;
+    banned_at: string | null;
+    ban_reason: string | null;
     created_at: string;
     active_sessions: string;
     last_login: string | null;
+    last_ip: string | null;
   }>(
-    `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.created_at,
+    `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
+            u.status, u.banned_at, u.ban_reason, u.created_at,
             count(s.id) FILTER (WHERE s.expires_at > now()) AS active_sessions,
-            max(s.created_at) AS last_login
+            max(s.created_at) AS last_login,
+            (array_agg(s.ip ORDER BY s.created_at DESC) FILTER (WHERE s.ip IS NOT NULL))[1] AS last_ip
        FROM users u
        LEFT JOIN sessions s ON s.user_id = u.id
       WHERE $1 = '' OR u.email ILIKE '%' || $1 || '%' OR u.username ILIKE '%' || $1 || '%'
@@ -124,11 +137,58 @@ adminRoutes.get('/users', async (c) => {
       role: u.role,
       plan: u.plan,
       planExpiresAt: u.plan_expires_at,
+      trialEndsAt: u.trial_ends_at,
+      status: u.status,
+      bannedAt: u.banned_at,
+      banReason: u.ban_reason,
       createdAt: u.created_at,
       activeSessions: Number(u.active_sessions),
       lastLogin: u.last_login,
+      lastIp: u.last_ip,
     })),
   });
+});
+
+/* ---- Bans: account-level lockout, effective on the next request ---- */
+
+const banSchema = z.object({ reason: z.string().trim().max(300).default('') });
+
+adminRoutes.post('/users/:id/ban', zValidator('json', banSchema), async (c) => {
+  const admin = c.get('user')!;
+  const targetId = c.req.param('id');
+  const { reason } = c.req.valid('json');
+  if (targetId === admin.id) return c.json({ error: 'You cannot ban yourself' }, 400);
+
+  // role <> 'admin' in the WHERE, not a pre-check — admins stay unbannable
+  // even if two requests race a concurrent promotion.
+  const rows = await query<{ id: string }>(
+    `UPDATE users SET status = 'banned', banned_at = now(), ban_reason = $2
+      WHERE id = $1 AND role <> 'admin' AND status = 'active'
+      RETURNING id`,
+    [targetId, reason],
+  );
+  if (rows.length === 0) {
+    return c.json({ error: 'User not found, already banned, or an admin' }, 404);
+  }
+  // The session-lookup filter already locks them out; deleting is hygiene so
+  // dead tokens don't linger for 30 days.
+  await query('DELETE FROM sessions WHERE user_id = $1', [targetId]);
+  await logAudit(admin.id, 'ban_user', 'user', targetId, { reason });
+  return c.json({ ok: true });
+});
+
+adminRoutes.post('/users/:id/unban', async (c) => {
+  const admin = c.get('user')!;
+  const targetId = c.req.param('id');
+  const rows = await query<{ id: string }>(
+    `UPDATE users SET status = 'active', banned_at = NULL, ban_reason = NULL
+      WHERE id = $1 AND status = 'banned'
+      RETURNING id`,
+    [targetId],
+  );
+  if (rows.length === 0) return c.json({ error: 'User not found or not banned' }, 404);
+  await logAudit(admin.id, 'unban_user', 'user', targetId, {});
+  return c.json({ ok: true });
 });
 
 const planSchema = z.object({ plan: z.enum(['free', 'pro']) });
@@ -243,7 +303,7 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   await logAudit(admin.id, 'impersonate', 'user', target.id, { username: target.username });
   // Masquerade tokens are bearer credentials for someone ELSE's account —
   // they live one hour, not the standard thirty days.
-  const { token, expiresAt } = await createSession(target.id, admin.id, 60 * 60 * 1000);
+  const { token, expiresAt } = await createSession(target.id, admin.id, 60 * 60 * 1000, clientIp(c));
   setSessionCookie(c, token, expiresAt);
   return c.json({ user: toAuthUser(target), token });
 });
