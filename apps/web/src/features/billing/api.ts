@@ -1,11 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BillingStatus } from '@arcadia/shared';
+import type { BillingStatus, PublicPromotion } from '@arcadia/shared';
 import { apiFetch } from '@/lib/api';
 
 export function useBillingStatus() {
   return useQuery({
     queryKey: ['billing', 'status'],
     queryFn: () => apiFetch<BillingStatus>('/v1/billing'),
+  });
+}
+
+/** Active promotions for the dashboard banner. Slow-moving marketing content
+ * — a long staleTime keeps it off the request hot path. */
+export function useActivePromotions() {
+  return useQuery({
+    queryKey: ['billing', 'active-promotions'],
+    queryFn: () => apiFetch<{ promotions: PublicPromotion[] }>('/v1/billing/promotions'),
+    staleTime: 10 * 60 * 1000,
   });
 }
 

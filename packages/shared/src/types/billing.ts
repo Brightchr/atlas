@@ -20,3 +20,13 @@ export interface PromoRedemption {
   grantDays: number | null;
   redeemedAt: string;
 }
+
+/** The marketing-safe slice of an active promotion, shown to every signed-in
+ * user (dashboard banner). Never includes caps or redemption counts. */
+export interface PublicPromotion {
+  code: string;
+  description: string;
+  discountPercent: number;
+  grantDays: number | null;
+  endsAt: string | null;
+}

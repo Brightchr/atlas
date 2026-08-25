@@ -55,6 +55,33 @@ billingRoutes.get('/', async (c) => {
   return c.json(status);
 });
 
+/** Active promotions for the dashboard banner — every signed-in user sees
+ * these, so only the marketing-safe fields leave the server. */
+billingRoutes.get('/promotions', async (c) => {
+  const rows = await query<{
+    code: string;
+    description: string;
+    discount_percent: number;
+    grant_days: number | null;
+    ends_at: string | null;
+  }>(
+    `SELECT code, description, discount_percent, grant_days, ends_at
+       FROM promotions
+      WHERE active AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now())
+      ORDER BY created_at DESC
+      LIMIT 3`,
+  );
+  return c.json({
+    promotions: rows.map((p) => ({
+      code: p.code,
+      description: p.description,
+      discountPercent: p.discount_percent,
+      grantDays: p.grant_days,
+      endsAt: p.ends_at,
+    })),
+  });
+});
+
 const redeemSchema = z.object({ code: z.string().min(3).max(30) });
 
 /** Redeem a promo code. Tight rate limit: codes are guessable strings, and
