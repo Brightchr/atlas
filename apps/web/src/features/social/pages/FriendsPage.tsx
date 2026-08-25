@@ -293,7 +293,7 @@ export function FriendsPage() {
                     onSuccess: (r) => {
                       setGroupName('');
                       setCreatingGroup(false);
-                      void navigate(`/you/groups/${r.id}`);
+                      void navigate(`/groups/${r.id}`);
                     },
                   });
                 }
@@ -309,7 +309,7 @@ export function FriendsPage() {
                   onSuccess: (r) => {
                     setGroupName('');
                     setCreatingGroup(false);
-                    void navigate(`/you/groups/${r.id}`);
+                    void navigate(`/groups/${r.id}`);
                   },
                 })
               }
@@ -358,7 +358,7 @@ export function FriendsPage() {
           {memberOf.map((g) => (
             <li key={g.id}>
               <Link
-                to={`/you/groups/${g.id}`}
+                to={`/groups/${g.id}`}
                 className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">

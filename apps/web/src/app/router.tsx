@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { ErrorPage } from '@/components/ErrorPage';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { EatLayout, TrainLayout, YouLayout } from '@/app/layout/SectionLayouts';
@@ -33,6 +33,12 @@ import { SessionDetailPage } from '@/features/training/pages/SessionDetailPage';
 import { WelcomePage } from '@/features/training/pages/WelcomePage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
 import { PublicProfilePage } from '@/features/profile/pages/PublicProfilePage';
+
+/** Param-preserving redirect for the old group URLs. */
+function GroupRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/groups/${id}`} replace />;
+}
 
 /** The 4-tab shell: Home (/), Train, Eat, You. Every screen lives inside one
  * of the three section layouts (or the dashboard), so section chrome
@@ -90,11 +96,14 @@ export const router = createBrowserRouter([
         children: [
           { path: '/you', element: <ProgressPage /> },
           { path: '/you/goals', element: <GoalsPage /> },
-          { path: '/you/friends', element: <FriendsPage /> },
-          { path: '/you/groups/:id', element: <GroupPage /> },
           { path: '/you/history/:sessionId', element: <SessionDetailPage /> },
         ],
       },
+
+      // Friends is a social surface, not personal data — it lives outside the
+      // You section, reached from the friends rail and the avatar menu.
+      { path: '/friends', element: <FriendsPage /> },
+      { path: '/groups/:id', element: <GroupPage /> },
 
       // Account pages live under the top-bar avatar menu, outside any section.
       { path: '/profile', element: <ProfilePage /> },
@@ -114,6 +123,8 @@ export const router = createBrowserRouter([
       { path: '/goals', element: <Navigate to="/you/goals" replace /> },
       { path: '/you/profile', element: <Navigate to="/profile" replace /> },
       { path: '/you/settings', element: <Navigate to="/settings" replace /> },
+      { path: '/you/friends', element: <Navigate to="/friends" replace /> },
+      { path: '/you/groups/:id', element: <GroupRedirect /> },
     ],
   },
 ]);

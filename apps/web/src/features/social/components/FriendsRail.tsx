@@ -90,7 +90,7 @@ export function FriendsRail() {
       <div className={`flex-1 overflow-y-auto py-2 ${collapsed ? 'px-2' : 'px-2.5'}`}>
         {incoming > 0 && (
           <Link
-            to="/you/friends"
+            to="/friends"
             title={`${incoming} friend request${incoming === 1 ? '' : 's'}`}
             className={`mb-1.5 flex items-center gap-2 rounded-xl bg-accent-soft px-2 py-1.5 text-xs font-semibold text-accent ${
               collapsed ? 'justify-center' : ''
@@ -108,7 +108,7 @@ export function FriendsRail() {
         {friends.length === 0 && !collapsed && (
           <p className="px-1.5 py-3 text-xs text-muted">
             No friends yet —{' '}
-            <Link to="/you/friends" className="text-accent hover:underline">
+            <Link to="/friends" className="text-accent hover:underline">
               add someone
             </Link>{' '}
             and their status shows up here.
@@ -151,7 +151,7 @@ export function FriendsRail() {
 
       {!collapsed && (
         <div className="border-t border-line px-4 py-2.5">
-          <Link to="/you/friends" className="text-xs font-medium text-accent hover:underline">
+          <Link to="/friends" className="text-xs font-medium text-accent hover:underline">
             Manage friends & groups →
           </Link>
         </div>

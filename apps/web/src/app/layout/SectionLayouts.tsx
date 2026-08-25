@@ -10,7 +10,6 @@ import {
   Soup,
   Target,
   TrendingUp,
-  UsersRound,
 } from 'lucide-react';
 import { SegmentedTabs, type SegmentTab } from '@/components/SegmentedTabs';
 
@@ -66,6 +65,7 @@ export function EatLayout() {
 
 // Profile and Settings live under the top-bar avatar menu, not here — this
 // section is your data (progress and goals), the avatar is your account.
+// Friends is social, not personal: it lives at /friends (rail + avatar menu).
 const youTabs: SegmentTab[] = [
   {
     to: '/you',
@@ -75,7 +75,6 @@ const youTabs: SegmentTab[] = [
     match: ['/you/history'],
   },
   { to: '/you/goals', label: 'Goals', Icon: Target },
-  { to: '/you/friends', label: 'Friends', Icon: UsersRound, match: ['/you/groups'] },
 ];
 
 export function YouLayout() {

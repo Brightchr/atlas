@@ -135,27 +135,6 @@ function EmptyState({ Icon, title, hint }: { Icon: typeof Bell; title: string; h
   );
 }
 
-function MenuItem({
-  Icon,
-  label,
-  hint,
-}: {
-  Icon: typeof User;
-  label: string;
-  hint?: string;
-}) {
-  return (
-    <button
-      type="button"
-      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-elev"
-    >
-      <Icon size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
-      <span className="flex-1">{label}</span>
-      {hint && <span className="text-xs text-muted">{hint}</span>}
-    </button>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Menus                                                               */
 /* ------------------------------------------------------------------ */
@@ -340,7 +319,14 @@ function ProfileMenu({ open, onToggle }: { open: boolean; onToggle: () => void }
                 <User size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
                 Profile
               </Link>
-              <MenuItem Icon={Users} label="Friends" hint="Soon" />
+              <Link
+                to="/friends"
+                onClick={onToggle}
+                className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-elev"
+              >
+                <Users size={16} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
+                Friends
+              </Link>
               <Link
                 to="/settings"
                 onClick={onToggle}

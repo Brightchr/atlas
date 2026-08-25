@@ -43,7 +43,7 @@ export function GroupPage() {
     return (
       <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
         <p className="text-sm text-muted">Group not found — it may have been deleted.</p>
-        <Link to="/you/friends" className="text-sm font-medium text-accent hover:underline">
+        <Link to="/friends" className="text-sm font-medium text-accent hover:underline">
           ← Back to friends
         </Link>
       </div>
@@ -64,7 +64,7 @@ export function GroupPage() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
       <div className="flex items-center gap-2">
         <Link
-          to="/you/friends"
+          to="/friends"
           className="flex items-center gap-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
         >
           <ChevronLeft size={14} aria-hidden />
@@ -85,7 +85,7 @@ export function GroupPage() {
               <button
                 type="button"
                 onClick={() =>
-                  deleteGroup.mutate(group.id, { onSuccess: () => void navigate('/you/friends') })
+                  deleteGroup.mutate(group.id, { onSuccess: () => void navigate('/friends') })
                 }
                 className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 font-semibold text-rose-600"
               >
@@ -234,7 +234,7 @@ export function GroupPage() {
           {group.membership === 'member' && (
             <button
               type="button"
-              onClick={() => leave.mutate(group.id, { onSuccess: () => void navigate('/you/friends') })}
+              onClick={() => leave.mutate(group.id, { onSuccess: () => void navigate('/friends') })}
               className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline"
             >
               Leave group
