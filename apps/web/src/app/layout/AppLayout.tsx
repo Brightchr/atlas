@@ -10,6 +10,7 @@ import {
   PanelLeftOpen,
   ShieldCheck,
   UserRound,
+  UsersRound,
   VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
@@ -47,6 +48,13 @@ const navItems: NavItem[] = [
   // Profile and Settings are account pages under the top-bar avatar menu,
   // so they deliberately don't light this tab.
   { to: '/you', label: 'You', Icon: UserRound, match: ['/goals'] },
+];
+
+// Mobile has no friends rail, so friends earn a tab of their own there.
+// Desktop reaches friends via the rail and the avatar menu instead.
+const mobileNavItems: NavItem[] = [
+  ...navItems,
+  { to: '/friends', label: 'Friends', Icon: UsersRound, match: ['/groups'] },
 ];
 
 function isItemActive(item: NavItem, pathname: string): boolean {
@@ -237,7 +245,7 @@ export function AppLayout() {
         aria-label="Primary"
         className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-between rounded-2xl border border-line bg-surface/80 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-xl md:hidden"
       >
-        {navItems.map((item) => (
+        {mobileNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
