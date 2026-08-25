@@ -42,9 +42,19 @@ export interface SyncState {
   error: string | null;
   /** Set when this device's data belongs to a different signed-in account. */
   accountMismatch: boolean;
+  /** True once the session's first sync pass has settled (ran, failed, or
+   * couldn't run). Gates decisions that must not race the initial pull —
+   * e.g. "this user has no profile, send them to onboarding". */
+  firstSyncDone: boolean;
 }
 
-let state: SyncState = { status: 'idle', lastSyncAt: null, error: null, accountMismatch: false };
+let state: SyncState = {
+  status: 'idle',
+  lastSyncAt: null,
+  error: null,
+  accountMismatch: false,
+  firstSyncDone: false,
+};
 const listeners = new Set<() => void>();
 
 function setState(patch: Partial<SyncState>) {
@@ -377,16 +387,20 @@ export async function syncNow(): Promise<void> {
     queued = true;
     return;
   }
-  if (!navigator.onLine || !currentUserId) return;
+  if (!navigator.onLine || !currentUserId) {
+    // Can't sync at all — don't leave firstSyncDone consumers waiting forever.
+    setState({ firstSyncDone: true });
+    return;
+  }
   if (!(await isSyncEnabled())) {
-    setState({ status: 'off' });
+    setState({ status: 'off', firstSyncDone: true });
     return;
   }
 
   // Never mix accounts: this device's data belongs to whoever synced first.
   const boundAccount = await getMeta('accountId');
   if (boundAccount && boundAccount !== currentUserId) {
-    setState({ status: 'off', accountMismatch: true });
+    setState({ status: 'off', accountMismatch: true, firstSyncDone: true });
     return;
   }
 
@@ -408,6 +422,7 @@ export async function syncNow(): Promise<void> {
     setState({ status: 'error', error: err instanceof Error ? err.message : String(err) });
     scheduleRetry();
   } finally {
+    setState({ firstSyncDone: true });
     running = false;
     if (queued) {
       queued = false;
@@ -500,7 +515,7 @@ export function startSync(userId: string): () => void {
     if (!enabled) {
       const mismatch = (await getMeta('accountId')) !== null &&
         (await getMeta('accountId')) !== userId;
-      setState({ status: 'off', accountMismatch: mismatch });
+      setState({ status: 'off', accountMismatch: mismatch, firstSyncDone: true });
       return;
     }
     setState({ lastSyncAt: await getMeta('lastSyncAt') });

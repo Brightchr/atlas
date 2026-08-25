@@ -18,6 +18,7 @@ import { useStopImpersonation } from '@/features/admin/api';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 import { startSync } from '@/lib/sync/engine';
+import { useSyncState } from '@/lib/sync/useSync';
 import { useTrainingProfile } from '@/features/training/profile';
 
 // The 4-tab shell: Home, Train, Eat, You — each tab is a complete world and
@@ -102,12 +103,22 @@ export function AppLayout() {
 
   // New-user onboarding: until a training profile exists, everything funnels
   // to the goal picker — it's the lens the rest of the app filters through.
+  // Wait for the first sync pass first: a device that lost (or never had)
+  // local data usually gets its profile back from the server, and asking the
+  // onboarding questions again would be wrong twice — annoying AND a lie.
   const profile = useTrainingProfile();
+  const sync = useSyncState();
   useEffect(() => {
-    if (profile.isSuccess && profile.data === null && pathname !== '/welcome') {
+    if (
+      sync.firstSyncDone &&
+      profile.isSuccess &&
+      !profile.isFetching &&
+      profile.data === null &&
+      pathname !== '/welcome'
+    ) {
       navigate('/welcome', { replace: true });
     }
-  }, [profile.isSuccess, profile.data, pathname, navigate]);
+  }, [sync.firstSyncDone, profile.isSuccess, profile.isFetching, profile.data, pathname, navigate]);
 
   // The demo account arrives "fully loaded": whenever demo is signed in and the
   // device DB is empty, seed it in the background (idempotent, self-healing).

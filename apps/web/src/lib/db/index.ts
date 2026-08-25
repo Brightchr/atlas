@@ -53,6 +53,11 @@ async function openDatabase(): Promise<SQLiteDBConnection> {
   setStatus('opening');
 
   if (Capacitor.getPlatform() === 'web') {
+    // Ask the browser to protect our IndexedDB from storage-pressure
+    // eviction — without this, phones (iOS especially) may silently wipe the
+    // local database and the app looks factory-reset. Best-effort: browsers
+    // may decline; sync is the recovery path either way.
+    void navigator.storage?.persist?.().catch(() => undefined);
     const { defineCustomElements } = await import('jeep-sqlite/loader');
     defineCustomElements(window);
     if (!document.querySelector('jeep-sqlite')) {

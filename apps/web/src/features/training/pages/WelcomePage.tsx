@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Check, Mountain } from 'lucide-react';
+import { upsertTargetGoal } from '@/features/goals/repository';
 import {
   GOAL_OPTIONS,
   LEVEL_OPTIONS,
@@ -19,6 +21,7 @@ export function WelcomePage() {
   const existing = useTrainingProfile();
   const save = useSaveTrainingProfile();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [goal, setGoal] = useState<TrainingGoal | null>(existing.data?.goal ?? null);
   const [level, setLevel] = useState<TrainingLevel | null>(existing.data?.level ?? null);
@@ -30,7 +33,18 @@ export function WelcomePage() {
     if (!goal || !level) return;
     save.mutate(
       { goal, level, daysPerWeek },
-      { onSuccess: () => navigate(existing.data ? '/settings' : '/', { replace: true }) },
+      {
+        onSuccess: async () => {
+          // The weekly commitment becomes a real, trackable goal — the
+          // answers must show up on the Goals page, not just steer
+          // recommendations invisibly.
+          await upsertTargetGoal('workout_frequency', 'Train weekly', daysPerWeek).catch(
+            () => undefined,
+          );
+          void queryClient.invalidateQueries({ queryKey: ['goals'] });
+          void navigate(existing.data ? '/settings' : '/', { replace: true });
+        },
+      },
     );
   };
 
