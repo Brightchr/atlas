@@ -6,6 +6,7 @@ import { effectivePlan, resolveMembership, type AuthUser, type MembershipPlan, t
 import { query } from '../db/pool';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
+import { invalidateIpBlockCache } from '../lib/ip-block';
 import { clientIp } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
 import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
@@ -151,12 +152,16 @@ adminRoutes.get('/users', async (c) => {
 
 /* ---- Bans: account-level lockout, effective on the next request ---- */
 
-const banSchema = z.object({ reason: z.string().trim().max(300).default('') });
+const banSchema = z.object({
+  reason: z.string().trim().max(300).default(''),
+  /** Also block every IP the account signed in from (last 30 days). */
+  blockIps: z.boolean().default(false),
+});
 
 adminRoutes.post('/users/:id/ban', zValidator('json', banSchema), async (c) => {
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
-  const { reason } = c.req.valid('json');
+  const { reason, blockIps } = c.req.valid('json');
   if (targetId === admin.id) return c.json({ error: 'You cannot ban yourself' }, 400);
 
   // role <> 'admin' in the WHERE, not a pre-check — admins stay unbannable
@@ -170,11 +175,29 @@ adminRoutes.post('/users/:id/ban', zValidator('json', banSchema), async (c) => {
   if (rows.length === 0) {
     return c.json({ error: 'User not found, already banned, or an admin' }, 404);
   }
+
+  // Collect IPs BEFORE deleting the sessions that hold them.
+  let blockedIps = 0;
+  if (blockIps) {
+    const inserted = await query<{ ip: string }>(
+      `INSERT INTO ip_blocks (ip, reason, created_by)
+       SELECT DISTINCT s.ip, $2, $3
+         FROM sessions s
+        WHERE s.user_id = $1 AND s.ip IS NOT NULL AND s.ip <> 'unknown'
+          AND s.created_at > now() - interval '30 days'
+       ON CONFLICT (ip) DO NOTHING
+       RETURNING ip`,
+      [targetId, `Banned account: ${reason || 'no reason given'}`, admin.id],
+    );
+    blockedIps = inserted.length;
+    invalidateIpBlockCache();
+  }
+
   // The session-lookup filter already locks them out; deleting is hygiene so
   // dead tokens don't linger for 30 days.
   await query('DELETE FROM sessions WHERE user_id = $1', [targetId]);
-  await logAudit(admin.id, 'ban_user', 'user', targetId, { reason });
-  return c.json({ ok: true });
+  await logAudit(admin.id, 'ban_user', 'user', targetId, { reason, blockedIps });
+  return c.json({ ok: true, blockedIps });
 });
 
 adminRoutes.post('/users/:id/unban', async (c) => {
@@ -188,6 +211,68 @@ adminRoutes.post('/users/:id/unban', async (c) => {
   );
   if (rows.length === 0) return c.json({ error: 'User not found or not banned' }, 404);
   await logAudit(admin.id, 'unban_user', 'user', targetId, {});
+  return c.json({ ok: true });
+});
+
+/* ---- IP blocks: network-level lockout, enforced before authentication ---- */
+
+adminRoutes.get('/ip-blocks', async (c) => {
+  const rows = await query<{
+    id: string;
+    ip: string;
+    reason: string;
+    created_at: string;
+    expires_at: string | null;
+    created_by_username: string | null;
+  }>(
+    `SELECT b.id, b.ip, b.reason, b.created_at, b.expires_at, u.username AS created_by_username
+       FROM ip_blocks b LEFT JOIN users u ON u.id = b.created_by
+      ORDER BY b.created_at DESC
+      LIMIT 200`,
+  );
+  return c.json({
+    blocks: rows.map((b) => ({
+      id: b.id,
+      ip: b.ip,
+      reason: b.reason,
+      createdAt: b.created_at,
+      expiresAt: b.expires_at,
+      createdBy: b.created_by_username,
+    })),
+  });
+});
+
+const ipBlockSchema = z.object({
+  ip: z.union([z.ipv4(), z.ipv6()]),
+  reason: z.string().trim().max(300).default(''),
+  /** Hours until the block lifts itself; omitted = permanent. */
+  expiresInHours: z.number().int().min(1).max(24 * 365).optional(),
+});
+
+adminRoutes.post('/ip-blocks', zValidator('json', ipBlockSchema), async (c) => {
+  const admin = c.get('user')!;
+  const body = c.req.valid('json');
+  const rows = await query<{ id: string }>(
+    `INSERT INTO ip_blocks (ip, reason, created_by, expires_at)
+     VALUES ($1, $2, $3, CASE WHEN $4::int IS NULL THEN NULL
+                              ELSE now() + make_interval(hours => $4::int) END)
+     ON CONFLICT (ip) DO NOTHING RETURNING id`,
+    [body.ip, body.reason, admin.id, body.expiresInHours ?? null],
+  );
+  if (rows.length === 0) return c.json({ error: 'This IP is already blocked' }, 409);
+  invalidateIpBlockCache();
+  await logAudit(admin.id, 'block_ip', 'ip', body.ip, { reason: body.reason });
+  return c.json({ ok: true }, 201);
+});
+
+adminRoutes.delete('/ip-blocks/:id', async (c) => {
+  const admin = c.get('user')!;
+  const rows = await query<{ ip: string }>('DELETE FROM ip_blocks WHERE id = $1 RETURNING ip', [
+    c.req.param('id'),
+  ]);
+  if (rows.length === 0) return c.json({ error: 'Block not found' }, 404);
+  invalidateIpBlockCache();
+  await logAudit(admin.id, 'unblock_ip', 'ip', rows[0]!.ip, {});
   return c.json({ ok: true });
 });
 

@@ -342,6 +342,22 @@ const migrations: { id: string; sql: string }[] = [
       ALTER TABLE sessions ADD COLUMN ip text;
     `,
   },
+  {
+    id: '015_ip_blocks',
+    sql: `
+      -- Network-level blocks, checked before authentication on every /v1
+      -- request (cached in-process). Blocks ban evasion via fresh accounts
+      -- from a known-abusive address. expires_at NULL = permanent.
+      CREATE TABLE ip_blocks (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        ip         text NOT NULL UNIQUE,
+        reason     text NOT NULL DEFAULT '' CHECK (char_length(reason) <= 300),
+        created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz
+      );
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

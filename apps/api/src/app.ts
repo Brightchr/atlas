@@ -5,6 +5,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { env } from './lib/env';
+import { ipBlockMiddleware } from './lib/ip-block';
 import { sessionMiddleware, type AppEnv } from './middleware/auth';
 import { adminRoutes } from './routes/admin';
 import { authRoutes } from './routes/auth';
@@ -31,6 +32,9 @@ app.use(
     credentials: true,
   }),
 );
+// Blocked IPs are turned away before any session or body work. Scoped to /v1
+// so uptime monitoring on /health keeps working from anywhere.
+app.use('/v1/*', ipBlockMiddleware);
 app.use('*', sessionMiddleware);
 
 // Body caps BEFORE any route reads a body: route-level size checks run after
