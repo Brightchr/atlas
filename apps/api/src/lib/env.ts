@@ -26,4 +26,9 @@ export const env = {
    * DEMO_KEY works but is rate-limited to ~30 req/hour — fine for dev, set a
    * real key in production. */
   fdcApiKey: process.env.FDC_API_KEY ?? 'DEMO_KEY',
+  /** FatSecret Platform credentials (https://platform.fatsecret.com). When
+   * set, FatSecret becomes the primary food-search source with USDA as
+   * backup; when empty, search runs on USDA + Open Food Facts as before. */
+  fatSecretClientId: process.env.FATSECRET_CLIENT_ID ?? '',
+  fatSecretClientSecret: process.env.FATSECRET_CLIENT_SECRET ?? '',
 } as const;

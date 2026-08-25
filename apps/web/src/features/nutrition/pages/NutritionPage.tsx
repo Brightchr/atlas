@@ -583,7 +583,13 @@ export function NutritionPage() {
               <FoodResult
                 key={snapshot.barcode}
                 snapshot={snapshot}
-                sourceTag={snapshot.source === 'usda' ? 'USDA' : 'Open Food Facts'}
+                sourceTag={
+                  snapshot.source === 'fatsecret'
+                    ? 'fatsecret'
+                    : snapshot.source === 'usda'
+                      ? 'USDA'
+                      : 'Open Food Facts'
+                }
                 defaultMeal={mealTarget ?? undefined}
                 pending={logMutation.isPending}
                 onLog={(grams, meal, serving) =>
@@ -759,7 +765,11 @@ export function NutritionPage() {
       )}
 
       <p className="pt-2 text-xs text-muted/70">
-        Food data from{' '}
+        Powered by{' '}
+        <a href="https://platform.fatsecret.com" target="_blank" rel="noreferrer" className="underline">
+          fatsecret
+        </a>
+        . Additional food data from{' '}
         <a href="https://fdc.nal.usda.gov" target="_blank" rel="noreferrer" className="underline">
           USDA FoodData Central
         </a>{' '}

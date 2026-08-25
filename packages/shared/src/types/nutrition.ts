@@ -18,7 +18,7 @@ export interface Food {
   name: string;
   brand: string | null;
   barcode: string | null;
-  source: 'user' | 'usda' | 'off';
+  source: 'user' | 'usda' | 'off' | 'fatsecret';
   /** Nutrients per 100 g */
   per100g: Macros;
   /** Product photo (external URL) when the source provides one. */

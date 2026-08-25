@@ -31,8 +31,9 @@ interface OffProduct {
   nutriments?: OffNutriments;
   serving_size?: string;
   serving_quantity?: number | string;
-  /** Set by our API's merged search: 'usda' rows come from FoodData Central. */
-  source?: 'usda' | 'off';
+  /** Set by our API's merged search: 'fatsecret' and 'usda' rows come from
+   * those curated sources; everything else is Open Food Facts. */
+  source?: 'usda' | 'off' | 'fatsecret';
 }
 
 export type FoodSnapshot = Omit<Food, 'id'>;

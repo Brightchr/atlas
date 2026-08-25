@@ -1,14 +1,17 @@
 import { Hono } from 'hono';
 import { env } from '../lib/env';
+import { fatSecretConfigured, searchFatSecret, type FsFood } from '../lib/fatsecret';
 import { rateLimit } from '../lib/rate-limit';
 
-/** Server-side food search across two sources, merged per page:
+/** Server-side food search, merged per page from up to three sources:
  *
- * - USDA FoodData Central — curated data (FNDDS survey foods, SR Legacy fast
- *   foods, branded groceries). Listed first: the numbers are trustworthy.
- * - Open Food Facts — community barcode data, broad international coverage
- *   but noisy. Proxied server-side because its search service doesn't serve
- *   CORS for third-party origins (and the legacy endpoint 503s).
+ * - FatSecret Platform — the primary when credentials are configured:
+ *   curated US branded + restaurant foods with images and clean servings.
+ * - USDA FoodData Central — the backup (and the primary without FatSecret):
+ *   public-domain curated data (FNDDS survey foods, SR Legacy, Branded).
+ * - Open Food Facts — community barcode data; last-resort filler only.
+ *   Proxied server-side because its search service doesn't serve CORS for
+ *   third-party origins (and the legacy endpoint 503s).
  *
  * Responses use the legacy OFF `{ products: [...] }` shape the web client
  * maps, each product tagged with its `source`. Cached briefly per term+page. */
@@ -31,7 +34,7 @@ interface SearchHit {
 /** Legacy-shaped product: `brands` as a comma-separated string. */
 interface Product extends Omit<SearchHit, 'brands'> {
   brands?: string;
-  source: 'usda' | 'off';
+  source: 'usda' | 'off' | 'fatsecret';
 }
 
 /** Deep pages die in OFF's Elasticsearch result window anyway; 50 pages of 20
@@ -172,39 +175,92 @@ async function searchFdc(term: string, page: number): Promise<SourcePage> {
   };
 }
 
+/* ------------------------------- FatSecret -------------------------------- */
+
+function fsToProduct(f: FsFood): Product {
+  return {
+    code: `fs-${f.foodId}`,
+    product_name: f.name,
+    brands: f.brand ?? undefined,
+    image_front_small_url: f.imageUrl ?? undefined,
+    nutriments: {
+      'energy-kcal_100g': f.per100g.kcal,
+      proteins_100g: f.per100g.proteinG,
+      carbohydrates_100g: f.per100g.carbsG,
+      fat_100g: f.per100g.fatG,
+      ...(f.per100g.sugarG !== undefined && { sugars_100g: f.per100g.sugarG }),
+      ...(f.per100g.fiberG !== undefined && { fiber_100g: f.per100g.fiberG }),
+      ...(f.per100g.saturatedFatG !== undefined && {
+        'saturated-fat_100g': f.per100g.saturatedFatG,
+      }),
+      ...(f.per100g.sodiumG !== undefined && { sodium_100g: f.per100g.sodiumG }),
+    },
+    ...(f.servingGrams && {
+      serving_quantity: f.servingGrams,
+      serving_size: f.servingName ?? `${f.servingGrams} g`,
+    }),
+    source: 'fatsecret',
+  };
+}
+
+async function searchFs(term: string, page: number): Promise<SourcePage> {
+  const result = await searchFatSecret(term, page);
+  return {
+    products: result.foods.map(fsToProduct),
+    pageCount: Math.min(result.pageCount, MAX_PAGES),
+  };
+}
+
 /* --------------------------------- Merge --------------------------------- */
 
-/** Query both sources concurrently; either failing alone is fine. USDA rows
- * lead (curated data beats community data on ties). */
+const EMPTY_PAGE: SourcePage = { products: [], pageCount: 1 };
+
+function settle(name: string, r: PromiseSettledResult<SourcePage>): SourcePage {
+  if (r.status === 'rejected') {
+    console.warn(`${name} search failed:`, String(r.reason));
+    return EMPTY_PAGE;
+  }
+  return r.value;
+}
+
+/** Sources queried concurrently, merged primary-first. The backup fills gaps
+ * (capped when the primary delivered a real page) and takes over fully when
+ * the primary failed or came back thin. */
 async function searchFood(term: string, page: number): Promise<SearchResult> {
   const key = `${page}:${term}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.result;
 
-  const [fdc, off] = await Promise.allSettled([searchFdc(term, page), searchOff(term, page)]);
-  if (fdc.status === 'rejected') console.warn('FDC search failed:', String(fdc.reason));
-  if (off.status === 'rejected') console.warn('OFF search failed:', String(off.reason));
-  if (fdc.status === 'rejected' && off.status === 'rejected') {
-    throw new Error('All food sources unavailable');
-  }
-  const fdcPage = fdc.status === 'fulfilled' ? fdc.value : { products: [], pageCount: 1 };
-  const offPage = off.status === 'fulfilled' ? off.value : { products: [], pageCount: 1 };
+  // Without FatSecret: USDA primary, OFF backup (the original pairing).
+  // With FatSecret: FatSecret primary, USDA backup — OFF joins only when the
+  // curated pair produced almost nothing.
+  const useFs = fatSecretConfigured();
+  const [primaryResult, backupResult] = await Promise.allSettled([
+    useFs ? searchFs(term, page) : searchFdc(term, page),
+    useFs ? searchFdc(term, page) : searchOff(term, page),
+  ]);
+  const primary = settle(useFs ? 'FatSecret' : 'FDC', primaryResult);
+  const backup = settle(useFs ? 'FDC' : 'OFF', backupResult);
 
-  // USDA leads; OFF only fills the gaps. When FDC delivered a real page,
-  // community rows are capped so curated data dominates the list — OFF only
-  // takes over fully when USDA had nothing (or its request failed).
-  const offCap = fdcPage.products.length >= 8 ? 6 : 20;
+  const backupCap = primary.products.length >= 8 ? 6 : 20;
   const seen = new Set<string>();
-  const products = [...fdcPage.products, ...offPage.products.slice(0, offCap)].filter((p) => {
+  let products = [...primary.products, ...backup.products.slice(0, backupCap)].filter((p) => {
     if (seen.has(p.code)) return false;
     seen.add(p.code);
     return true;
   });
 
+  // Last resort in FatSecret mode: both curated sources came back nearly
+  // empty — let community data have a go rather than showing nothing.
+  if (useFs && products.length < 3) {
+    const off = await searchOff(term, page).catch(() => EMPTY_PAGE);
+    products = [...products, ...off.products.filter((p) => !seen.has(p.code))];
+  }
+
   const result: SearchResult = {
     products,
     page,
-    pageCount: Math.min(Math.max(fdcPage.pageCount, offPage.pageCount), MAX_PAGES),
+    pageCount: Math.min(Math.max(primary.pageCount, backup.pageCount), MAX_PAGES),
   };
 
   // Oldest-entry eviction keeps the cache bounded without LRU bookkeeping.
@@ -216,12 +272,18 @@ async function searchFood(term: string, page: number): Promise<SearchResult> {
   return result;
 }
 
-// A missing key silently degrades search to community data only — the exact
-// failure users report as "the food database is bad". Make it loud.
+// A missing key silently degrades search quality — the exact failure users
+// report as "the food database is bad". Make misconfiguration loud.
 if (env.fdcApiKey === 'DEMO_KEY') {
   console.warn(
     'FDC_API_KEY is not set — USDA food search runs on DEMO_KEY (~50 requests/day, exhausts in minutes). ' +
       'Get a free key at https://fdc.nal.usda.gov/api-key-signup.html and set FDC_API_KEY.',
+  );
+}
+if (!fatSecretConfigured()) {
+  console.warn(
+    'FATSECRET_CLIENT_ID / FATSECRET_CLIENT_SECRET are not set — food search runs on USDA + ' +
+      'Open Food Facts. Set both to make FatSecret the primary source.',
   );
 }
 
