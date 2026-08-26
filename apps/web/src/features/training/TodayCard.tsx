@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowRight, BedDouble, Play, TimerReset } from 'lucide-react';
-import { listPlans } from '@/features/plans/repository';
+import { getActivePlanId, listPlans } from '@/features/plans/repository';
 import { getOpenSession, listWorkouts, startSession } from '@/features/workouts/repository';
 
 /** Today as a 0 = Monday … 6 = Sunday index. */
@@ -14,12 +14,20 @@ const todayIndex = () => (new Date().getDay() + 6) % 7;
 export function TodayCard() {
   const navigate = useNavigate();
   const plansQuery = useQuery({ queryKey: ['plans'], queryFn: listPlans });
+  const activeQuery = useQuery({ queryKey: ['plans', 'active'], queryFn: getActivePlanId });
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
   const openSession = useQuery({ queryKey: ['session', 'open'], queryFn: getOpenSession });
 
   const workoutsById = new Map((workoutsQuery.data ?? []).map((w) => [w.id, w]));
   const today = todayIndex();
-  const todaysDay = (plansQuery.data ?? [])
+  // The ACTIVE plan decides the day; without one, any plan that schedules
+  // something today still works (the pre-switcher behavior).
+  const activeId = activeQuery.data ?? null;
+  const orderedPlans = [...(plansQuery.data ?? [])].sort(
+    (a, b) => Number(b.id === activeId) - Number(a.id === activeId),
+  );
+  const todaysDay = orderedPlans
+    .filter((plan) => activeId === null || plan.id === activeId)
     .flatMap((plan) =>
       plan.days
         .filter((d) => d.dayOfWeek === today)

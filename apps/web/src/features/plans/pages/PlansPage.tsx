@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import {
   CalendarDays,
+  CheckCircle2,
   Download,
   Globe,
   Lock,
@@ -23,11 +24,14 @@ import type {
 } from '@arcadia/shared';
 import { DIET_LABELS, GOAL_LABELS, LEVEL_LABELS, useTrainingProfile } from '@/features/training/profile';
 import {
+  useActivePlanId,
   useCreatePlan,
   useDeletePlan,
   useImportSharedPlan,
   usePlans,
+  useRenamePlan,
   useSendPlan,
+  useSetActivePlan,
   useSetPlanDay,
   useSetPlanLocalOnly,
   useSharePlan,
@@ -144,7 +148,15 @@ function CommunityCard({ shared }: { shared: SharedPlanSummary }) {
   );
 }
 
-function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] }) {
+function PlanCard({
+  plan,
+  workouts,
+  active,
+}: {
+  plan: TrainingPlan;
+  workouts: Workout[];
+  active: boolean;
+}) {
   const setDay = useSetPlanDay();
   const deletePlan = useDeletePlan();
   const setLocalOnly = useSetPlanLocalOnly();
@@ -153,6 +165,10 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
   const shared = useSharedPlans();
   const profile = useTrainingProfile();
   const updateDescription = useUpdatePlanDescription();
+  const setActive = useSetActivePlan();
+  const rename = useRenamePlan();
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState(plan.name);
   const [difficulty, setDifficulty] = useState<PlanDifficulty>('intermediate');
   // Every published plan carries a goal; it defaults to the creator's own.
   const [goalChoice, setGoalChoice] = useState<PlanGoal | null>(null);
@@ -190,9 +206,87 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
     });
 
   return (
-    <li className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+    <li
+      className={`rounded-2xl border bg-surface p-4 shadow-sm ${
+        active ? 'border-accent/60 ring-1 ring-accent/25' : 'border-line'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <p className="font-semibold">{plan.name}</p>
+        <div className="min-w-0">
+          {renaming ? (
+            <span className="flex items-center gap-1.5">
+              <input
+                value={newName}
+                autoFocus
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newName.trim()) {
+                    rename.mutate({ id: plan.id, name: newName.trim() });
+                    setRenaming(false);
+                  }
+                  if (e.key === 'Escape') setRenaming(false);
+                }}
+                aria-label="Plan name"
+                className="rounded-lg border border-line bg-surface px-2 py-1 text-sm font-semibold outline-none focus:border-accent"
+              />
+              <button
+                type="button"
+                disabled={!newName.trim()}
+                onClick={() => {
+                  rename.mutate({ id: plan.id, name: newName.trim() });
+                  setRenaming(false);
+                }}
+                className="rounded-lg bg-accent-soft px-2 py-1 text-xs font-semibold text-accent"
+              >
+                Save
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setNewName(plan.name);
+                setRenaming(true);
+              }}
+              title="Rename plan"
+              className="text-left font-semibold hover:underline"
+            >
+              {plan.name}
+            </button>
+          )}
+          {plan.basedOnName && (
+            <p className="text-xs text-muted">
+              based on{' '}
+              <Link
+                to={
+                  plan.basedOnKind === 'catalog'
+                    ? `/train/explore/plan/${plan.basedOnRef}`
+                    : `/plans/community/${plan.basedOnRef}`
+                }
+                className="text-accent hover:underline"
+              >
+                {plan.basedOnName}
+              </Link>
+            </p>
+          )}
+        </div>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {active ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-500">
+              <CheckCircle2 size={13} aria-hidden />
+              Active
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={setActive.isPending}
+              onClick={() => setActive.mutate(plan.id)}
+              title="Make this the plan your Today card and adherence follow"
+              className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted transition-colors hover:bg-elev hover:text-ink disabled:opacity-50"
+            >
+              Use this plan
+            </button>
+          )}
         {confirmingDelete ? (
           <span className="flex shrink-0 items-center gap-1.5 text-xs">
             <button
@@ -220,6 +314,7 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
             <Trash2 size={15} aria-hidden />
           </button>
         )}
+        </span>
       </div>
 
       <div className="mt-3 space-y-1.5">
@@ -404,11 +499,17 @@ function PlanCard({ plan, workouts }: { plan: TrainingPlan; workouts: Workout[] 
 export function PlansPage({ embedded = false }: { embedded?: boolean }) {
   const [name, setName] = useState('');
   const plansQuery = usePlans();
+  const activeQuery = useActivePlanId();
   const workoutsQuery = useWorkoutsForPlans();
   const sharedQuery = useSharedPlans();
   const createPlan = useCreatePlan();
 
   const workouts = workoutsQuery.data ?? [];
+  const activeId = activeQuery.data ?? null;
+  // The active plan leads; the rest keep their alphabetical order.
+  const myPlans = [...(plansQuery.data ?? [])].sort(
+    (a, b) => Number(b.id === activeId) - Number(a.id === activeId),
+  );
   // Includes your own shares (badged) and plans sent directly to you —
   // that's also how you pull a plan you published onto a fresh device.
   const community = sharedQuery.data?.plans ?? [];
@@ -423,10 +524,11 @@ export function PlansPage({ embedded = false }: { embedded?: boolean }) {
   return (
     <div className={embedded ? 'space-y-4' : 'mx-auto max-w-4xl space-y-4 p-4 md:p-6'}>
       <header>
-        <h1 className={embedded ? 'text-lg font-bold' : 'text-2xl font-bold'}>Workout plans</h1>
+        <h1 className={embedded ? 'text-lg font-bold' : 'text-2xl font-bold'}>My plans</h1>
         <p className="text-sm text-muted">
-          Map workouts to weekdays. Share plans publicly, send them to a friend, or keep them
-          private.
+          Keep as many plans as you like and switch anytime — the <b>active</b> plan drives your
+          Today card and adherence. Edit any plan freely; adopted ones remember what they were
+          based on.
         </p>
       </header>
 
@@ -460,8 +562,8 @@ export function PlansPage({ embedded = false }: { embedded?: boolean }) {
       )}
 
       <ul className="grid items-start gap-3 md:grid-cols-2">
-        {plansQuery.data?.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} workouts={workouts} />
+        {myPlans.map((plan) => (
+          <PlanCard key={plan.id} plan={plan} workouts={workouts} active={plan.id === activeId} />
         ))}
       </ul>
 

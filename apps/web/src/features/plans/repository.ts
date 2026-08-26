@@ -14,6 +14,9 @@ interface PlanRow {
   source: 'user' | 'provided';
   visibility: PlanVisibility;
   local_only: number;
+  based_on_kind: 'catalog' | 'community' | null;
+  based_on_ref: string | null;
+  based_on_name: string | null;
 }
 
 /** Deterministic id for a plan-day row (see schema v9) — the sync engine
@@ -38,6 +41,9 @@ export async function listPlans(): Promise<TrainingPlan[]> {
     source: p.source,
     visibility: p.visibility,
     localOnly: Boolean(p.local_only),
+    basedOnKind: p.based_on_kind,
+    basedOnRef: p.based_on_ref,
+    basedOnName: p.based_on_name,
     days: days
       .filter((d) => d.plan_id === p.id)
       .map((d): TrainingPlanDay => ({
@@ -160,15 +166,28 @@ export function buildPlanPayload(plan: TrainingPlan, workouts: Workout[]): Share
   };
 }
 
-/** Import a shared payload: recreate its workouts locally, then the plan. */
-export async function importPlanPayload(payload: SharedPlanPayload): Promise<string> {
+/** Import a shared payload: recreate its workouts locally, then the plan.
+ * `basedOn` records provenance and the new plan becomes the active one —
+ * importing a plan means you're trying it. */
+export async function importPlanPayload(
+  payload: SharedPlanPayload,
+  basedOn?: { kind: 'catalog' | 'community'; ref: string; name: string },
+): Promise<string> {
   const db = await getDb();
   const now = new Date().toISOString();
   const planId = newId();
   await db.run(
-    `INSERT INTO training_plans (id, name, description, source, visibility)
-     VALUES (?, ?, ?, 'user', 'private')`,
-    [planId, payload.name, payload.description || null],
+    `INSERT INTO training_plans
+       (id, name, description, source, visibility, based_on_kind, based_on_ref, based_on_name)
+     VALUES (?, ?, ?, 'user', 'private', ?, ?, ?)`,
+    [
+      planId,
+      payload.name,
+      payload.description || null,
+      basedOn?.kind ?? null,
+      basedOn?.ref ?? null,
+      basedOn?.name ?? null,
+    ],
   );
 
   // One local workout per distinct embedded workout name.
@@ -218,6 +237,46 @@ export async function importPlanPayload(payload: SharedPlanPayload): Promise<str
     );
   }
 
+  await setActivePlanId(planId);
   await persist();
   return planId;
+}
+
+/* ------------------------------ Active plan ------------------------------ */
+
+const ACTIVE_PLAN_KEY = 'active_plan_id';
+
+/** The plan the user is currently following. Stored in synced settings so it
+ * travels across devices. Null = nothing chosen (Today falls back to any
+ * plan that schedules something). */
+export async function getActivePlanId(): Promise<string | null> {
+  const db = await getDb();
+  const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [ACTIVE_PLAN_KEY]))
+    .values as { value: string }[];
+  const id = rows[0]?.value || null;
+  if (!id) return null;
+  // A deleted plan must not leave a dangling pointer.
+  const exists = (await db.query('SELECT id FROM training_plans WHERE id = ?', [id])).values as {
+    id: string;
+  }[];
+  return exists.length > 0 ? id : null;
+}
+
+export async function setActivePlanId(id: string | null): Promise<void> {
+  const db = await getDb();
+  if (id === null) {
+    await db.run('DELETE FROM settings WHERE key = ?', [ACTIVE_PLAN_KEY]);
+  } else {
+    await db.run(
+      'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      [ACTIVE_PLAN_KEY, ACTIVE_PLAN_KEY, id],
+    );
+  }
+  await persist();
+}
+
+export async function renamePlan(id: string, name: string): Promise<void> {
+  const db = await getDb();
+  await db.run('UPDATE training_plans SET name = ? WHERE id = ?', [name, id]);
+  await persist();
 }

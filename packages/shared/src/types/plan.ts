@@ -11,6 +11,11 @@ export interface TrainingPlan {
   visibility: PlanVisibility;
   /** Pinned to this device: excluded from training sync (per-device flag). */
   localOnly: boolean;
+  /** Where an adopted plan came from — the user's copy stays editable but
+   * remembers its origin. Null for plans built from scratch. */
+  basedOnKind: 'catalog' | 'community' | null;
+  basedOnRef: string | null;
+  basedOnName: string | null;
   /** 0 = Monday … 6 = Sunday */
   days: TrainingPlanDay[];
 }

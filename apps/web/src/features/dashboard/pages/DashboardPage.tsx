@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
+  CalendarDays,
   Check,
   ChevronRight,
   Dumbbell,
@@ -53,6 +54,7 @@ function greeting(): string {
 }
 
 const quickActions = [
+  { to: '/train/schedule', label: 'My plans', Icon: CalendarDays },
   { to: '/exercises', label: 'Browse exercises', Icon: Search },
   { to: '/train/library', label: 'Start a workout', Icon: Dumbbell },
   { to: '/eat', label: 'Log a meal', Icon: UtensilsCrossed },

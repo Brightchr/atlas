@@ -387,6 +387,17 @@ export const upgradeStatements = [
       ...seedPendingStatements([...TRAINING_SYNC_TABLES, 'goals', 'settings']),
     ],
   },
+  {
+    toVersion: 11,
+    statements: [
+      // Plan provenance: where an adopted plan came from (catalog key or a
+      // community share id), so the user's editable copy still shows what it
+      // was based on. The columns ride the existing v9 sync triggers.
+      `ALTER TABLE training_plans ADD COLUMN based_on_kind TEXT;`,
+      `ALTER TABLE training_plans ADD COLUMN based_on_ref TEXT;`,
+      `ALTER TABLE training_plans ADD COLUMN based_on_name TEXT;`,
+    ],
+  },
 ];
 
 export const DB_VERSION = upgradeStatements[upgradeStatements.length - 1]!.toVersion;

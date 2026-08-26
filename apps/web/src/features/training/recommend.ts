@@ -1,6 +1,7 @@
 import type { Exercise } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import { fetchAllExercises } from '@/lib/exercise-db/client';
+import { setActivePlanId } from '@/features/plans/repository';
 import { CATALOG_PLANS, CATALOG_WORKOUTS, type CatalogPlan, type CatalogWorkout } from './catalog';
 import type { TrainingLevel, TrainingProfile } from './profile';
 
@@ -106,13 +107,17 @@ export async function importCatalogWorkout(w: CatalogWorkout): Promise<string> {
 }
 
 /** Adopts a recommended plan: imports its workouts (deduped by name), then
- * creates the weekly plan. Idempotent by plan name. Returns the plan id. */
+ * creates the weekly plan and makes it ACTIVE — adopting means trying it.
+ * Idempotent by plan name (re-adopting just re-activates). Returns the id. */
 export async function importCatalogPlan(p: CatalogPlan): Promise<string> {
   const db = await getDb();
   const existing = (
     await db.query('SELECT id FROM training_plans WHERE name = ? LIMIT 1', [p.name])
   ).values as { id: string }[];
-  if (existing[0]) return existing[0].id;
+  if (existing[0]) {
+    await setActivePlanId(existing[0].id);
+    return existing[0].id;
+  }
 
   const workoutIds = new Map<string, string>();
   for (const key of p.days) {
@@ -123,9 +128,10 @@ export async function importCatalogPlan(p: CatalogPlan): Promise<string> {
 
   const planId = newId();
   await db.run(
-    `INSERT INTO training_plans (id, name, description, source, visibility)
-     VALUES (?, ?, ?, 'provided', 'private')`,
-    [planId, p.name, p.description],
+    `INSERT INTO training_plans
+       (id, name, description, source, visibility, based_on_kind, based_on_ref, based_on_name)
+     VALUES (?, ?, ?, 'provided', 'private', 'catalog', ?, ?)`,
+    [planId, p.name, p.description, p.key, p.name],
   );
   for (let day = 0; day < 7; day++) {
     const key = p.days[day];
@@ -142,6 +148,7 @@ export async function importCatalogPlan(p: CatalogPlan): Promise<string> {
       ],
     );
   }
+  await setActivePlanId(planId);
   await persist();
   return planId;
 }

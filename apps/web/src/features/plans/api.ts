@@ -16,8 +16,11 @@ import {
   buildPlanPayload,
   createPlan,
   deletePlan,
+  getActivePlanId,
   importPlanPayload,
   listPlans,
+  renamePlan,
+  setActivePlanId,
   setPlanDay,
   setPlanLocalOnly,
   setPlanVisibility,
@@ -161,11 +164,39 @@ export function useImportSharedPlan() {
   return useMutation({
     mutationFn: async (id: string) => {
       const shared = await apiFetch<{ payload: SharedPlanPayload }>(`/v1/plans/${id}`);
-      return importPlanPayload(shared.payload);
+      return importPlanPayload(shared.payload, {
+        kind: 'community',
+        ref: id,
+        name: shared.payload.name,
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['plans'] });
       void queryClient.invalidateQueries({ queryKey: ['workouts'] });
     },
+  });
+}
+
+/** The plan the user is following (null = none chosen). */
+export function useActivePlanId() {
+  return useQuery({ queryKey: ['plans', 'active'], queryFn: getActivePlanId });
+}
+
+export function useSetActivePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | null) => setActivePlanId(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['plans'] });
+      void queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
+export function useRenamePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => renamePlan(id, name),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['plans'] }),
   });
 }

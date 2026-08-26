@@ -35,7 +35,7 @@ const trainTabs: SegmentTab[] = [
   { to: '/train', label: 'Today', Icon: Play, end: true },
   {
     to: '/train/schedule',
-    label: 'Schedule',
+    label: 'Plans',
     Icon: CalendarDays,
     match: ['/plans'],
   },

@@ -201,13 +201,20 @@ export interface AdherenceStats {
 }
 
 /** Done-vs-missed over the last N calendar weeks: a day counts as planned
- * when any weekly plan schedules a workout on that weekday; it's done when a
- * session was finished that date. Untrained rest/unplanned days are 'off'. */
+ * when the ACTIVE plan schedules a workout on that weekday (any plan, when
+ * none is active); it's done when a session was finished that date. */
 export async function adherenceStats(weeksBack = 4): Promise<AdherenceStats> {
   const db = await getDb();
+  const activeRows = (
+    await db.query('SELECT value FROM settings WHERE key = ?', ['active_plan_id'])
+  ).values as { value: string }[];
+  const activeId = activeRows[0]?.value || null;
   const planned = (
     await db.query(
-      'SELECT DISTINCT day_of_week FROM training_plan_days WHERE is_rest_day = 0 AND workout_id IS NOT NULL',
+      activeId
+        ? 'SELECT DISTINCT day_of_week FROM training_plan_days WHERE is_rest_day = 0 AND workout_id IS NOT NULL AND plan_id = ?'
+        : 'SELECT DISTINCT day_of_week FROM training_plan_days WHERE is_rest_day = 0 AND workout_id IS NOT NULL',
+      activeId ? [activeId] : [],
     )
   ).values as { day_of_week: number }[];
   const plannedDows = new Set(planned.map((p) => p.day_of_week));
