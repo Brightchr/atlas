@@ -17,6 +17,7 @@ import { WorkoutSessionPage } from '@/features/workouts/pages/WorkoutSessionPage
 import { MealPlanPage } from '@/features/nutrition/pages/MealPlanPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
+import { CommunityRecipePage } from '@/features/nutrition/pages/CommunityRecipePage';
 import { RecipeDetailPage } from '@/features/nutrition/pages/RecipeDetailPage';
 import { FriendsPage } from '@/features/social/pages/FriendsPage';
 import { GroupPage } from '@/features/social/pages/GroupPage';
@@ -86,6 +87,7 @@ export const router = createBrowserRouter([
           { path: '/eat', element: <NutritionPage /> },
           { path: '/eat/meal-plan', element: <MealPlanPage /> },
           { path: '/eat/recipes', element: <RecipesPage /> },
+          { path: '/eat/recipes/community/:id', element: <CommunityRecipePage /> },
           { path: '/eat/recipes/:id', element: <RecipeDetailPage /> },
           { path: '/eat/shopping', element: <ShoppingPage /> },
         ],
