@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { query } from '../db/pool';
 import { env } from '../lib/env';
 import {
   autocompleteFatSecret,
@@ -41,7 +42,7 @@ interface SearchHit {
 /** Legacy-shaped product: `brands` as a comma-separated string. */
 interface Product extends Omit<SearchHit, 'brands'> {
   brands?: string;
-  source: 'usda' | 'off' | 'fatsecret';
+  source: 'usda' | 'off' | 'fatsecret' | 'curated';
 }
 
 /** Deep pages die in OFF's Elasticsearch result window anyway; 50 pages of 20
@@ -218,6 +219,67 @@ async function searchFs(term: string, page: number): Promise<SourcePage> {
   };
 }
 
+/* -------------------------------- Curated -------------------------------- */
+
+export interface CuratedFoodRow {
+  id: string;
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  sugar_g: number | null;
+  fiber_g: number | null;
+  saturated_fat_g: number | null;
+  sodium_g: number | null;
+  serving_name: string | null;
+  serving_grams: number | null;
+}
+
+function curatedToProduct(f: CuratedFoodRow): Product {
+  return {
+    code: f.barcode ?? `cur-${f.id}`,
+    product_name: f.name,
+    brands: f.brand ?? undefined,
+    nutriments: {
+      'energy-kcal_100g': f.kcal,
+      proteins_100g: f.protein_g,
+      carbohydrates_100g: f.carbs_g,
+      fat_100g: f.fat_g,
+      ...(f.sugar_g !== null && { sugars_100g: f.sugar_g }),
+      ...(f.fiber_g !== null && { fiber_100g: f.fiber_g }),
+      ...(f.saturated_fat_g !== null && { 'saturated-fat_100g': f.saturated_fat_g }),
+      ...(f.sodium_g !== null && { sodium_100g: f.sodium_g }),
+    },
+    ...(f.serving_grams && {
+      serving_quantity: f.serving_grams,
+      serving_size: f.serving_name ?? `${f.serving_grams} g`,
+    }),
+    source: 'curated',
+  };
+}
+
+/** Our own food DB — every search word must appear in the name or brand, so
+ * "dunkin bacon egg" finds "Bacon Egg and Cheese" under brand Dunkin'. */
+async function searchCurated(term: string): Promise<Product[]> {
+  const tokens = term
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2)
+    .slice(0, 6);
+  if (tokens.length === 0) return [];
+  const conditions = tokens
+    .map((_, i) => `(name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1})`)
+    .join(' AND ');
+  const rows = await query<CuratedFoodRow>(
+    `SELECT * FROM curated_foods WHERE ${conditions} ORDER BY char_length(name) LIMIT 8`,
+    tokens.map((t) => `%${t}%`),
+  );
+  return rows.map(curatedToProduct);
+}
+
 /* --------------------------------- Merge --------------------------------- */
 
 const EMPTY_PAGE: SourcePage = { products: [], pageCount: 1 };
@@ -238,20 +300,27 @@ async function searchFood(term: string, page: number): Promise<SearchResult> {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.result;
 
-  // Without FatSecret: USDA primary, OFF backup (the original pairing).
-  // With FatSecret: FatSecret primary, USDA backup — OFF joins only when the
+  // Our own curated foods lead page 1; then the external pairing. Without
+  // FatSecret: USDA primary, OFF backup (the original pairing). With
+  // FatSecret: FatSecret primary, USDA backup — OFF joins only when the
   // curated pair produced almost nothing.
   const useFs = fatSecretConfigured();
-  const [primaryResult, backupResult] = await Promise.allSettled([
+  const [curatedResult, primaryResult, backupResult] = await Promise.allSettled([
+    page === 1 ? searchCurated(term) : Promise.resolve([]),
     useFs ? searchFs(term, page) : searchFdc(term, page),
     useFs ? searchFdc(term, page) : searchOff(term, page),
   ]);
+  const curated = curatedResult.status === 'fulfilled' ? curatedResult.value : [];
   const primary = settle(useFs ? 'FatSecret' : 'FDC', primaryResult);
   const backup = settle(useFs ? 'FDC' : 'OFF', backupResult);
 
   const backupCap = primary.products.length >= 8 ? 6 : 20;
   const seen = new Set<string>();
-  let products = [...primary.products, ...backup.products.slice(0, backupCap)].filter((p) => {
+  let products = [
+    ...curated,
+    ...primary.products,
+    ...backup.products.slice(0, backupCap),
+  ].filter((p) => {
     if (seen.has(p.code)) return false;
     seen.add(p.code);
     return true;

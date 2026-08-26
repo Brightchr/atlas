@@ -172,7 +172,9 @@ function FoodResult({
           <span className="block truncate font-semibold">{snapshot.name}</span>
           <span className="block truncate text-xs text-muted">
             {snapshot.brand ? `${snapshot.brand} · ` : ''}
-            {Math.round(snapshot.per100g.kcal)} kcal /100g
+            {snapshot.servingGrams
+              ? `${Math.round((snapshot.per100g.kcal * snapshot.servingGrams) / 100)} kcal / ${snapshot.servingName ?? 'serving'}`
+              : `${Math.round(snapshot.per100g.kcal)} kcal /100g`}
             <span className="ml-1 text-accent">{sourceTag}</span>
           </span>
         </span>
@@ -693,11 +695,13 @@ export function NutritionPage() {
                 key={snapshot.barcode}
                 snapshot={snapshot}
                 sourceTag={
-                  snapshot.source === 'fatsecret'
-                    ? 'fatsecret'
-                    : snapshot.source === 'usda'
-                      ? 'USDA'
-                      : 'Open Food Facts'
+                  snapshot.source === 'curated'
+                    ? 'Atlas'
+                    : snapshot.source === 'fatsecret'
+                      ? 'fatsecret'
+                      : snapshot.source === 'usda'
+                        ? 'USDA'
+                        : 'Open Food Facts'
                 }
                 defaultMeal={mealTarget ?? undefined}
                 pending={logMutation.isPending}

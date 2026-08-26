@@ -452,6 +452,111 @@ adminRoutes.patch('/users/:id/role', zValidator('json', roleSchema), async (c) =
   return c.json({ ok: true, role: rows[0]!.role });
 });
 
+/* ---- Curated foods: our own food DB, merged into search ---- */
+
+const curatedFoodSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  brand: z.string().trim().max(60).nullish(),
+  barcode: z.string().trim().max(20).nullish(),
+  /** Per 100 g — or per serving with servingGrams=100 for label-only items. */
+  kcal: z.number().min(0).max(2000),
+  proteinG: z.number().min(0).max(500).default(0),
+  carbsG: z.number().min(0).max(500).default(0),
+  fatG: z.number().min(0).max(500).default(0),
+  sugarG: z.number().min(0).max(500).nullish(),
+  fiberG: z.number().min(0).max(200).nullish(),
+  saturatedFatG: z.number().min(0).max(500).nullish(),
+  sodiumG: z.number().min(0).max(50).nullish(),
+  servingName: z.string().trim().max(60).nullish(),
+  servingGrams: z.number().positive().max(5000).nullish(),
+});
+
+const foodImportSchema = z.object({ foods: z.array(curatedFoodSchema).min(1).max(200) });
+
+/** Bulk import (clients chunk big guides into batches). Upsert by
+ * name+brand, so re-importing an updated guide refreshes in place. */
+adminRoutes.post('/foods', zValidator('json', foodImportSchema), async (c) => {
+  const admin = c.get('user')!;
+  const { foods } = c.req.valid('json');
+  for (const f of foods) {
+    await query(
+      `INSERT INTO curated_foods
+         (name, brand, barcode, kcal, protein_g, carbs_g, fat_g, sugar_g, fiber_g,
+          saturated_fat_g, sodium_g, serving_name, serving_grams, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       ON CONFLICT (lower(name), coalesce(lower(brand), '')) DO UPDATE SET
+         barcode = EXCLUDED.barcode, kcal = EXCLUDED.kcal,
+         protein_g = EXCLUDED.protein_g, carbs_g = EXCLUDED.carbs_g,
+         fat_g = EXCLUDED.fat_g, sugar_g = EXCLUDED.sugar_g,
+         fiber_g = EXCLUDED.fiber_g, saturated_fat_g = EXCLUDED.saturated_fat_g,
+         sodium_g = EXCLUDED.sodium_g, serving_name = EXCLUDED.serving_name,
+         serving_grams = EXCLUDED.serving_grams, created_by = EXCLUDED.created_by`,
+      [
+        f.name,
+        f.brand ?? null,
+        f.barcode ?? null,
+        f.kcal,
+        f.proteinG,
+        f.carbsG,
+        f.fatG,
+        f.sugarG ?? null,
+        f.fiberG ?? null,
+        f.saturatedFatG ?? null,
+        f.sodiumG ?? null,
+        f.servingName ?? null,
+        f.servingGrams ?? null,
+        admin.id,
+      ],
+    );
+  }
+  await logAudit(admin.id, 'import_foods', 'curated_foods', 'bulk', { count: foods.length });
+  return c.json({ ok: true, imported: foods.length }, 201);
+});
+
+adminRoutes.get('/foods', async (c) => {
+  const q = c.req.query('q')?.trim() ?? '';
+  const rows = await query<{
+    id: string;
+    name: string;
+    brand: string | null;
+    kcal: number;
+    serving_name: string | null;
+    created_at: string;
+  }>(
+    `SELECT id, name, brand, kcal, serving_name, created_at
+       FROM curated_foods
+      WHERE $1 = '' OR name ILIKE '%' || $1 || '%' OR coalesce(brand, '') ILIKE '%' || $1 || '%'
+      ORDER BY created_at DESC, name
+      LIMIT 100`,
+    [q],
+  );
+  const [{ n }] = await query<{ n: string }>('SELECT count(*) AS n FROM curated_foods');
+  return c.json({
+    total: Number(n),
+    foods: rows.map((f) => ({
+      id: f.id,
+      name: f.name,
+      brand: f.brand,
+      kcal: f.kcal,
+      servingName: f.serving_name,
+      createdAt: f.created_at,
+    })),
+  });
+});
+
+adminRoutes.delete('/foods/:id', async (c) => {
+  const admin = c.get('user')!;
+  const rows = await query<{ name: string }>(
+    'DELETE FROM curated_foods WHERE id = $1 RETURNING name',
+    [c.req.param('id')],
+  );
+  if (rows.length === 0) return c.json({ error: 'Food not found' }, 404);
+  await logAudit(admin.id, 'delete_food', 'curated_foods', c.req.param('id'), {
+    name: rows[0]!.name,
+  });
+  return c.json({ ok: true });
+});
+
 /* ---- Moderation queue: user-filed reports ---- */
 
 adminRoutes.get('/reports', async (c) => {

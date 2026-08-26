@@ -31,9 +31,10 @@ interface OffProduct {
   nutriments?: OffNutriments;
   serving_size?: string;
   serving_quantity?: number | string;
-  /** Set by our API's merged search: 'fatsecret' and 'usda' rows come from
-   * those curated sources; everything else is Open Food Facts. */
-  source?: 'usda' | 'off' | 'fatsecret';
+  /** Set by our API's merged search: 'curated' is our own food DB,
+   * 'fatsecret'/'usda' are external curated sources; everything else is
+   * Open Food Facts. */
+  source?: 'usda' | 'off' | 'fatsecret' | 'curated';
 }
 
 export type FoodSnapshot = Omit<Food, 'id'>;
@@ -70,7 +71,9 @@ function toSnapshot(p: OffProduct): FoodSnapshot | null {
     saturatedFatG: n?.['saturated-fat_100g'],
     sodiumG: n?.sodium_100g,
   };
-  if (!plausiblePer100g(per100g)) return null;
+  // Our curated foods can be per-serving (nominal 100 g) and legitimately
+  // exceed community-data plausibility bounds — we vetted them at import.
+  if (p.source !== 'curated' && !plausiblePer100g(per100g)) return null;
   return {
     name: p.product_name,
     brand: p.brands?.split(',')[0]?.trim() || null,

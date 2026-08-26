@@ -396,6 +396,37 @@ const migrations: { id: string; sql: string }[] = [
       ALTER TABLE users ADD COLUMN comped boolean NOT NULL DEFAULT false;
     `,
   },
+  {
+    id: '018_curated_foods',
+    sql: `
+      -- Admin-curated foods (restaurant guides, local brands) merged into
+      -- search AHEAD of external sources. Macros are per 100 g when a true
+      -- weight is known; for label-only items (no gram weight published) the
+      -- importer stores per-SERVING values with serving_grams = 100, so
+      -- logging "1 serving" reproduces the label exactly by construction.
+      CREATE TABLE curated_foods (
+        id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name            text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 150),
+        brand           text CHECK (char_length(brand) <= 60),
+        barcode         text,
+        kcal            real NOT NULL CHECK (kcal >= 0 AND kcal <= 2000),
+        protein_g       real NOT NULL DEFAULT 0,
+        carbs_g         real NOT NULL DEFAULT 0,
+        fat_g           real NOT NULL DEFAULT 0,
+        sugar_g         real,
+        fiber_g         real,
+        saturated_fat_g real,
+        sodium_g        real,
+        serving_name    text,
+        serving_grams   real CHECK (serving_grams > 0),
+        created_by      uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at      timestamptz NOT NULL DEFAULT now()
+      );
+      -- Identity is name+brand: re-importing an updated guide upserts in place.
+      CREATE UNIQUE INDEX curated_foods_identity_idx
+        ON curated_foods (lower(name), coalesce(lower(brand), ''));
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

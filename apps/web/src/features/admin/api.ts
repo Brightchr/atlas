@@ -131,6 +131,69 @@ export function useTogglePromotion() {
   });
 }
 
+export interface CuratedFoodInput {
+  name: string;
+  brand?: string | null;
+  barcode?: string | null;
+  kcal: number;
+  proteinG?: number;
+  carbsG?: number;
+  fatG?: number;
+  sugarG?: number | null;
+  fiberG?: number | null;
+  saturatedFatG?: number | null;
+  sodiumG?: number | null;
+  servingName?: string | null;
+  servingGrams?: number | null;
+}
+
+export interface CuratedFoodListItem {
+  id: string;
+  name: string;
+  brand: string | null;
+  kcal: number;
+  servingName: string | null;
+  createdAt: string;
+}
+
+export function useCuratedFoods(q: string) {
+  return useQuery({
+    queryKey: ['admin', 'foods', q],
+    queryFn: () =>
+      apiFetch<{ total: number; foods: CuratedFoodListItem[] }>(
+        `/v1/admin/foods?q=${encodeURIComponent(q)}`,
+      ),
+  });
+}
+
+export function useImportFoods() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // The API caps one request at 200 foods; big guides go up in chunks.
+    mutationFn: async (foods: CuratedFoodInput[]) => {
+      let imported = 0;
+      for (let i = 0; i < foods.length; i += 150) {
+        const res = await apiFetch<{ imported: number }>('/v1/admin/foods', {
+          method: 'POST',
+          body: JSON.stringify({ foods: foods.slice(i, i + 150) }),
+        });
+        imported += res.imported;
+      }
+      return { imported };
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'foods'] }),
+  });
+}
+
+export function useDeleteFood() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ ok: boolean }>(`/v1/admin/foods/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'foods'] }),
+  });
+}
+
 export function useSetExempt() {
   const queryClient = useQueryClient();
   return useMutation({

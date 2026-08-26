@@ -10,6 +10,7 @@ import {
   TicketPercent,
   UserPlus,
   Users,
+  UtensilsCrossed,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -17,15 +18,17 @@ import { StatTile } from '@/components/StatTile';
 import { useCurrentUser } from '@/features/auth/api';
 import { useAdminStats } from '../api';
 import { AuditSection } from '../components/AuditSection';
+import { FoodsSection } from '../components/FoodsSection';
 import { ModerationSection } from '../components/ModerationSection';
 import { PromotionsSection } from '../components/PromotionsSection';
 import { UsersSection } from '../components/UsersSection';
 
-type AdminTab = 'users' | 'promotions' | 'moderation' | 'audit';
+type AdminTab = 'users' | 'promotions' | 'foods' | 'moderation' | 'audit';
 
 const TABS: { id: AdminTab; label: string; Icon: LucideIcon }[] = [
   { id: 'users', label: 'Users', Icon: Users },
-  { id: 'promotions', label: 'Promotions', Icon: TicketPercent },
+  { id: 'promotions', label: 'Promos', Icon: TicketPercent },
+  { id: 'foods', label: 'Foods', Icon: UtensilsCrossed },
   { id: 'moderation', label: 'Moderation', Icon: Flag },
   { id: 'audit', label: 'Audit', Icon: ScrollText },
 ];
@@ -115,6 +118,7 @@ export function AdminPage() {
 
       {tab === 'users' && <UsersSection me={me} />}
       {tab === 'promotions' && <PromotionsSection />}
+      {tab === 'foods' && <FoodsSection />}
       {tab === 'moderation' && <ModerationSection />}
       {tab === 'audit' && <AuditSection />}
     </div>
