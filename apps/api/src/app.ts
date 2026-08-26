@@ -47,11 +47,17 @@ app.use('*', sessionMiddleware);
 const KB = 1024;
 const syncLimit = bodyLimit({ maxSize: 8 * 1024 * KB });
 const planLimit = bodyLimit({ maxSize: 300 * KB });
+// Admin bulk imports (curated foods, recipe seeding) carry big JSON arrays;
+// the routes are role-gated so the headroom is safe.
+const adminLimit = bodyLimit({ maxSize: 512 * KB });
+const recipeLimit = bodyLimit({ maxSize: 128 * KB });
 const defaultLimit = bodyLimit({ maxSize: 64 * KB });
 app.use('/v1/*', (c, next) => {
   const path = c.req.path;
   if (path.startsWith('/v1/sync')) return syncLimit(c, next);
   if (path.startsWith('/v1/plans')) return planLimit(c, next);
+  if (path.startsWith('/v1/admin')) return adminLimit(c, next);
+  if (path.startsWith('/v1/recipes')) return recipeLimit(c, next);
   return defaultLimit(c, next);
 });
 

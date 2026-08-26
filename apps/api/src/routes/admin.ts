@@ -9,6 +9,7 @@ import { env } from '../lib/env';
 import { invalidateIpBlockCache } from '../lib/ip-block';
 import { clientIp } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
+import { sharedRecipeIngredientSchema } from './recipes';
 import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
 
 function setSessionCookie(c: Context, token: string, expiresAt: Date) {
@@ -556,6 +557,56 @@ adminRoutes.delete('/foods/:id', async (c) => {
   });
   return c.json({ ok: true });
 });
+
+/* ---- Community recipe seeding: bulk import owned by the importing admin ---- */
+
+const adminRecipeSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).default(''),
+  servings: z.number().int().min(1).max(100),
+  instructions: z.string().max(2000).nullable(),
+  ingredients: z.array(sharedRecipeIngredientSchema).min(1).max(40),
+});
+
+/** Seed the community recipe browser (clients chunk large sets). Upserts by
+ * a slug of the name, so re-importing an updated set refreshes in place. */
+adminRoutes.post(
+  '/recipes',
+  zValidator('json', z.object({ recipes: z.array(adminRecipeSchema).min(1).max(50) })),
+  async (c) => {
+    const admin = c.get('user')!;
+    const { recipes } = c.req.valid('json');
+    for (const r of recipes) {
+      const slug = `seed-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 58)}`;
+      const totalKcal = r.ingredients.reduce(
+        (sum, i) => sum + (i.food.per100g.kcal * i.grams) / 100,
+        0,
+      );
+      await query(
+        `INSERT INTO shared_recipes
+           (owner_user_id, local_recipe_id, name, description, servings, kcal_per_serving, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (owner_user_id, local_recipe_id) DO UPDATE SET
+           name = EXCLUDED.name, description = EXCLUDED.description,
+           servings = EXCLUDED.servings, kcal_per_serving = EXCLUDED.kcal_per_serving,
+           payload = EXCLUDED.payload, updated_at = now()`,
+        [
+          admin.id,
+          slug,
+          r.name,
+          r.description,
+          r.servings,
+          Math.round(totalKcal / r.servings),
+          JSON.stringify({ instructions: r.instructions, ingredients: r.ingredients }),
+        ],
+      );
+    }
+    await logAudit(admin.id, 'import_recipes', 'shared_recipes', 'bulk', {
+      count: recipes.length,
+    });
+    return c.json({ ok: true, imported: recipes.length }, 201);
+  },
+);
 
 /* ---- Moderation queue: user-filed reports ---- */
 

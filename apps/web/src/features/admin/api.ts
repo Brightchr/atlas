@@ -185,6 +185,25 @@ export function useImportFoods() {
   });
 }
 
+export function useImportRecipes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // The API caps one request at 50 recipes; big sets go up in chunks.
+    mutationFn: async (recipes: unknown[]) => {
+      let imported = 0;
+      for (let i = 0; i < recipes.length; i += 50) {
+        const res = await apiFetch<{ imported: number }>('/v1/admin/recipes', {
+          method: 'POST',
+          body: JSON.stringify({ recipes: recipes.slice(i, i + 50) }),
+        });
+        imported += res.imported;
+      }
+      return { imported };
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipes', 'community'] }),
+  });
+}
+
 export function useDeleteFood() {
   const queryClient = useQueryClient();
   return useMutation({

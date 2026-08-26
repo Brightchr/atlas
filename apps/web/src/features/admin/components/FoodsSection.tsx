@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Trash2, Upload, UtensilsCrossed } from 'lucide-react';
+import { ChefHat, Trash2, Upload, UtensilsCrossed } from 'lucide-react';
 import {
   useCuratedFoods,
   useDeleteFood,
   useImportFoods,
+  useImportRecipes,
   type CuratedFoodInput,
 } from '../api';
 
@@ -12,6 +13,72 @@ const FORMAT_HINT = `[
     "kcal": 500, "proteinG": 22, "carbsG": 40, "fatG": 28,
     "servingName": "1 sandwich", "servingGrams": 100 }
 ]`;
+
+/** Seed the community recipe browser: paste a JSON array of full recipes
+ * (name, servings, instructions, ingredients with food snapshots). Imported
+ * recipes are published under YOUR account and upsert by name. */
+function RecipesImport() {
+  const [raw, setRaw] = useState('');
+  const [parseError, setParseError] = useState<string | null>(null);
+  const importRecipes = useImportRecipes();
+
+  const handleImport = () => {
+    setParseError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setParseError('That isn’t valid JSON.');
+      return;
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      setParseError('Expected a JSON array of recipes.');
+      return;
+    }
+    importRecipes.mutate(parsed, { onSuccess: () => setRaw('') });
+  };
+
+  return (
+    <section className="space-y-3">
+      <h2 className="flex items-center gap-2 text-lg font-bold">
+        <ChefHat size={18} className="text-accent" aria-hidden />
+        Import community recipes
+      </h2>
+      <p className="text-sm text-muted">
+        Paste a recipe JSON array — they publish to the community browser under your account and
+        update in place on re-import.
+      </p>
+      <textarea
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        placeholder='[ { "name": "…", "servings": 1, "instructions": "…", "ingredients": [ … ] } ]'
+        rows={5}
+        spellCheck={false}
+        className="w-full rounded-2xl border border-line bg-surface p-3 font-mono text-xs outline-none placeholder:text-muted/60 focus:border-accent"
+        aria-label="Recipes JSON"
+      />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={raw.trim().length < 2 || importRecipes.isPending}
+          onClick={handleImport}
+          className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {importRecipes.isPending ? 'Importing…' : 'Import recipes'}
+        </button>
+        {importRecipes.isSuccess && (
+          <p className="text-sm text-emerald-500">
+            Imported {importRecipes.data.imported} recipes.
+          </p>
+        )}
+      </div>
+      {parseError && <p className="text-sm text-rose-500">{parseError}</p>}
+      {importRecipes.isError && (
+        <p className="text-sm text-rose-500">{importRecipes.error.message}</p>
+      )}
+    </section>
+  );
+}
 
 /** Our own food DB: paste a JSON array (hand-written or generated from a
  * nutrition guide) and it merges into everyone's search results, ahead of
@@ -83,6 +150,8 @@ export function FoodsSection() {
           <p className="text-sm text-rose-500">{importFoods.error.message}</p>
         )}
       </section>
+
+      <RecipesImport />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">

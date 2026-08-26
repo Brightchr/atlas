@@ -43,10 +43,11 @@ const ingredientFoodSchema = z.object({
   servingGrams: z.number().positive().max(5000).nullable(),
 });
 
-const ingredientSchema = z.object({
+export const sharedRecipeIngredientSchema = z.object({
   grams: z.number().positive().max(5000),
   food: ingredientFoodSchema,
 });
+const ingredientSchema = sharedRecipeIngredientSchema;
 
 const publishSchema = z.object({
   localRecipeId: z.string().trim().min(1).max(64),
