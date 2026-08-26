@@ -16,7 +16,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { SharedPlanSummary } from '@arcadia/shared';
+import type { Exercise, SharedPlanSummary } from '@arcadia/shared';
+import { useExerciseCatalog } from '@/features/exercises/api';
 import { useSharedPlans } from '@/features/plans/api';
 import {
   CATALOG_PLANS,
@@ -92,6 +93,80 @@ function Shelf({
   );
 }
 
+/* ------------------------------- Card art -------------------------------- */
+
+/** name → first exercise photo, memoized per catalog instance so thirty
+ * cards share one lookup map instead of building thirty. */
+const imageMapCache = new WeakMap<Exercise[], Map<string, string>>();
+function imageMapFor(catalog: Exercise[] | undefined): Map<string, string> | null {
+  if (!catalog) return null;
+  let map = imageMapCache.get(catalog);
+  if (!map) {
+    map = new Map(
+      catalog
+        .filter((e) => e.imageUrls[0])
+        .map((e) => [e.name.toLowerCase(), e.imageUrls[0]!]),
+    );
+    imageMapCache.set(catalog, map);
+  }
+  return map;
+}
+
+/** Full-bleed photo strip across a card's top — the catalogue look. Falls
+ * back to a branded gradient while images load or when none match. */
+function ArtStrip({ images, height = 'h-24' }: { images: string[]; height?: string }) {
+  if (images.length === 0) {
+    return (
+      <div
+        className={`-mx-4 -mt-4 mb-3 flex ${height} items-center justify-center rounded-t-2xl bg-linear-to-br from-accent/25 to-accent-2/25`}
+      >
+        <Dumbbell size={26} className="text-accent/70" strokeWidth={1.5} aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <div className={`-mx-4 -mt-4 mb-3 flex ${height} gap-px overflow-hidden rounded-t-2xl bg-white`}>
+      {images.map((src) => (
+        <img
+          key={src}
+          src={src}
+          alt=""
+          loading="lazy"
+          className="min-w-0 flex-1 object-cover object-top"
+        />
+      ))}
+    </div>
+  );
+}
+
+function WorkoutArt({ workout }: { workout: CatalogWorkout }) {
+  const catalog = useExerciseCatalog();
+  const map = imageMapFor(catalog.data);
+  const images = [
+    ...new Set(
+      workout.exercises
+        .map((e) => map?.get(e.name.toLowerCase()))
+        .filter((u): u is string => Boolean(u)),
+    ),
+  ].slice(0, 3);
+  return <ArtStrip images={images} />;
+}
+
+function PlanArt({ plan }: { plan: CatalogPlan }) {
+  const catalog = useExerciseCatalog();
+  const map = imageMapFor(catalog.data);
+  const images: string[] = [];
+  for (const key of [...new Set(plan.days.filter((d) => d !== 'rest'))]) {
+    const workout = CATALOG_WORKOUTS.find((w) => w.key === key);
+    const img = workout?.exercises
+      .map((e) => map?.get(e.name.toLowerCase()))
+      .find((u): u is string => Boolean(u));
+    if (img && !images.includes(img)) images.push(img);
+    if (images.length >= 4) break;
+  }
+  return <ArtStrip images={images} />;
+}
+
 /* --------------------------------- Cards --------------------------------- */
 
 function PlanCard({
@@ -115,6 +190,7 @@ function PlanCard({
         featured ? 'border-accent/40' : 'border-line'
       } ${shelf ? 'w-72 shrink-0 snap-start' : ''}`}
     >
+      <PlanArt plan={plan} />
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         {featured && <Tag tone="bg-linear-to-r from-accent to-accent-2 text-accent-ink">Featured</Tag>}
         <Tag tone={levelTone[plan.level]}>{LEVEL_LABELS[plan.level]}</Tag>
@@ -173,6 +249,7 @@ function WorkoutCard({
         shelf ? 'w-72 shrink-0 snap-start' : ''
       }`}
     >
+      <WorkoutArt workout={workout} />
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         <Tag tone={categoryTone[workout.category]}>{WORKOUT_CATEGORY_LABELS[workout.category]}</Tag>
         <Tag tone={levelTone[workout.level]}>{LEVEL_LABELS[workout.level]}</Tag>
