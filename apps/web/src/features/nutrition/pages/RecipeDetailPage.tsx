@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Beef, ChevronLeft, Droplet, Flame, Plus, Trash2, UtensilsCrossed, Wheat, X } from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
 import { FoodPicker } from '../components/FoodPicker';
+import { ShareRecipeControl } from '../components/ShareRecipeControl';
 import {
   addIngredient,
   deleteRecipe,
@@ -125,6 +126,8 @@ export function RecipeDetailPage() {
           </button>
         )}
       </header>
+
+      <ShareRecipeControl recipe={recipe} />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Per serving">
         {MACRO_TILES.map(({ key, label, unit, Icon, tint }) => (
