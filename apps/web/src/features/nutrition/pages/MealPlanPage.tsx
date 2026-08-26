@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowLeftRight,
   BookOpenText,
   ChevronRight,
   Cookie,
@@ -16,6 +17,7 @@ import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
 import { RecipeThumb } from '../components/RecipeArt';
+import { SwapPicker } from '../components/SwapPicker';
 import {
   addMealPlanItem,
   addPlanRangeToShoppingList,
@@ -24,7 +26,9 @@ import {
   logPlanDayToDiary,
   removeMealPlanItem,
   setShoppingCadenceDays,
+  swapMealPlanItemForCatalogRecipe,
 } from '../mealPlan';
+import type { CatalogRecipe } from '../recipeCatalog';
 import { applyMealPlanTemplate } from '../mealPlan';
 import { MEAL_PLAN_TEMPLATES, type MealPlanTemplate } from '../mealPlanCatalog';
 import { listRecipes, type RecipeDetails } from '../recipes';
@@ -190,21 +194,22 @@ function WeekMealCard({
   foods,
   recipes,
   onOpen,
+  onSwap,
 }: {
   meal: MealType;
   items: MealPlanItem[];
   foods: Map<string, Food>;
   recipes: RecipeDetails[];
   onOpen: () => void;
+  onSwap?: () => void;
 }) {
   const kcal = Math.round(sumMacros(items, foods, recipes).kcal);
   const primary = items[0];
 
   return (
-    <button
-      type="button"
+    <div
       onClick={onOpen}
-      className="springy flex w-full items-stretch overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+      className="springy flex w-full cursor-pointer items-stretch overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
     >
       <span
         aria-hidden
@@ -224,18 +229,31 @@ function WeekMealCard({
               </span>
             ))}
           </span>
-          <span className="flex shrink-0 items-center gap-1 pr-3 text-xs text-muted tabular-nums">
+          <span className="flex shrink-0 items-center gap-1 pr-2 text-xs text-muted tabular-nums">
             {kcal > 0 && <span>{kcal} kcal</span>}
-            <ChevronRight size={14} aria-hidden />
+            {onSwap && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSwap();
+                }}
+                aria-label={`Swap ${primary.name}`}
+                className="rounded-lg border border-line bg-surface p-1.5 shadow-sm transition-colors hover:bg-elev hover:text-ink"
+              >
+                <ArrowLeftRight size={13} aria-hidden />
+              </button>
+            )}
           </span>
         </>
       ) : (
         <span className="flex flex-1 items-center gap-1.5 px-3 py-3 text-sm text-muted/70">
           <Plus size={14} aria-hidden />
           Add {meal}
+          <ChevronRight size={14} className="ml-auto" aria-hidden />
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -262,6 +280,17 @@ export function MealPlanPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
   const addMutation = useMutation({ mutationFn: addMealPlanItem, onSuccess: invalidate });
   const removeMutation = useMutation({ mutationFn: removeMealPlanItem, onSuccess: invalidate });
+  // Swapping one slot for a catalog recipe (keeps day, meal and servings).
+  const [swapId, setSwapId] = useState<string | null>(null);
+  const swapMutation = useMutation({
+    mutationFn: ({ id, entry, servings }: { id: string; entry: CatalogRecipe; servings: number }) =>
+      swapMealPlanItemForCatalogRecipe(id, entry, servings),
+    onSuccess: () => {
+      setSwapId(null);
+      void invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['recipes'] });
+    },
+  });
   const logDay = view === 'week' ? todayIndex() : day;
   const logDayMutation = useMutation({
     mutationFn: () => logPlanDayToDiary(logDay, new Date().toISOString().slice(0, 10)),
@@ -342,6 +371,7 @@ export function MealPlanPage() {
     setDay(d);
     setView('day');
     setOpenSlot(meal);
+    setSwapId(null);
   };
 
   return (
@@ -369,6 +399,7 @@ export function MealPlanPage() {
                 onClick={() => {
                   setView(value);
                   setOpenSlot(null);
+                  setSwapId(null);
                 }}
                 className={`rounded-lg px-3 py-1.5 transition-colors ${
                   view === value ? 'bg-accent text-accent-ink shadow-sm' : 'text-muted hover:text-ink'
@@ -551,16 +582,43 @@ export function MealPlanPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  {MEALS.map((meal) => (
-                    <WeekMealCard
-                      key={meal}
-                      meal={meal}
-                      items={allItems.filter((it) => it.dayOfWeek === i && it.meal === meal)}
-                      foods={foods}
-                      recipes={recipes}
-                      onOpen={() => openDaySlot(i, null)}
-                    />
-                  ))}
+                  {MEALS.map((meal) => {
+                    const mealItems = allItems.filter(
+                      (it) => it.dayOfWeek === i && it.meal === meal,
+                    );
+                    const primary = mealItems[0];
+                    return (
+                      <div key={meal}>
+                        <WeekMealCard
+                          meal={meal}
+                          items={mealItems}
+                          foods={foods}
+                          recipes={recipes}
+                          onOpen={() => openDaySlot(i, null)}
+                          onSwap={
+                            primary
+                              ? () => setSwapId(swapId === primary.id ? null : primary.id)
+                              : undefined
+                          }
+                        />
+                        {primary && swapId === primary.id && (
+                          <SwapPicker
+                            item={primary}
+                            currentKcal={itemMacros(primary, foods, recipes)?.kcal ?? null}
+                            pending={swapMutation.isPending}
+                            onPick={(entry) =>
+                              swapMutation.mutate({
+                                id: primary.id,
+                                entry,
+                                servings: primary.servings ?? 1,
+                              })
+                            }
+                            onClose={() => setSwapId(null)}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             );
@@ -579,6 +637,7 @@ export function MealPlanPage() {
                 onClick={() => {
                   setDay(i);
                   setOpenSlot(null);
+                  setSwapId(null);
                 }}
                 className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
                   day === i
@@ -653,25 +712,53 @@ export function MealPlanPage() {
                       {slotItems.map((item) => {
                         const m = itemMacros(item, foods, recipes);
                         return (
-                          <li key={item.id} className="flex items-center gap-2.5 text-sm">
-                            <RecipeThumb name={item.name} className="h-9 w-9 rounded-lg text-base" />
-                            <span className="min-w-0 flex-1 truncate">
-                              {item.name}
-                              <span className="text-muted"> · {amountLabel(item)}</span>
-                            </span>
-                            {m && (
-                              <span className="shrink-0 text-xs text-muted tabular-nums">
-                                {m.kcal} kcal
+                          <li key={item.id}>
+                            <div className="flex items-center gap-2.5 text-sm">
+                              <RecipeThumb
+                                name={item.name}
+                                className="h-9 w-9 rounded-lg text-base"
+                              />
+                              <span className="min-w-0 flex-1 truncate">
+                                {item.name}
+                                <span className="text-muted"> · {amountLabel(item)}</span>
                               </span>
+                              {m && (
+                                <span className="shrink-0 text-xs text-muted tabular-nums">
+                                  {m.kcal} kcal
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSwapId(swapId === item.id ? null : item.id)}
+                                aria-label={`Swap ${item.name}`}
+                                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
+                              >
+                                <ArrowLeftRight size={13} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeMutation.mutate(item.id)}
+                                aria-label={`Remove ${item.name}`}
+                                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
+                              >
+                                <X size={13} aria-hidden />
+                              </button>
+                            </div>
+                            {swapId === item.id && (
+                              <SwapPicker
+                                item={item}
+                                currentKcal={m?.kcal ?? null}
+                                pending={swapMutation.isPending}
+                                onPick={(entry) =>
+                                  swapMutation.mutate({
+                                    id: item.id,
+                                    entry,
+                                    servings: item.servings ?? 1,
+                                  })
+                                }
+                                onClose={() => setSwapId(null)}
+                              />
                             )}
-                            <button
-                              type="button"
-                              onClick={() => removeMutation.mutate(item.id)}
-                              aria-label={`Remove ${item.name}`}
-                              className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
-                            >
-                              <X size={13} aria-hidden />
-                            </button>
                           </li>
                         );
                       })}

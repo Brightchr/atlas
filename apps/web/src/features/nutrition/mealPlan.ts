@@ -2,7 +2,7 @@ import type { MealPlanItem, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import { addNeededItem } from '@/features/shopping/repository';
 import type { MealPlanTemplate } from './mealPlanCatalog';
-import { catalogRecipe } from './recipeCatalog';
+import { catalogRecipe, type CatalogRecipe } from './recipeCatalog';
 import { getFoodsByIds, logFood } from './repository';
 import { importRecipeFromCatalog, listRecipes } from './recipes';
 
@@ -75,6 +75,24 @@ export async function addMealPlanItem(item: Omit<MealPlanItem, 'id'>): Promise<v
     `INSERT INTO meal_plan_items (id, day_of_week, meal, kind, ref_id, name, grams, servings)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [newId(), item.dayOfWeek, item.meal, item.kind, item.refId, item.name, item.grams, item.servings],
+  );
+  await persist();
+}
+
+/** Swap one planned slot for a catalog recipe, keeping day, meal and serving
+ * count — the "show me something else here" move. The recipe materializes
+ * locally first so the swap works offline. */
+export async function swapMealPlanItemForCatalogRecipe(
+  id: string,
+  entry: CatalogRecipe,
+  servings: number,
+): Promise<void> {
+  const refId = await importRecipeFromCatalog(entry);
+  const db = await getDb();
+  await db.run(
+    `UPDATE meal_plan_items SET kind = 'recipe', ref_id = ?, name = ?, grams = NULL, servings = ?
+     WHERE id = ?`,
+    [refId, entry.name, Math.max(0.5, servings), id],
   );
   await persist();
 }
