@@ -1,4 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono';
+import { env } from './env';
 import type { AppEnv } from '../middleware/auth';
 
 /** Minimal in-memory sliding-window rate limiter. Good enough for a single
@@ -17,6 +18,14 @@ const PRIVATE_IP =
   /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1$|fc|fd|fe80|::ffff:(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.))/i;
 
 export function clientIp(c: Context): string {
+  // Behind Cloudflare, every request's XFF ends in a Cloudflare edge address
+  // (public — the walk below would stop there and rate-limit/ban the edge).
+  // CF-Connecting-IP is the actual client; trusted only when the operator
+  // says Cloudflare fronts the origin, because anyone can send the header.
+  if (env.trustCfProxy) {
+    const cf = c.req.header('cf-connecting-ip');
+    if (cf) return cf.trim();
+  }
   const xff = c.req.header('x-forwarded-for');
   if (xff) {
     const parts = xff.split(',').map((p) => p.trim()).filter(Boolean);

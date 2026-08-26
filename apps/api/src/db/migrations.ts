@@ -427,6 +427,17 @@ const migrations: { id: string; sql: string }[] = [
         ON curated_foods (lower(name), coalesce(lower(brand), ''));
     `,
   },
+  {
+    id: '019_google_auth',
+    sql: `
+      -- Google sign-in. Accounts created via Google carry no password (NULL
+      -- hash — the password login path rejects them with the same generic
+      -- message as any bad credential). google_id stores Google's stable
+      -- subject id: emails can change hands, "sub" never does.
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+      ALTER TABLE users ADD COLUMN google_id text UNIQUE;
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

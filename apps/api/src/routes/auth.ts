@@ -1,9 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { effectivePlan, resolveMembership } from '@arcadia/shared';
 import { query } from '../db/pool';
+import { exchangeGoogleCode, googleAuthUrl, googleConfigured } from '../lib/google-auth';
 import { env } from '../lib/env';
 import { createNotification } from '../lib/notify';
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../lib/password';
@@ -102,7 +104,7 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     comped: boolean;
     status: string;
     created_at: string;
-    password_hash: string;
+    password_hash: string | null;
   }>(
     `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status,
             created_at, password_hash
@@ -111,9 +113,11 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
   );
   const user = rows[0];
 
-  // Verify against a dummy hash when the user doesn't exist so both paths take
-  // the same time — response timing must not reveal which emails are registered.
-  const valid = user
+  // Verify against a dummy hash when the user doesn't exist — or exists but
+  // is Google-only (no password) — so every failure path takes the same time
+  // and returns the same message: timing and wording must not reveal which
+  // emails are registered or how they sign in.
+  const valid = user?.password_hash
     ? await verifyPassword(user.password_hash, body.password)
     : (await verifyPassword(await DUMMY_HASH_PROMISE, body.password), false);
 
@@ -143,6 +147,103 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     },
     token,
   });
+});
+
+/* ------------------------- Google sign-in (OAuth) ------------------------- */
+
+const OAUTH_STATE_COOKIE = 'arcadia_oauth_state';
+const GOOGLE_USER_COLUMNS =
+  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status, created_at';
+
+interface GoogleUserRow {
+  id: string;
+  status: string;
+}
+
+/** Email local part → available username: sanitized, padded to the minimum
+ * length, numeric suffix on collision. */
+async function availableUsername(email: string): Promise<string> {
+  let base = email.split('@')[0]!.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24);
+  if (base.length < 3) base = `athlete_${base}`;
+  for (let i = 0; i < 6; i++) {
+    const candidate = i === 0 ? base : `${base}${Math.floor(Math.random() * 10_000)}`;
+    const taken = await query<{ id: string }>(
+      'SELECT id FROM users WHERE lower(username) = lower($1)',
+      [candidate],
+    );
+    if (taken.length === 0) return candidate;
+  }
+  return `athlete_${randomBytes(4).toString('hex')}`;
+}
+
+authRoutes.get('/google/start', authLimiter, (c) => {
+  if (!googleConfigured()) {
+    return c.redirect(`${env.publicUrl}/signin?error=google-unavailable`);
+  }
+  // Random state, echoed back by Google and checked against this cookie —
+  // the standard OAuth CSRF defense.
+  const state = randomBytes(16).toString('base64url');
+  setCookie(c, OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: env.isProd,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 600,
+  });
+  return c.redirect(googleAuthUrl(state));
+});
+
+authRoutes.get('/google/callback', authLimiter, async (c) => {
+  const fail = (reason: string) => c.redirect(`${env.publicUrl}/signin?error=${reason}`);
+
+  const expected = getCookie(c, OAUTH_STATE_COOKIE);
+  deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' });
+  const state = c.req.query('state');
+  const code = c.req.query('code');
+  if (!expected || !state || state !== expected || !code) return fail('google');
+
+  const identity = await exchangeGoogleCode(code).catch(() => null);
+  // Unverified emails could hijack an existing account by address alone.
+  if (!identity || !identity.emailVerified) return fail('google');
+
+  // Known Google account → straight in. Known EMAIL (Google-verified) →
+  // link. Otherwise a brand-new account — no password, trial starts now.
+  let rows = await query<GoogleUserRow>(
+    `SELECT ${GOOGLE_USER_COLUMNS} FROM users WHERE google_id = $1`,
+    [identity.sub],
+  );
+  if (rows.length === 0) {
+    rows = await query<GoogleUserRow>(
+      `UPDATE users SET google_id = $1 WHERE email = $2 AND google_id IS NULL
+       RETURNING ${GOOGLE_USER_COLUMNS}`,
+      [identity.sub, identity.email],
+    );
+  }
+  if (rows.length === 0) {
+    const username = await availableUsername(identity.email);
+    try {
+      rows = await query<GoogleUserRow>(
+        `INSERT INTO users (email, username, google_id, display_name)
+         VALUES ($1, $2, $3, $4) RETURNING ${GOOGLE_USER_COLUMNS}`,
+        [identity.email, username, identity.sub, identity.name.slice(0, 60) || null],
+      );
+    } catch {
+      return fail('google'); // e.g. a race on the email unique index
+    }
+    await createNotification(
+      rows[0]!.id,
+      'welcome',
+      'Welcome to Arcadia Atlas',
+      'Set up your first workout to start tracking progress.',
+    );
+  }
+
+  const user = rows[0]!;
+  if (user.status === 'banned') return fail('suspended');
+
+  const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
+  setSessionCookie(c, token, expiresAt);
+  return c.redirect(`${env.publicUrl}/`);
 });
 
 authRoutes.post('/logout', async (c) => {

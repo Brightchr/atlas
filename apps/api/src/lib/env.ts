@@ -50,6 +50,19 @@ export const env = {
    * DEMO_KEY works but is rate-limited to ~30 req/hour — fine for dev, set a
    * real key in production. */
   fdcApiKey: process.env.FDC_API_KEY ?? 'DEMO_KEY',
+  /** The browser-facing origin (the web app). OAuth redirect URIs and
+   * post-login redirects derive from it — set it in production. */
+  publicUrl: (process.env.PUBLIC_URL ?? 'http://localhost:5174').replace(/\/+$/, ''),
+  /** Google OAuth (console.cloud.google.com → Credentials → OAuth client).
+   * Unset = the "Continue with Google" flow reports itself unavailable. */
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  /** Set TRUST_CF_PROXY=1 once traffic flows through Cloudflare: client IPs
+   * then come from CF-Connecting-IP — the x-forwarded-for walk would stop at
+   * a Cloudflare edge address (public) and rate-limit/ban the edge, not the
+   * client. Leave unset when Cloudflare is not in front (the header would be
+   * spoofable). */
+  trustCfProxy: process.env.TRUST_CF_PROXY === '1',
   /** FatSecret Platform credentials (https://platform.fatsecret.com). When
    * set, FatSecret becomes the primary food-search source with USDA as
    * backup; when empty, search runs on USDA + Open Food Facts as before. */
