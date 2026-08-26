@@ -208,6 +208,39 @@ export async function getFoodDetail(foodId: string): Promise<FsFood | null> {
   return result;
 }
 
+/* ------------------------- Premier-tier endpoints ------------------------- */
+
+/** Search-as-you-type suggestions (Premier: foods.autocomplete.v2). */
+export async function autocompleteFatSecret(expression: string): Promise<string[]> {
+  interface AutocompleteResponse {
+    suggestions?: { suggestion?: string | string[] };
+  }
+  const data = await call<AutocompleteResponse>({
+    method: 'foods.autocomplete.v2',
+    expression,
+    max_results: '8',
+  });
+  const raw = data.suggestions?.suggestion;
+  return Array.isArray(raw) ? raw : raw ? [raw] : [];
+}
+
+/** Barcode → food (Premier: food.find_id_for_barcode + details). FatSecret
+ * expects GTIN-13: UPC-A/EAN-8 get zero-padded, GTIN-14 drops its leading
+ * packaging digit. food_id "0" means the barcode is unknown to them. */
+export async function findFoodByBarcode(barcode: string): Promise<FsFood | null> {
+  interface BarcodeResponse {
+    food_id?: { value?: string };
+  }
+  const gtin13 = barcode.replace(/\D/g, '').padStart(13, '0').slice(-13);
+  const data = await call<BarcodeResponse>({
+    method: 'food.find_id_for_barcode',
+    barcode: gtin13,
+  });
+  const id = data.food_id?.value;
+  if (!id || id === '0') return null;
+  return getFoodDetail(id);
+}
+
 /** How many search hits per page may trigger a details call (hits whose
  * summary line wasn't per-100g). Caps worst-case cost of one search page at
  * 1 + DETAIL_BUDGET calls; the detail cache amortizes repeats to ~zero. */

@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import { env } from '../lib/env';
-import { fatSecretConfigured, searchFatSecret, type FsFood } from '../lib/fatsecret';
+import {
+  autocompleteFatSecret,
+  fatSecretConfigured,
+  findFoodByBarcode,
+  searchFatSecret,
+  type FsFood,
+} from '../lib/fatsecret';
 import { rateLimit } from '../lib/rate-limit';
 import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -306,4 +312,29 @@ foodRoutes.get('/search', rateLimit({ windowMs: 60_000, max: 60, by: 'user' }), 
   } catch {
     return c.json({ error: 'Food database unreachable' }, 502);
   }
+});
+
+// Suggestions are decorative — on any failure (no FatSecret, upstream error)
+// the box simply shows none, never an error.
+foodRoutes.get('/autocomplete', rateLimit({ windowMs: 60_000, max: 120, by: 'user' }), async (c) => {
+  const term = (c.req.query('q') ?? '').trim();
+  if (term.length < 2 || !fatSecretConfigured()) return c.json({ suggestions: [] });
+  try {
+    return c.json({ suggestions: await autocompleteFatSecret(term) });
+  } catch {
+    return c.json({ suggestions: [] });
+  }
+});
+
+/** Barcode → product, FatSecret's curated data. The client falls back to
+ * Open Food Facts (called directly, browser-side) when this returns null. */
+foodRoutes.get('/barcode', rateLimit({ windowMs: 60_000, max: 30, by: 'user' }), async (c) => {
+  const code = (c.req.query('code') ?? '').replace(/\D/g, '');
+  if (code.length < 8 || code.length > 14) return c.json({ error: 'Invalid barcode' }, 400);
+  if (!fatSecretConfigured()) return c.json({ product: null });
+  const food = await findFoodByBarcode(code).catch(() => null);
+  if (!food) return c.json({ product: null });
+  // The scanned code replaces the synthetic fs-<id>: the client dedupes and
+  // re-finds saved foods by their real barcode.
+  return c.json({ product: { ...fsToProduct(food), code } });
 });
