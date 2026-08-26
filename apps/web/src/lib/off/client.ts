@@ -123,8 +123,33 @@ export async function fetchServing(
   };
 }
 
-/** Barcode lookup — the flow the Android scanner will use. */
+/** Search-as-you-type suggestions (FatSecret Premier via our API). Empty on
+ * any failure — suggestions are decorative, never an error state. */
+export async function fetchFoodSuggestions(term: string): Promise<string[]> {
+  try {
+    const data = await apiFetch<{ suggestions?: string[] }>(
+      `/v1/food/autocomplete?q=${encodeURIComponent(term)}`,
+    );
+    return data.suggestions ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Barcode lookup: FatSecret's curated data (via our API) first, community
+ * Open Food Facts as the fallback. */
 export async function lookupBarcode(code: string): Promise<FoodSnapshot | null> {
+  try {
+    const data = await apiFetch<{ product?: OffProduct | null }>(
+      `/v1/food/barcode?code=${encodeURIComponent(code)}`,
+    );
+    if (data.product) {
+      const snapshot = toSnapshot(data.product);
+      if (snapshot) return snapshot;
+    }
+  } catch {
+    // FatSecret unavailable — OFF below still answers.
+  }
   const res = await fetch(`${OFF_BASE}/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Open Food Facts lookup failed (${res.status})`);

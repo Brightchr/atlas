@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,6 +10,7 @@ import {
   Flame,
   Moon,
   PlusCircle,
+  ScanBarcode,
   Search,
   Sun,
   Sunrise,
@@ -19,7 +20,14 @@ import {
   X,
 } from 'lucide-react';
 import type { Food, Macros, MealType } from '@arcadia/shared';
-import { fetchServing, searchOpenFoodFacts, type FoodSnapshot } from '@/lib/off/client';
+import {
+  fetchFoodSuggestions,
+  fetchServing,
+  lookupBarcode,
+  searchOpenFoodFacts,
+  type FoodSnapshot,
+} from '@/lib/off/client';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { rankFoodsByRelevance } from '@/lib/foodRank';
 import { Pagination } from '@/components/Pagination';
 import { getSavedTargets } from '@/features/goals/repository';
@@ -379,6 +387,31 @@ export function NutritionPage() {
   // A meal section's Add button pre-targets that meal for the next log.
   const [mealTarget, setMealTarget] = useState<MealType | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Barcode scanning: modal → lookup (FatSecret, then OFF) → one result card.
+  const [scanning, setScanning] = useState(false);
+  const [scannedFood, setScannedFood] = useState<FoodSnapshot | null>(null);
+  const barcodeMutation = useMutation({
+    mutationFn: lookupBarcode,
+    onSuccess: (snapshot) => setScannedFood(snapshot),
+  });
+
+  // Autocomplete: debounced so a typing burst costs one request, not ten.
+  const [debouncedTerm, setDebouncedTerm] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTerm(term.trim()), 250);
+    return () => clearTimeout(t);
+  }, [term]);
+  const suggestionsQuery = useQuery({
+    queryKey: ['foods', 'suggest', debouncedTerm],
+    queryFn: () => fetchFoodSuggestions(debouncedTerm),
+    enabled: debouncedTerm.length >= 2,
+    staleTime: 10 * 60 * 1000,
+  });
+  const suggestions = (suggestionsQuery.data ?? []).filter(
+    (s) => s.toLowerCase() !== term.trim().toLowerCase(),
+  );
   const addToMeal = (meal: MealType) => {
     setMealTarget(meal);
     searchRef.current?.focus();
@@ -475,34 +508,73 @@ export function NutritionPage() {
 
       {/* Prominent, self-explanatory logging entry point — search-first, like Explore. */}
       <div>
-        <div className="relative">
-          <Search size={16} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted" aria-hidden />
-          <input
-            ref={searchRef}
-            type="search"
-            value={term}
-            onChange={(e) => {
-              setTerm(e.target.value);
-              setFoodPage(1);
+        <div className="flex gap-2">
+          <div className="relative grow">
+            <Search size={16} className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-muted" aria-hidden />
+            <input
+              ref={searchRef}
+              type="search"
+              value={term}
+              onChange={(e) => {
+                setTerm(e.target.value);
+                setFoodPage(1);
+              }}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder={
+                mealTarget
+                  ? `Add to ${mealTarget} — search foods…`
+                  : 'Log a food — try “oats”, “nutella”, or any brand…'
+              }
+              aria-label="Search foods to log"
+              className="w-full rounded-2xl border border-line bg-surface py-3 pr-10 pl-11 text-sm shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            {searching && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setTerm('')}
+                className="absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-elev hover:text-ink"
+              >
+                <X size={15} aria-hidden />
+              </button>
+            )}
+            {/* Suggestions — pointerdown beats the input's blur, so a tap
+                always lands before the dropdown unmounts. */}
+            {searchFocused && searching && suggestions.length > 0 && (
+              <ul className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-2xl border border-line bg-surface py-1 shadow-xl shadow-black/10">
+                {suggestions.map((s) => (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        setTerm(s);
+                        setFoodPage(1);
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm transition-colors hover:bg-elev"
+                    >
+                      <Search size={13} className="shrink-0 text-muted" aria-hidden />
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setScannedFood(null);
+              barcodeMutation.reset();
+              setScanning(true);
             }}
-            placeholder={
-              mealTarget
-                ? `Add to ${mealTarget} — search foods…`
-                : 'Log a food — try “oats”, “nutella”, or any brand…'
-            }
-            aria-label="Search foods to log"
-            className="w-full rounded-2xl border border-line bg-surface py-3 pr-10 pl-11 text-sm shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
-          {searching && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => setTerm('')}
-              className="absolute top-1/2 right-3 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-elev hover:text-ink"
-            >
-              <X size={15} aria-hidden />
-            </button>
-          )}
+            title="Scan a barcode"
+            aria-label="Scan a barcode"
+            className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-line bg-surface text-muted shadow-sm transition-colors hover:bg-elev hover:text-ink"
+          >
+            <ScanBarcode size={19} strokeWidth={1.8} aria-hidden />
+          </button>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
           {mealTarget && (
@@ -536,6 +608,43 @@ export function NutritionPage() {
           </section>
         )}
       </div>
+
+      {scanning && (
+        <BarcodeScannerModal
+          onClose={() => setScanning(false)}
+          onDetected={(code) => {
+            setScanning(false);
+            barcodeMutation.mutate(code);
+          }}
+        />
+      )}
+
+      {barcodeMutation.isPending && <p className="text-sm text-muted">Looking up barcode…</p>}
+      {barcodeMutation.isSuccess && scannedFood === null && (
+        <p className="text-sm text-muted">
+          No product found for that barcode — try searching by name instead.
+        </p>
+      )}
+      {barcodeMutation.isError && (
+        <p className="text-sm text-rose-500">Barcode lookup failed — check your connection.</p>
+      )}
+      {scannedFood && (
+        <section className="space-y-1.5">
+          <p className="text-xs font-semibold text-accent">Scanned — log it:</p>
+          <ul>
+            <FoodResult
+              snapshot={scannedFood}
+              sourceTag={scannedFood.source === 'fatsecret' ? 'fatsecret' : 'Open Food Facts'}
+              defaultMeal={mealTarget ?? undefined}
+              pending={logMutation.isPending}
+              onLog={(grams, meal, serving) => {
+                logMutation.mutate({ snapshot: scannedFood, grams, meal, serving });
+                setScannedFood(null);
+              }}
+            />
+          </ul>
+        </section>
+      )}
 
       {createdFood && (
         <section className="space-y-1.5">
