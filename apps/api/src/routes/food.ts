@@ -273,17 +273,27 @@ function foldToken(raw: string): string {
   return bare.length > 3 && bare.endsWith('s') ? bare.slice(0, -1) : bare;
 }
 
-/** Our own food DB — every meaningful search word must appear in the name or
- * brand, so "dunkin' donuts chocolate frosted donut with sprinkles" finds
- * "Chocolate Frosted with Sprinkles Donut" under brand Dunkin'. */
+/** Our own food DB, scored by how many meaningful search words hit the name
+ * or brand. Queries of 3+ words may miss ONE — real queries carry brand
+ * noise the data doesn't ("dunkin DONUTS loaded hash browns" vs brand
+ * "Dunkin'"). Full matches still rank first via the hit count. */
 async function searchCurated(term: string): Promise<Product[]> {
   const tokens = [...new Set(term.split(/\s+/).map(foldToken).filter(Boolean))].slice(0, 6);
   if (tokens.length === 0) return [];
-  const conditions = tokens
-    .map((_, i) => `(name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1})`)
-    .join(' AND ');
+  const hitSum = tokens
+    .map(
+      (_, i) =>
+        `(CASE WHEN name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1} THEN 1 ELSE 0 END)`,
+    )
+    .join(' + ');
+  const minHits = tokens.length <= 2 ? tokens.length : tokens.length - 1;
   const rows = await query<CuratedFoodRow>(
-    `SELECT * FROM curated_foods WHERE ${conditions} ORDER BY char_length(name) LIMIT 8`,
+    `SELECT * FROM (
+       SELECT *, ${hitSum} AS hits FROM curated_foods
+     ) scored
+     WHERE hits >= ${minHits}
+     ORDER BY hits DESC, char_length(name)
+     LIMIT 8`,
     tokens.map((t) => `%${t}%`),
   );
   return rows.map(curatedToProduct);
