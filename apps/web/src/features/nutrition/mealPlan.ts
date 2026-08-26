@@ -118,24 +118,56 @@ export async function logPlanDayToDiary(dayOfWeek: number, date: string): Promis
   }
 }
 
-/** Aggregate the whole week's plan into shopping items — recipes expand to
- * ingredients, grams sum per food name — and merge them onto the needed list. */
-export async function addPlanWeekToShoppingList(): Promise<number> {
+/** How often the user shops, in days (their grocery cadence). Synced setting;
+ * 7 = weekly default. */
+const CADENCE_KEY = 'shopping_cadence_days';
+
+export async function getShoppingCadenceDays(): Promise<number> {
+  const db = await getDb();
+  const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [CADENCE_KEY]))
+    .values as { value: string }[];
+  const n = Number(rows[0]?.value);
+  return Number.isFinite(n) && n >= 1 && n <= 90 ? Math.round(n) : 7;
+}
+
+export async function setShoppingCadenceDays(days: number): Promise<void> {
+  const db = await getDb();
+  const clamped = Math.min(90, Math.max(1, Math.round(days)));
+  await db.run(
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [CADENCE_KEY, CADENCE_KEY, String(clamped)],
+  );
+  await persist();
+}
+
+/** Aggregate the next `days` calendar days of the plan (starting today) into
+ * shopping items — recipes expand to ingredients, grams sum per food name,
+ * weekdays that occur twice in the window count twice. This is the "I shop
+ * every N days" flow: buy exactly what the plan needs until the next trip. */
+export async function addPlanRangeToShoppingList(days: number): Promise<number> {
   const items = await listMealPlanItems();
   const recipes = await listRecipes();
+
+  const todayDow = (new Date().getDay() + 6) % 7;
+  const occurrences = new Array<number>(7).fill(0);
+  for (let i = 0; i < Math.min(90, Math.max(1, days)); i++) {
+    occurrences[(todayDow + i) % 7] += 1;
+  }
 
   const gramsByName = new Map<string, number>();
   const bump = (name: string, grams: number) =>
     gramsByName.set(name, (gramsByName.get(name) ?? 0) + grams);
 
   for (const item of items) {
+    const times = occurrences[item.dayOfWeek] ?? 0;
+    if (times === 0) continue;
     if (item.kind === 'food') {
-      if (item.grams) bump(item.name, item.grams);
+      if (item.grams) bump(item.name, item.grams * times);
       continue;
     }
     const recipe = recipes.find((r) => r.id === item.refId);
     if (!recipe) continue;
-    const factor = (item.servings ?? 1) / Math.max(1, recipe.servings);
+    const factor = ((item.servings ?? 1) / Math.max(1, recipe.servings)) * times;
     for (const ingredient of recipe.ingredients) {
       bump(ingredient.foodName, ingredient.grams * factor);
     }
@@ -145,4 +177,9 @@ export async function addPlanWeekToShoppingList(): Promise<number> {
     await addNeededItem(name, `${Math.round(grams)} g`);
   }
   return gramsByName.size;
+}
+
+/** The whole repeating week — equivalent to a 7-day range from any start. */
+export async function addPlanWeekToShoppingList(): Promise<number> {
+  return addPlanRangeToShoppingList(7);
 }

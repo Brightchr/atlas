@@ -6,10 +6,12 @@ import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
 import {
   addMealPlanItem,
-  addPlanWeekToShoppingList,
+  addPlanRangeToShoppingList,
+  getShoppingCadenceDays,
   listMealPlanItems,
   logPlanDayToDiary,
   removeMealPlanItem,
+  setShoppingCadenceDays,
 } from '../mealPlan';
 import { listRecipes, type RecipeDetails } from '../recipes';
 import { getFoodsByIds, scaleMacros } from '../repository';
@@ -178,8 +180,20 @@ export function MealPlanPage() {
       void queryClient.invalidateQueries({ queryKey: ['goals'] });
     },
   });
+  // The grocery cadence: how many days each shopping trip should cover.
+  const cadenceQuery = useQuery({
+    queryKey: ['settings', 'shopping_cadence'],
+    queryFn: getShoppingCadenceDays,
+  });
+  const cadence = cadenceQuery.data ?? 7;
+  const [customCadence, setCustomCadence] = useState(false);
+  const setCadence = useMutation({
+    mutationFn: setShoppingCadenceDays,
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ['settings', 'shopping_cadence'] }),
+  });
   const shoppingMutation = useMutation({
-    mutationFn: addPlanWeekToShoppingList,
+    mutationFn: () => addPlanRangeToShoppingList(cadence),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shopping'] }),
   });
 
@@ -360,6 +374,44 @@ export function MealPlanPage() {
           <NotebookPen size={15} aria-hidden />
           Log {DAYS[day]} to today's diary
         </button>
+        <span className="inline-flex items-center gap-1.5">
+          <label htmlFor="shop-cadence" className="text-xs font-medium text-muted">
+            I shop
+          </label>
+          <select
+            id="shop-cadence"
+            value={customCadence || ![3, 7, 14, 30].includes(cadence) ? 'custom' : String(cadence)}
+            onChange={(e) => {
+              if (e.target.value === 'custom') {
+                setCustomCadence(true);
+              } else {
+                setCustomCadence(false);
+                setCadence.mutate(Number(e.target.value));
+              }
+            }}
+            className="rounded-xl border border-line bg-surface px-2.5 py-2 text-sm outline-none focus:border-accent"
+          >
+            <option value="3">every 3 days</option>
+            <option value="7">weekly</option>
+            <option value="14">bi-weekly</option>
+            <option value="30">monthly</option>
+            <option value="custom">custom…</option>
+          </select>
+          {(customCadence || ![3, 7, 14, 30].includes(cadence)) && (
+            <>
+              <input
+                type="number"
+                min="1"
+                max="90"
+                value={cadence}
+                onChange={(e) => setCadence.mutate(Number(e.target.value) || 1)}
+                aria-label="Days between shopping trips"
+                className="w-16 rounded-xl border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-accent"
+              />
+              <span className="text-xs text-muted">days</span>
+            </>
+          )}
+        </span>
         <button
           type="button"
           disabled={!hasAnyItems || shoppingMutation.isPending}
@@ -367,7 +419,7 @@ export function MealPlanPage() {
           className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
         >
           <ShoppingCart size={15} aria-hidden />
-          Add week's ingredients to shopping list
+          Add next {cadence} day{cadence === 1 ? '' : 's'} to shopping list
         </button>
       </div>
       {logDayMutation.isSuccess && (
@@ -375,8 +427,8 @@ export function MealPlanPage() {
       )}
       {shoppingMutation.isSuccess && (
         <p className="text-sm text-accent">
-          {shoppingMutation.data} ingredient{shoppingMutation.data === 1 ? '' : 's'} added to your
-          shopping list ✓
+          {shoppingMutation.data} ingredient{shoppingMutation.data === 1 ? '' : 's'} added — covers
+          you until your next trip in {cadence} day{cadence === 1 ? '' : 's'} ✓
         </p>
       )}
     </div>
