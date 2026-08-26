@@ -9,6 +9,7 @@ import {
   type FsFood,
 } from '../lib/fatsecret';
 import { rateLimit } from '../lib/rate-limit';
+import { minTokenHits, tokenizeSearch } from '../lib/search-tokens';
 import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Server-side food search, merged per page from up to three sources:
@@ -261,24 +262,12 @@ function curatedToProduct(f: CuratedFoodRow): Product {
   };
 }
 
-/** Filler words carry no signal and would veto perfectly good matches
- * ("chocolate frosted WITH sprinkles"). */
-const SEARCH_STOPWORDS = new Set(['with', 'and', 'the', 'for', 'of', 'on', 'in', 'an', 'a']);
-
-/** Lowercase, punctuation stripped (dunkin' → dunkin), naive plural fold
- * (donuts → donut). Empty string = drop the token. */
-function foldToken(raw: string): string {
-  const bare = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (bare.length < 2 || SEARCH_STOPWORDS.has(bare)) return '';
-  return bare.length > 3 && bare.endsWith('s') ? bare.slice(0, -1) : bare;
-}
-
 /** Our own food DB, scored by how many meaningful search words hit the name
  * or brand. Queries of 3+ words may miss ONE — real queries carry brand
  * noise the data doesn't ("dunkin DONUTS loaded hash browns" vs brand
  * "Dunkin'"). Full matches still rank first via the hit count. */
 async function searchCurated(term: string): Promise<Product[]> {
-  const tokens = [...new Set(term.split(/\s+/).map(foldToken).filter(Boolean))].slice(0, 6);
+  const tokens = tokenizeSearch(term);
   if (tokens.length === 0) return [];
   const hitSum = tokens
     .map(
@@ -286,7 +275,7 @@ async function searchCurated(term: string): Promise<Product[]> {
         `(CASE WHEN name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1} THEN 1 ELSE 0 END)`,
     )
     .join(' + ');
-  const minHits = tokens.length <= 2 ? tokens.length : tokens.length - 1;
+  const minHits = minTokenHits(tokens.length);
   const rows = await query<CuratedFoodRow>(
     `SELECT * FROM (
        SELECT *, ${hitSum} AS hits FROM curated_foods

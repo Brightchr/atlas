@@ -5,6 +5,7 @@ import type { SharedRecipeCard, SharedRecipePayload } from '@arcadia/shared';
 import { query } from '../db/pool';
 import { createNotification } from '../lib/notify';
 import { rateLimit } from '../lib/rate-limit';
+import { minTokenHits, tokenizeSearch } from '../lib/search-tokens';
 import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Community recipes: publish (upsert by owner + local id), browse, rate,
@@ -120,6 +121,23 @@ recipeRoutes.get('/', async (c) => {
     sort === 'new'
       ? 'r.updated_at DESC'
       : 'avg_rating DESC NULLS LAST, review_count DESC, r.updated_at DESC';
+
+  // Token-scored matching (same rules as food search): plural-folded,
+  // stopword-free words against name+description, one miss forgiven on
+  // longer queries.
+  const tokens = tokenizeSearch(q);
+  let where = 'TRUE';
+  const params: string[] = [];
+  if (tokens.length > 0) {
+    const hitSum = tokens
+      .map(
+        (_, i) =>
+          `(CASE WHEN r.name ILIKE $${i + 1} OR r.description ILIKE $${i + 1} THEN 1 ELSE 0 END)`,
+      )
+      .join(' + ');
+    where = `(${hitSum}) >= ${minTokenHits(tokens.length)}`;
+    params.push(...tokens.map((t) => `%${t}%`));
+  }
   const rows = await query<{
     id: string;
     name: string;
@@ -140,11 +158,11 @@ recipeRoutes.get('/', async (c) => {
        FROM shared_recipes r
        LEFT JOIN users u ON u.id = r.owner_user_id
        LEFT JOIN recipe_reviews rv ON rv.recipe_id = r.id
-      WHERE $1 = '' OR r.name ILIKE '%' || $1 || '%' OR r.description ILIKE '%' || $1 || '%'
+      WHERE ${where}
       GROUP BY r.id, u.username
       ORDER BY ${order}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`,
-    [q],
+    params,
   );
   const total = Number(rows[0]?.total ?? 0);
   const recipes: SharedRecipeCard[] = rows.map((r) => ({

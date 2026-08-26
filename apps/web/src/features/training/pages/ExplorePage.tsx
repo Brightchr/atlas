@@ -289,15 +289,44 @@ const BROWSE_TILES: {
   },
 ];
 
-/** Ranked substring search across names, descriptions, labels and (for
- * workouts) exercise names. Local data, so it runs on every keystroke. */
+/** Multi-word ranked search across names, descriptions, labels and (for
+ * workouts) exercise names. Query words are punctuation-stripped,
+ * plural-folded, stopword-free, and scored by coverage — "push pull legs
+ * beginner" finds a beginner PPL plan even though no single field contains
+ * that phrase. Local data, so it runs on every keystroke. */
+const SEARCH_STOPWORDS = new Set(['with', 'and', 'the', 'for', 'of', 'on', 'in', 'an', 'a']);
+
+function tokenizeQuery(query: string): string[] {
+  return [
+    ...new Set(
+      query
+        .toLowerCase()
+        .split(/\s+/)
+        .map((t) => t.replace(/[^a-z0-9]/g, ''))
+        .filter((t) => t.length >= 2 && !SEARCH_STOPWORDS.has(t))
+        .map((t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t)),
+    ),
+  ].slice(0, 8);
+}
+
 function searchCatalog(query: string): { plans: CatalogPlan[]; workouts: CatalogWorkout[] } {
-  const q = query.trim().toLowerCase();
-  const textScore = (name: string, description: string, labels: string[]): number => {
+  const phrase = query.trim().toLowerCase();
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) return { plans: [], workouts: [] };
+  // At least half the words must land somewhere — one stray word ("dumbbell
+  // push day") narrows instead of vetoing.
+  const minHits = Math.ceil(tokens.length / 2);
+
+  const textScore = (name: string, description: string, labels: string[], extra = ''): number => {
     const n = name.toLowerCase();
-    let score = n.startsWith(q) ? 4 : n.includes(q) ? 3 : 0;
-    if (description.toLowerCase().includes(q)) score += 1;
-    if (labels.some((l) => l.toLowerCase().includes(q))) score += 2;
+    const hay = `${n} ${description.toLowerCase()} ${labels.join(' ').toLowerCase()} ${extra}`;
+    const hits = tokens.filter((t) => hay.includes(t)).length;
+    if (hits < minHits) return 0;
+    const nameHits = tokens.filter((t) => n.includes(t)).length;
+    let score = (hits / tokens.length) * 4 + (nameHits / tokens.length) * 2;
+    if (hits === tokens.length) score += 2;
+    if (n.includes(phrase)) score += 3;
+    if (n.startsWith(phrase)) score += 1;
     return score;
   };
 
@@ -309,15 +338,15 @@ function searchCatalog(query: string): { plans: CatalogPlan[]; workouts: Catalog
     .sort((a, b) => b.s - a.s)
     .map((x) => x.p);
 
-  const workouts = CATALOG_WORKOUTS.map((w) => {
-    let s = textScore(w.name, w.description, [
-      GOAL_LABELS[w.goal],
-      LEVEL_LABELS[w.level],
-      WORKOUT_CATEGORY_LABELS[w.category],
-    ]);
-    if (s === 0 && w.exercises.some((e) => e.name.toLowerCase().includes(q))) s = 1;
-    return { w, s };
-  })
+  const workouts = CATALOG_WORKOUTS.map((w) => ({
+    w,
+    s: textScore(
+      w.name,
+      w.description,
+      [GOAL_LABELS[w.goal], LEVEL_LABELS[w.level], WORKOUT_CATEGORY_LABELS[w.category]],
+      w.exercises.map((e) => e.name.toLowerCase()).join(' '),
+    ),
+  }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
     .map((x) => x.w);
