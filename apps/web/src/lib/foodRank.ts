@@ -12,28 +12,51 @@ function normalize(s: string): string {
     .trim();
 }
 
+/** Filler words would veto good matches ("chocolate frosted WITH sprinkles"). */
+const STOPWORDS = new Set(['with', 'and', 'the', 'for', 'of', 'on', 'in', 'an', 'a']);
+
+/** Naive plural fold so "donuts" claims "Donut". */
+function fold(token: string): string {
+  return token.length > 3 && token.endsWith('s') ? token.slice(0, -1) : token;
+}
+
 /** Lower is better: exact name · name prefix · name contains the phrase ·
- * every query word appears somewhere in the name (word-prefix match, so
- * "strawberry oatmeal" claims "Strawberries & Cream Instant Oatmeal") ·
- * everything else. */
-function tier(name: string, query: string, queryTokens: string[]): number {
+ * every meaningful query word appears in the name OR BRAND (word-prefix
+ * match, plural-folded — "dunkin donuts sprinkles" claims a brandless
+ * "…Sprinkles Donut" under brand Dunkin') · everything else. */
+function tier(name: string, nameAndBrand: string, query: string, queryTokens: string[]): number {
   if (name === query) return 0;
   if (name.startsWith(query)) return 1;
   if (name.includes(query)) return 2;
   if (queryTokens.length > 1) {
-    const nameTokens = name.split(' ');
-    const allWordsHit = queryTokens.every((q) => nameTokens.some((n) => n.startsWith(q)));
+    const targetTokens = nameAndBrand.split(' ').map(fold);
+    const allWordsHit = queryTokens.every((q) => targetTokens.some((n) => n.startsWith(q)));
     if (allWordsHit) return 3;
   }
   return 4;
 }
 
-export function rankFoodsByRelevance<T extends { name: string }>(items: T[], term: string): T[] {
+export function rankFoodsByRelevance<T extends { name: string; brand?: string | null }>(
+  items: T[],
+  term: string,
+): T[] {
   const query = normalize(term);
   if (!query) return items;
-  const queryTokens = query.split(' ');
+  const queryTokens = query
+    .split(' ')
+    .filter((t) => !STOPWORDS.has(t))
+    .map(fold);
   return items
-    .map((item, index) => ({ item, index, tier: tier(normalize(item.name), query, queryTokens) }))
+    .map((item, index) => ({
+      item,
+      index,
+      tier: tier(
+        normalize(item.name),
+        normalize(`${item.name} ${item.brand ?? ''}`),
+        query,
+        queryTokens,
+      ),
+    }))
     .sort((a, b) => a.tier - b.tier || a.index - b.index)
     .map((entry) => entry.item);
 }

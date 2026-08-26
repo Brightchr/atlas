@@ -261,14 +261,23 @@ function curatedToProduct(f: CuratedFoodRow): Product {
   };
 }
 
-/** Our own food DB — every search word must appear in the name or brand, so
- * "dunkin bacon egg" finds "Bacon Egg and Cheese" under brand Dunkin'. */
+/** Filler words carry no signal and would veto perfectly good matches
+ * ("chocolate frosted WITH sprinkles"). */
+const SEARCH_STOPWORDS = new Set(['with', 'and', 'the', 'for', 'of', 'on', 'in', 'an', 'a']);
+
+/** Lowercase, punctuation stripped (dunkin' → dunkin), naive plural fold
+ * (donuts → donut). Empty string = drop the token. */
+function foldToken(raw: string): string {
+  const bare = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (bare.length < 2 || SEARCH_STOPWORDS.has(bare)) return '';
+  return bare.length > 3 && bare.endsWith('s') ? bare.slice(0, -1) : bare;
+}
+
+/** Our own food DB — every meaningful search word must appear in the name or
+ * brand, so "dunkin' donuts chocolate frosted donut with sprinkles" finds
+ * "Chocolate Frosted with Sprinkles Donut" under brand Dunkin'. */
 async function searchCurated(term: string): Promise<Product[]> {
-  const tokens = term
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length >= 2)
-    .slice(0, 6);
+  const tokens = [...new Set(term.split(/\s+/).map(foldToken).filter(Boolean))].slice(0, 6);
   if (tokens.length === 0) return [];
   const conditions = tokens
     .map((_, i) => `(name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1})`)
