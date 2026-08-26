@@ -24,24 +24,40 @@ export function fatSecretConfigured(): boolean {
 
 let token: { value: string; expiresAt: number } | null = null;
 
+/** Premier endpoints (autocomplete, barcode) are gated by OAuth scopes, and
+ * requesting a scope the account doesn't have fails the WHOLE token request —
+ * so try richest-first and remember what the account actually grants. */
+const SCOPE_CHAIN = ['basic premier barcode', 'basic premier', 'basic'];
+let grantedScope: string | null = null;
+
 async function getToken(): Promise<string> {
   if (token && Date.now() < token.expiresAt - 60_000) return token.value;
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(
-        `${env.fatSecretClientId}:${env.fatSecretClientSecret}`,
-      ).toString('base64')}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials&scope=basic',
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`FatSecret token request failed (${res.status})`);
-  const data = (await res.json()) as { access_token?: string; expires_in?: number };
-  if (!data.access_token) throw new Error('FatSecret token response missing access_token');
-  token = { value: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 86_400) * 1000 };
-  return token.value;
+  const auth = `Basic ${Buffer.from(
+    `${env.fatSecretClientId}:${env.fatSecretClientSecret}`,
+  ).toString('base64')}`;
+
+  let lastStatus = 0;
+  for (const scope of grantedScope ? [grantedScope] : SCOPE_CHAIN) {
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=client_credentials&scope=${encodeURIComponent(scope)}`,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      lastStatus = res.status;
+      continue; // likely invalid_scope — try the next-narrower set
+    }
+    const data = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!data.access_token) throw new Error('FatSecret token response missing access_token');
+    grantedScope = scope;
+    token = {
+      value: data.access_token,
+      expiresAt: Date.now() + (data.expires_in ?? 86_400) * 1000,
+    };
+    return token.value;
+  }
+  throw new Error(`FatSecret token request failed (${lastStatus})`);
 }
 
 async function call<T>(params: Record<string, string>): Promise<T> {
