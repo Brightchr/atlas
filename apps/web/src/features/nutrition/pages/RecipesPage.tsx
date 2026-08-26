@@ -5,6 +5,7 @@ import { ChefHat, Globe, Plus, Search, X } from 'lucide-react';
 import type { SharedRecipeCard } from '@arcadia/shared';
 import { Pagination } from '@/components/Pagination';
 import { useCommunityRecipes } from '../communityRecipes';
+import { RecipeBanner } from '../components/RecipeArt';
 import { Stars } from '../components/Stars';
 import { createRecipe, listRecipes, type RecipeDetails } from '../recipes';
 
@@ -35,17 +36,13 @@ function RecipeCard({ recipe }: { recipe: RecipeDetails }) {
         onClick={() => void navigate(`/eat/recipes/${recipe.id}`)}
         className="springy flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-4 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
       >
-        <div className="mb-2 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <ChefHat size={16} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-semibold">{recipe.name}</p>
-            <p className="text-xs text-muted">
-              Makes {recipe.servings} · {recipe.ingredients.length} ingredient
-              {recipe.ingredients.length === 1 ? '' : 's'}
-            </p>
-          </div>
+        <RecipeBanner name={recipe.name} />
+        <div className="mb-2 min-w-0">
+          <p className="truncate font-semibold">{recipe.name}</p>
+          <p className="text-xs text-muted">
+            Makes {recipe.servings} · {recipe.ingredients.length} ingredient
+            {recipe.ingredients.length === 1 ? '' : 's'}
+          </p>
         </div>
         <p className="mb-3 grow text-xs text-muted">{preview}</p>
         <div className="flex flex-wrap gap-1.5">
@@ -69,23 +66,19 @@ function CommunityCard({ recipe }: { recipe: SharedRecipeCard }) {
         onClick={() => void navigate(`/eat/recipes/community/${recipe.id}`)}
         className="springy flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-4 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
       >
-        <div className="mb-2 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <ChefHat size={16} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate font-semibold">
-              {recipe.name}
-              {recipe.mine && (
-                <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                  yours
-                </span>
-              )}
-            </p>
-            <p className="truncate text-xs text-muted">
-              by {recipe.author ?? 'deleted user'} · makes {recipe.servings}
-            </p>
-          </div>
+        <RecipeBanner name={recipe.name} />
+        <div className="mb-2 min-w-0">
+          <p className="truncate font-semibold">
+            {recipe.name}
+            {recipe.mine && (
+              <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                yours
+              </span>
+            )}
+          </p>
+          <p className="truncate text-xs text-muted">
+            by {recipe.author ?? 'deleted user'} · makes {recipe.servings}
+          </p>
         </div>
         {recipe.description && (
           <p className="mb-2 line-clamp-2 grow text-xs text-muted">{recipe.description}</p>
