@@ -18,7 +18,7 @@ import {
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
-import { RecipeThumb } from '../components/RecipeArt';
+import { foodGlyph, recipeArtBackground, RecipeThumb } from '../components/RecipeArt';
 import { SwapPicker } from '../components/SwapPicker';
 import {
   addMealPlanItem,
@@ -89,6 +89,30 @@ function sumMacros(items: MealPlanItem[], foods: Map<string, Food>, recipes: Rec
         : acc;
     },
     { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+  );
+}
+
+/** A taste of what a starter template serves: art tiles for its first
+ * breakfast, lunch and dinner, striped across the card top. */
+function TemplateArt({ template }: { template: MealPlanTemplate }) {
+  const names: string[] = [];
+  for (const meal of ['breakfast', 'lunch', 'dinner'] as MealType[]) {
+    const slots = template.days ? template.days[0]![meal] : template.pools[meal];
+    const name = slots[0]?.recipe;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return (
+    <div className="-mx-3.5 -mt-3.5 mb-2.5 flex h-16 gap-px overflow-hidden rounded-t-2xl" aria-hidden>
+      {names.map((name) => (
+        <span
+          key={name}
+          style={{ background: recipeArtBackground(name) }}
+          className="flex min-w-0 flex-1 items-center justify-center text-2xl"
+        >
+          <span className="drop-shadow-sm">{foodGlyph(name)}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -471,6 +495,7 @@ export function MealPlanPage() {
                     : 'border-line'
                 } bg-surface`}
               >
+                <TemplateArt template={t} />
                 <p className="font-semibold">{t.name}</p>
                 <p className="text-xs text-muted">
                   ~{t.kcalPerDay.toLocaleString()} kcal · {t.proteinPerDay} g protein / day

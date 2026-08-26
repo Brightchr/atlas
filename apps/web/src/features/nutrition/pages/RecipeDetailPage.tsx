@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Beef, ChevronLeft, Droplet, Flame, Plus, Trash2, UtensilsCrossed, Wheat, X } from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
 import { FoodPicker } from '../components/FoodPicker';
+import { RecipeHero } from '../components/RecipeArt';
 import { ShareRecipeControl } from '../components/ShareRecipeControl';
 import {
   addIngredient,
@@ -89,6 +90,8 @@ export function RecipeDetailPage() {
           Recipes
         </Link>
       </div>
+
+      <RecipeHero name={recipe.name} />
 
       <header className="flex items-start justify-between gap-3">
         <div>

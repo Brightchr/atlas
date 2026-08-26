@@ -85,6 +85,19 @@ export function RecipeThumb({ name, className = 'h-12 w-12' }: { name: string; c
   );
 }
 
+/** Standalone hero panel for a recipe's own page. */
+export function RecipeHero({ name }: { name: string }) {
+  return (
+    <div
+      aria-hidden
+      style={{ background: recipeArtBackground(name) }}
+      className="flex h-28 items-center justify-center rounded-2xl border border-line shadow-sm"
+    >
+      <span className="text-5xl drop-shadow-md">{foodGlyph(name)}</span>
+    </div>
+  );
+}
+
 /** Full-bleed banner across the top of a `p-4` card — the catalogue look,
  * matching the training explore cards. */
 export function RecipeBanner({ name, height = 'h-24' }: { name: string; height?: string }) {

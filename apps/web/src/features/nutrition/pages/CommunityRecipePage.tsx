@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BookmarkPlus, CalendarPlus, ChefHat, Trash2 } from 'lucide-react';
+import { ArrowLeft, BookmarkPlus, CalendarPlus, Trash2 } from 'lucide-react';
 import type { MealType, SharedRecipeDetail } from '@arcadia/shared';
 import { ReportButton } from '@/features/reports/components/ReportButton';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../communityRecipes';
 import { addMealPlanItem } from '../mealPlan';
 import { scaleMacros } from '../repository';
+import { RecipeThumb } from '../components/RecipeArt';
 import { StarPicker, Stars } from '../components/Stars';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -89,7 +90,7 @@ export function CommunityRecipePage() {
         grams: null,
         servings: Math.max(0.5, Number(planServings) || 1),
       });
-      void queryClient.invalidateQueries({ queryKey: ['meal-plan'] });
+      void queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
     },
     onSuccess: () => setPlanPicker(false),
   });
@@ -122,9 +123,7 @@ export function CommunityRecipePage() {
 
       <header className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-            <ChefHat size={20} strokeWidth={1.8} aria-hidden />
-          </span>
+          <RecipeThumb name={detail.name} className="h-11 w-11 rounded-2xl text-2xl" />
           <div className="min-w-0 grow">
             <h1 className="text-xl font-bold">{detail.name}</h1>
             <p className="text-sm text-muted">
