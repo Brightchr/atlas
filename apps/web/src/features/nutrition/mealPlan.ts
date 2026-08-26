@@ -3,6 +3,7 @@ import { getDb, newId, persist } from '@/lib/db';
 import { addNeededItem } from '@/features/shopping/repository';
 import type { MealPlanTemplate } from './mealPlanCatalog';
 import { catalogRecipe, type CatalogRecipe } from './recipeCatalog';
+import { mealAffinity } from './recipeTags';
 import { getFoodsByIds, logFood } from './repository';
 import { importRecipeFromCatalog, listRecipes } from './recipes';
 
@@ -183,6 +184,41 @@ export async function applyMealPlanTemplate(template: MealPlanTemplate): Promise
     }
   }
   await persist();
+}
+
+/** Build the week from hand-picked catalog recipes: each pick lands in the
+ * meal it naturally fits, the picks rotate across all 7 days, and meals with
+ * no picks are left exactly as they were. Returns how many meals changed. */
+export async function buildWeekFromCatalogSelections(entries: CatalogRecipe[]): Promise<number> {
+  const byMeal: Record<MealType, CatalogRecipe[]> = {
+    breakfast: [],
+    lunch: [],
+    dinner: [],
+    snack: [],
+  };
+  for (const entry of entries) byMeal[mealAffinity(entry.name)].push(entry);
+
+  const localIds = new Map<string, string>();
+  for (const entry of entries) localIds.set(entry.name, await importRecipeFromCatalog(entry));
+
+  const db = await getDb();
+  let mealsChanged = 0;
+  for (const meal of MEALS) {
+    const pool = byMeal[meal];
+    if (pool.length === 0) continue;
+    mealsChanged++;
+    await db.run('DELETE FROM meal_plan_items WHERE meal = ?', [meal]);
+    for (let day = 0; day < 7; day++) {
+      const entry = pool[day % pool.length]!;
+      await db.run(
+        `INSERT INTO meal_plan_items (id, day_of_week, meal, kind, ref_id, name, grams, servings)
+         VALUES (?, ?, ?, 'recipe', ?, ?, NULL, 1)`,
+        [newId(), day, meal, localIds.get(entry.name), entry.name],
+      );
+    }
+  }
+  await persist();
+  return mealsChanged;
 }
 
 /** How often the user shops, in days (their grocery cadence). Synced setting;

@@ -20,14 +20,30 @@ export function catalogRecipe(name: string): CatalogRecipe | undefined {
   return byName.get(name.toLowerCase());
 }
 
-const kcalCache = new Map<string, number>();
+const perServingCache = new Map<string, { kcal: number; proteinG: number }>();
 
-/** Calories in one serving of a catalog recipe, from its ingredient snapshot. */
+/** Per-serving kcal and protein of a catalog recipe, from its ingredient
+ * snapshot (memoized — the browser renders a hundred of these). */
+export function catalogPerServing(entry: CatalogRecipe): { kcal: number; proteinG: number } {
+  const hit = perServingCache.get(entry.name);
+  if (hit) return hit;
+  const servings = Math.max(1, entry.servings);
+  const total = entry.ingredients.reduce(
+    (acc, i) => ({
+      kcal: acc.kcal + (i.food.per100g.kcal * i.grams) / 100,
+      proteinG: acc.proteinG + (i.food.per100g.proteinG * i.grams) / 100,
+    }),
+    { kcal: 0, proteinG: 0 },
+  );
+  const per = {
+    kcal: Math.round(total.kcal / servings),
+    proteinG: Math.round(total.proteinG / servings),
+  };
+  perServingCache.set(entry.name, per);
+  return per;
+}
+
+/** Calories in one serving of a catalog recipe. */
 export function catalogKcalPerServing(entry: CatalogRecipe): number {
-  const hit = kcalCache.get(entry.name);
-  if (hit !== undefined) return hit;
-  const total = entry.ingredients.reduce((s, i) => s + (i.food.per100g.kcal * i.grams) / 100, 0);
-  const kcal = Math.round(total / Math.max(1, entry.servings));
-  kcalCache.set(entry.name, kcal);
-  return kcal;
+  return catalogPerServing(entry).kcal;
 }

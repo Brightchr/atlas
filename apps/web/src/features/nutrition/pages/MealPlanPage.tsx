@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
@@ -9,6 +10,7 @@ import {
   NotebookPen,
   Plus,
   ShoppingCart,
+  Sparkles,
   Sun,
   Sunrise,
   X,
@@ -261,6 +263,7 @@ export function MealPlanPage() {
   const [view, setView] = useState<'week' | 'day'>('week');
   const [day, setDay] = useState(todayIndex);
   const [openSlot, setOpenSlot] = useState<MealType | null>(null);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const planQuery = useQuery({ queryKey: ['mealPlan'], queryFn: listMealPlanItems });
@@ -412,10 +415,18 @@ export function MealPlanPage() {
           <button
             type="button"
             onClick={() => setBrowsing(!browsing)}
-            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
+            className="springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
           >
             <BookOpenText size={15} aria-hidden />
             Starter plans
+          </button>
+          <button
+            type="button"
+            onClick={() => void navigate('/eat/meal-plan/build')}
+            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
+          >
+            <Sparkles size={15} aria-hidden />
+            Build a plan
           </button>
         </div>
       </header>
@@ -520,8 +531,9 @@ export function MealPlanPage() {
         <section className="rounded-2xl border border-dashed border-line p-8 text-center">
           <BookOpenText size={22} className="mx-auto mb-2 text-muted" aria-hidden />
           <p className="text-sm text-muted">
-            Nothing planned yet — grab a <span className="font-semibold">starter plan</span> above
-            or switch to <span className="font-semibold">Day</span> and build your own.
+            Nothing planned yet — hit <span className="font-semibold">Build a plan</span> to pick
+            meals you love, grab a <span className="font-semibold">starter plan</span>, or switch
+            to <span className="font-semibold">Day</span> and build by hand.
           </p>
         </section>
       )}
