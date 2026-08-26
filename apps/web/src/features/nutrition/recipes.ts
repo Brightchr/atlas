@@ -1,6 +1,6 @@
 import type { Food, Macros, MealType, Recipe } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
-import { getFoodsByIds, logFood, scaleMacros } from './repository';
+import { getFoodsByIds, importFood, logFood, scaleMacros } from './repository';
 
 /** Recipes = named food groups ("sandwich"): ingredients with gram amounts,
  * loggable to the diary as one unit and usable as meal-plan entries. */
@@ -105,6 +105,37 @@ export async function removeIngredient(id: string): Promise<void> {
   const db = await getDb();
   await db.run('DELETE FROM recipe_ingredients WHERE id = ?', [id]);
   await persist();
+}
+
+/** Materialize a bundled catalog recipe as a local recipe (idempotent by
+ * name); ingredient foods import barcode/name-deduped. Returns the local id. */
+export async function importRecipeFromCatalog(entry: {
+  name: string;
+  servings: number;
+  instructions: string | null;
+  ingredients: { grams: number; food: Omit<Food, 'id'> }[];
+}): Promise<string> {
+  const db = await getDb();
+  const existing = (await db.query('SELECT id FROM recipes WHERE name = ? LIMIT 1', [entry.name]))
+    .values as { id: string }[];
+  if (existing[0]) return existing[0].id;
+
+  const id = newId();
+  await db.run('INSERT INTO recipes (id, name, instructions, servings) VALUES (?, ?, ?, ?)', [
+    id,
+    entry.name,
+    entry.instructions,
+    entry.servings,
+  ]);
+  for (const ingredient of entry.ingredients) {
+    const food = await importFood(ingredient.food);
+    await db.run(
+      'INSERT INTO recipe_ingredients (id, recipe_id, food_id, food_name, grams) VALUES (?, ?, ?, ?, ?)',
+      [newId(), id, food.id, food.name, ingredient.grams],
+    );
+  }
+  await persist();
+  return id;
 }
 
 /** Log N servings of a recipe: each ingredient goes into the diary scaled by

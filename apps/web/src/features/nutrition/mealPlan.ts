@@ -1,8 +1,10 @@
 import type { MealPlanItem, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import { addNeededItem } from '@/features/shopping/repository';
+import type { MealPlanTemplate } from './mealPlanCatalog';
+import { catalogRecipe } from './recipeCatalog';
 import { getFoodsByIds, logFood } from './repository';
-import { listRecipes } from './recipes';
+import { importRecipeFromCatalog, listRecipes } from './recipes';
 
 /** The weekly meal plan: one implicit plan, slots keyed by day (0 = Monday)
  * and meal. Entries are plain foods (grams) or recipes (servings). The plan
@@ -116,6 +118,53 @@ export async function logPlanDayToDiary(dayOfWeek: number, date: string): Promis
       });
     }
   }
+}
+
+const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+/** Replace the current week with a starter template. Referenced recipes are
+ * materialized from the bundled catalog first (idempotent by name), so this
+ * works offline and never duplicates recipes on re-apply. */
+export async function applyMealPlanTemplate(template: MealPlanTemplate): Promise<void> {
+  // Resolve every referenced recipe name to a local recipe id.
+  const slotsForDay = (day: number): Record<MealType, { recipe: string; servings?: number }[]> => {
+    if (template.days) return template.days[day]!;
+    const out = {} as Record<MealType, { recipe: string; servings?: number }[]>;
+    for (const meal of MEALS) {
+      const pool = template.pools[meal];
+      out[meal] = pool.length > 0 ? [pool[day % pool.length]!] : [];
+    }
+    return out;
+  };
+
+  const names = new Set<string>();
+  for (let day = 0; day < 7; day++) {
+    for (const meal of MEALS) for (const slot of slotsForDay(day)[meal]) names.add(slot.recipe);
+  }
+  const localIds = new Map<string, string>();
+  for (const name of names) {
+    const entry = catalogRecipe(name);
+    if (!entry) continue; // template referencing a missing recipe: skip the slot
+    localIds.set(name, await importRecipeFromCatalog(entry));
+  }
+
+  const db = await getDb();
+  await db.run('DELETE FROM meal_plan_items');
+  for (let day = 0; day < 7; day++) {
+    const slots = slotsForDay(day);
+    for (const meal of MEALS) {
+      for (const slot of slots[meal]) {
+        const refId = localIds.get(slot.recipe);
+        if (!refId) continue;
+        await db.run(
+          `INSERT INTO meal_plan_items (id, day_of_week, meal, kind, ref_id, name, grams, servings)
+           VALUES (?, ?, ?, 'recipe', ?, ?, NULL, ?)`,
+          [newId(), day, meal, refId, slot.recipe, slot.servings ?? 1],
+        );
+      }
+    }
+  }
+  await persist();
 }
 
 /** How often the user shops, in days (their grocery cadence). Synced setting;

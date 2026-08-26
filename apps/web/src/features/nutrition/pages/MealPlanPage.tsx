@@ -13,6 +13,8 @@ import {
   removeMealPlanItem,
   setShoppingCadenceDays,
 } from '../mealPlan';
+import { applyMealPlanTemplate } from '../mealPlan';
+import { MEAL_PLAN_TEMPLATES, type MealPlanTemplate } from '../mealPlanCatalog';
 import { listRecipes, type RecipeDetails } from '../recipes';
 import { getFoodsByIds, scaleMacros } from '../repository';
 
@@ -197,6 +199,24 @@ export function MealPlanPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shopping'] }),
   });
 
+  // Starter templates: browse → confirm → the week is replaced.
+  const [browsing, setBrowsing] = useState(false);
+  const [templateGoal, setTemplateGoal] = useState<'all' | 'lose' | 'gain' | 'maintain'>('all');
+  const [confirmingTemplate, setConfirmingTemplate] = useState<MealPlanTemplate | null>(null);
+  const applyTemplate = useMutation({
+    mutationFn: (template: MealPlanTemplate) => applyMealPlanTemplate(template),
+    onSuccess: () => {
+      setConfirmingTemplate(null);
+      setBrowsing(false);
+      void queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
+      void queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      void queryClient.invalidateQueries({ queryKey: ['foods'] });
+    },
+  });
+  const visibleTemplates = MEAL_PLAN_TEMPLATES.filter(
+    (t) => templateGoal === 'all' || t.goal === templateGoal,
+  );
+
   const recipes = recipesQuery.data ?? [];
   const foods = foodsQuery.data ?? new Map<string, Food>();
   const dayItems = (planQuery.data ?? []).filter((i) => i.dayOfWeek === day);
@@ -220,14 +240,119 @@ export function MealPlanPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
-      <header>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
         <h1 className="text-2xl font-bold">Meal plan</h1>
         <p className="text-sm text-muted">
           Plan breakfast to snacks for each day — then log a day to your diary in one tap or turn
           the week into a shopping list.
         </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setBrowsing(!browsing)}
+          className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
+        >
+          <BookOpenText size={15} aria-hidden />
+          Starter plans
+        </button>
       </header>
 
+      {browsing && (
+        <section className="space-y-3 rounded-2xl border border-accent/40 bg-surface p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">
+              Pick a starting point — it fills your whole week (you can edit every slot after).
+            </p>
+            <span className="flex gap-1">
+              {(
+                [
+                  ['all', 'All'],
+                  ['lose', 'Weight loss'],
+                  ['gain', 'Weight gain'],
+                  ['maintain', 'Maintain'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTemplateGoal(value)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    templateGoal === value
+                      ? 'bg-accent text-accent-ink'
+                      : 'bg-elev text-muted hover:text-ink'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          </div>
+          <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleTemplates.map((t) => (
+              <li
+                key={t.key}
+                className={`flex flex-col rounded-2xl border p-3.5 shadow-sm ${
+                  t.key === 'comeback-phase1'
+                    ? 'border-accent/60 ring-1 ring-accent/25'
+                    : 'border-line'
+                } bg-surface`}
+              >
+                <p className="font-semibold">{t.name}</p>
+                <p className="text-xs text-muted">
+                  ~{t.kcalPerDay.toLocaleString()} kcal · {t.proteinPerDay} g protein / day
+                </p>
+                <div className="my-1.5 flex flex-wrap gap-1">
+                  {t.style.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <p className="grow text-xs text-muted">{t.tagline}</p>
+                {confirmingTemplate?.key === t.key ? (
+                  <span className="mt-2 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={applyTemplate.isPending}
+                      onClick={() => applyTemplate.mutate(t)}
+                      className="rounded-lg bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-500 disabled:opacity-50"
+                    >
+                      {applyTemplate.isPending ? 'Building…' : 'Replace my week'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingTemplate(null)}
+                      className="rounded-lg px-2 py-1.5 text-xs text-muted hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingTemplate(t)}
+                    className="mt-2 self-start rounded-lg bg-linear-to-r from-accent to-accent-2 px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-sm hover:opacity-90"
+                  >
+                    Use this plan
+                  </button>
+                )}
+                {t.note && confirmingTemplate?.key === t.key && (
+                  <p className="mt-2 rounded-lg bg-elev p-2 text-[11px] leading-snug text-muted">
+                    {t.note}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          {applyTemplate.isError && (
+            <p className="text-sm text-rose-500">Could not apply the plan — try again.</p>
+          )}
+        </section>
+      )}
 
       <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
         {DAYS.map((label, i) => (
