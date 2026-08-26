@@ -166,55 +166,80 @@ const num = (v: string | undefined): number | undefined => {
   return v !== undefined && Number.isFinite(n) ? n : undefined;
 };
 
-/** Full per-100g nutrition for one food via food.get.v4, from the first
- * serving with a gram-based metric amount. Null when nothing is scalable. */
+const OZ_TO_G = 28.3495;
+
+/** Grams represented by a serving's metric amount — oz converts, anything
+ * else (ml, item counts) is not scalable to per-100g. */
+function servingGrams(s: FsServing): number | null {
+  const amount = Number(s.metric_serving_amount);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const unit = (s.metric_serving_unit ?? '').toLowerCase();
+  if (unit === 'g') return amount;
+  if (unit === 'oz') return Math.round(amount * OZ_TO_G * 10) / 10;
+  return null;
+}
+
+/** Serving list → FsFood via the default (or first) weight-based serving.
+ * Shared by search v3 (servings arrive inline) and food.get.v4 details. */
+function foodFromServings(
+  foodId: string,
+  name: string,
+  brand: string | null,
+  imageUrl: string | null,
+  rawServings: FsServing | FsServing[] | undefined,
+): FsFood | null {
+  const servings = Array.isArray(rawServings) ? rawServings : rawServings ? [rawServings] : [];
+  const weighed = servings
+    .map((s) => ({ s, grams: servingGrams(s) }))
+    .filter((x): x is { s: FsServing; grams: number } => x.grams !== null);
+  const base = weighed.find((x) => x.s.is_default === '1') ?? weighed[0] ?? null;
+  if (!base) return null;
+
+  const scale = 100 / base.grams;
+  const per = (v: string | undefined) => {
+    const n = num(v);
+    return n === undefined ? undefined : Math.round(n * scale * 100) / 100;
+  };
+  const kcal = num(base.s.calories);
+  if (kcal === undefined) return null;
+  const sodiumMgPer100 = per(base.s.sodium);
+  return {
+    foodId,
+    name,
+    brand,
+    per100g: {
+      kcal: Math.round(kcal * scale),
+      proteinG: per(base.s.protein) ?? 0,
+      carbsG: per(base.s.carbohydrate) ?? 0,
+      fatG: per(base.s.fat) ?? 0,
+      sugarG: per(base.s.sugar),
+      fiberG: per(base.s.fiber),
+      saturatedFatG: per(base.s.saturated_fat),
+      sodiumG: sodiumMgPer100 === undefined ? undefined : sodiumMgPer100 / 1000,
+    },
+    servingName: base.s.serving_description ?? null,
+    servingGrams: base.grams,
+    imageUrl,
+  };
+}
+
+/** Full per-100g nutrition for one food via food.get.v4. Null when nothing
+ * is scalable to weight. */
 export async function getFoodDetail(foodId: string): Promise<FsFood | null> {
   const cached = detailCache.get(foodId);
   if (cached && Date.now() - cached.at < DETAIL_TTL_MS) return cached.food;
 
   const data = await call<FsFoodDetail>({ method: 'food.get.v4', food_id: foodId });
   const food = data.food;
-  const rawServings = food?.servings?.serving;
-  const servings = Array.isArray(rawServings) ? rawServings : rawServings ? [rawServings] : [];
-  const gramServings = servings.filter(
-    (s) => /^g$/i.test(s.metric_serving_unit ?? '') && Number(s.metric_serving_amount) > 0,
-  );
-  const base =
-    gramServings.find((s) => s.is_default === '1') ??
-    gramServings[0] ??
-    null;
-
-  let result: FsFood | null = null;
-  if (food && base) {
-    const grams = Number(base.metric_serving_amount);
-    const scale = 100 / grams;
-    const per = (v: string | undefined) => {
-      const n = num(v);
-      return n === undefined ? undefined : Math.round(n * scale * 100) / 100;
-    };
-    const kcal = num(base.calories);
-    if (kcal !== undefined) {
-      const sodiumMgPer100 = per(base.sodium);
-      result = {
-        foodId: food.food_id,
-        name: food.food_name,
-        brand: food.brand_name ?? null,
-        per100g: {
-          kcal: Math.round(kcal * scale),
-          proteinG: per(base.protein) ?? 0,
-          carbsG: per(base.carbohydrate) ?? 0,
-          fatG: per(base.fat) ?? 0,
-          sugarG: per(base.sugar),
-          fiberG: per(base.fiber),
-          saturatedFatG: per(base.saturated_fat),
-          sodiumG: sodiumMgPer100 === undefined ? undefined : sodiumMgPer100 / 1000,
-        },
-        servingName: base.serving_description ?? null,
-        servingGrams: grams,
-        imageUrl: food.food_images?.food_image?.[0]?.image_url ?? null,
-      };
-    }
-  }
+  const result = food
+    ? foodFromServings(
+        food.food_id,
+        food.food_name,
+        food.brand_name ?? null,
+        food.food_images?.food_image?.[0]?.image_url ?? null,
+        food.servings?.serving,
+      )
+    : null;
 
   if (detailCache.size >= DETAIL_CACHE_MAX) {
     const oldest = detailCache.keys().next().value;
@@ -267,7 +292,52 @@ export interface FsSearchPage {
   pageCount: number;
 }
 
-export async function searchFatSecret(term: string, page: number): Promise<FsSearchPage> {
+/** foods.search.v3 (Premier): better relevance than the legacy search and
+ * full servings inline — no per-food detail calls at all. */
+async function searchV3(term: string, page: number, withImages: boolean): Promise<FsSearchPage> {
+  interface V3Food {
+    food_id: string;
+    food_name: string;
+    brand_name?: string;
+    food_images?: { food_image?: { image_url?: string; image_type?: string }[] };
+    servings?: { serving?: FsServing | FsServing[] };
+  }
+  interface V3Response {
+    foods_search?: {
+      total_results?: string;
+      max_results?: string;
+      results?: { food?: V3Food | V3Food[] };
+    };
+  }
+  const data = await call<V3Response>({
+    method: 'foods.search.v3',
+    search_expression: term,
+    page_number: String(page - 1),
+    max_results: '20',
+    ...(withImages && { include_food_images: 'true' }),
+  });
+  const rs = data.foods_search;
+  const raw = rs?.results?.food;
+  const hits = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const total = Number(rs?.total_results ?? 0);
+  return {
+    foods: hits
+      .map((h) =>
+        foodFromServings(
+          h.food_id,
+          h.food_name,
+          h.brand_name ?? null,
+          h.food_images?.food_image?.[0]?.image_url ?? null,
+          h.servings?.serving,
+        ),
+      )
+      .filter((f): f is FsFood => f !== null),
+    pageCount: Math.max(1, Math.ceil(total / Number(rs?.max_results ?? 20))),
+  };
+}
+
+/** Legacy foods.search — the fallback when the account's tier rejects v3. */
+async function searchV1(term: string, page: number): Promise<FsSearchPage> {
   interface SearchResponse {
     foods?: {
       food?: FsSearchHit | FsSearchHit[];
@@ -311,4 +381,25 @@ export async function searchFatSecret(term: string, page: number): Promise<FsSea
   );
 
   return { foods: foods.filter((f): f is FsFood => f !== null), pageCount };
+}
+
+/** Best search variant the account supports, learned once and remembered:
+ * v3 with images → v3 → legacy v1. */
+type SearchMode = 'v3-images' | 'v3' | 'v1';
+let searchMode: SearchMode | null = null;
+
+export async function searchFatSecret(term: string, page: number): Promise<FsSearchPage> {
+  const modes: SearchMode[] = searchMode ? [searchMode] : ['v3-images', 'v3', 'v1'];
+  let lastError: unknown = new Error('FatSecret search unavailable');
+  for (const mode of modes) {
+    try {
+      const result =
+        mode === 'v1' ? await searchV1(term, page) : await searchV3(term, page, mode === 'v3-images');
+      searchMode = mode;
+      return result;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
