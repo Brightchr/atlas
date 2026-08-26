@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Plus, Search, X } from 'lucide-react';
+import { ChefHat, Globe, Plus, Search, X } from 'lucide-react';
+import type { SharedRecipeCard } from '@arcadia/shared';
+import { Pagination } from '@/components/Pagination';
+import { useCommunityRecipes } from '../communityRecipes';
+import { Stars } from '../components/Stars';
 import { createRecipe, listRecipes, type RecipeDetails } from '../recipes';
 
 function macroChip(tone: string, children: React.ReactNode) {
@@ -55,9 +59,121 @@ function RecipeCard({ recipe }: { recipe: RecipeDetails }) {
   );
 }
 
+/** One community recipe as a browse card. */
+function CommunityCard({ recipe }: { recipe: SharedRecipeCard }) {
+  const navigate = useNavigate();
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => void navigate(`/eat/recipes/community/${recipe.id}`)}
+        className="springy flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-4 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+      >
+        <div className="mb-2 flex items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <ChefHat size={16} strokeWidth={1.8} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-semibold">
+              {recipe.name}
+              {recipe.mine && (
+                <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                  yours
+                </span>
+              )}
+            </p>
+            <p className="truncate text-xs text-muted">
+              by {recipe.author ?? 'deleted user'} · makes {recipe.servings}
+            </p>
+          </div>
+        </div>
+        {recipe.description && (
+          <p className="mb-2 line-clamp-2 grow text-xs text-muted">{recipe.description}</p>
+        )}
+        <div className="mt-auto flex flex-wrap items-center gap-2">
+          {recipe.avgRating !== null ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted">
+              <Stars rating={recipe.avgRating} />
+              {recipe.avgRating} ({recipe.reviewCount})
+            </span>
+          ) : (
+            <span className="text-xs text-muted">No ratings yet</span>
+          )}
+          {macroChip(
+            'bg-orange-500/10 text-orange-500',
+            `${recipe.kcalPerServing} kcal / serving`,
+          )}
+        </div>
+      </button>
+    </li>
+  );
+}
+
+/** The community browser: every published recipe, searchable, rating-sorted. */
+function CommunitySection() {
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<'top' | 'new'>('top');
+  const [page, setPage] = useState(1);
+  const browse = useCommunityRecipes(q.trim(), sort, page);
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted" aria-hidden />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search community recipes…"
+            aria-label="Search community recipes"
+            className="w-full rounded-2xl border border-line bg-surface py-2.5 pr-3 pl-10 text-sm shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </div>
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value as 'top' | 'new');
+            setPage(1);
+          }}
+          aria-label="Sort recipes"
+          className="rounded-xl border border-line bg-surface px-3 py-2.5 text-sm shadow-sm outline-none focus:border-accent"
+        >
+          <option value="top">Top rated</option>
+          <option value="new">Newest</option>
+        </select>
+      </div>
+
+      {browse.isError && (
+        <p className="text-sm text-rose-500">Could not load community recipes.</p>
+      )}
+      {browse.data?.recipes.length === 0 && (
+        <section className="rounded-2xl border border-dashed border-line p-8 text-center">
+          <Globe size={22} className="mx-auto mb-2 text-muted" aria-hidden />
+          <p className="text-sm text-muted">
+            {q.trim()
+              ? `Nothing matches “${q.trim()}”.`
+              : 'Nothing shared yet — publish one of your recipes and start the library.'}
+          </p>
+        </section>
+      )}
+      <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {browse.data?.recipes.map((r) => <CommunityCard key={r.id} recipe={r} />)}
+      </ul>
+      {browse.data && browse.data.pageCount > 1 && (
+        <Pagination page={browse.data.page} pageCount={browse.data.pageCount} onChange={setPage} />
+      )}
+    </>
+  );
+}
+
 /** Recipes: a searchable card grid. Cards drill into the recipe's own page —
  * same browse-then-open pattern as Explore. */
 export function RecipesPage() {
+  const [view, setView] = useState<'mine' | 'community'>('mine');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -95,20 +211,46 @@ export function RecipesPage() {
         <div>
           <h1 className="text-2xl font-bold">Recipes</h1>
           <p className="text-sm text-muted">
-            Group foods you eat together — a sandwich, a smoothie — then log or plan them as one.
+            {view === 'mine'
+              ? 'Group foods you eat together — a sandwich, a smoothie — then log or plan them as one.'
+              : 'Browse what everyone is cooking — rate it, save it, or plan it.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreating(!creating)}
-          className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
-        >
-          <Plus size={15} aria-hidden />
-          New recipe
-        </button>
+        {view === 'mine' && (
+          <button
+            type="button"
+            onClick={() => setCreating(!creating)}
+            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
+          >
+            <Plus size={15} aria-hidden />
+            New recipe
+          </button>
+        )}
       </header>
 
-      {creating && (
+      <div className="grid grid-cols-2 rounded-xl border border-line bg-surface p-1 text-sm font-medium shadow-sm">
+        {(
+          [
+            ['mine', 'My recipes'],
+            ['community', 'Community'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setView(value)}
+            className={`rounded-lg py-2 transition-colors ${
+              view === value ? 'bg-accent text-accent-ink shadow-sm' : 'text-muted hover:text-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'community' && <CommunitySection />}
+
+      {view === 'mine' && creating && (
         <section className="rounded-2xl border border-accent/40 bg-surface p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -151,7 +293,7 @@ export function RecipesPage() {
         </section>
       )}
 
-      {(recipesQuery.data?.length ?? 0) > 3 && (
+      {view === 'mine' && (recipesQuery.data?.length ?? 0) > 3 && (
         <div className="relative">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted" aria-hidden />
           <input
@@ -165,7 +307,7 @@ export function RecipesPage() {
         </div>
       )}
 
-      {recipesQuery.data?.length === 0 && !creating && (
+      {view === 'mine' && recipesQuery.data?.length === 0 && !creating && (
         <section className="rounded-2xl border border-dashed border-line p-8 text-center">
           <ChefHat size={22} className="mx-auto mb-2 text-muted" aria-hidden />
           <p className="text-sm text-muted">
@@ -174,14 +316,16 @@ export function RecipesPage() {
           </p>
         </section>
       )}
-      {recipes.length === 0 && (recipesQuery.data?.length ?? 0) > 0 && (
+      {view === 'mine' && recipes.length === 0 && (recipesQuery.data?.length ?? 0) > 0 && (
         <p className="text-sm text-muted">Nothing matches “{query.trim()}”.</p>
       )}
-      <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {recipes.map((recipe) => (
-          <RecipeCard key={recipe.id} recipe={recipe} />
-        ))}
-      </ul>
+      {view === 'mine' && (
+        <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {recipes.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
