@@ -1,6 +1,6 @@
 /** What a report can point at. 'other' carries free text in targetId (e.g. a
  * URL) — the escape hatch until more entities become reportable. */
-export type ReportTargetType = 'user' | 'plan' | 'review' | 'other';
+export type ReportTargetType = 'user' | 'plan' | 'review' | 'recipe' | 'other';
 
 export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'cheating' | 'other';
 

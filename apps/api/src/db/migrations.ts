@@ -438,6 +438,48 @@ const migrations: { id: string; sql: string }[] = [
       ALTER TABLE users ADD COLUMN google_id text UNIQUE;
     `,
   },
+  {
+    id: '020_shared_recipes',
+    sql: `
+      -- Community recipes: the shared_plans pattern applied to food. The
+      -- payload carries full ingredient FOOD SNAPSHOTS, so any device can
+      -- rebuild the recipe locally without further lookups. All shared
+      -- recipes are public — the browser IS the point.
+      CREATE TABLE shared_recipes (
+        id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        local_recipe_id  text NOT NULL,
+        name             text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+        description      text NOT NULL DEFAULT '' CHECK (char_length(description) <= 500),
+        servings         integer NOT NULL CHECK (servings BETWEEN 1 AND 100),
+        -- Denormalized for browse cards and sorting; recomputed on publish.
+        kcal_per_serving integer NOT NULL DEFAULT 0,
+        payload          jsonb NOT NULL CHECK (pg_column_size(payload) <= 32768),
+        created_at       timestamptz NOT NULL DEFAULT now(),
+        updated_at       timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (owner_user_id, local_recipe_id)
+      );
+      CREATE INDEX shared_recipes_updated_idx ON shared_recipes(updated_at DESC);
+
+      -- One review per user per recipe; re-reviewing updates in place.
+      CREATE TABLE recipe_reviews (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        recipe_id  uuid NOT NULL REFERENCES shared_recipes(id) ON DELETE CASCADE,
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rating     integer NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment    text NOT NULL DEFAULT '' CHECK (char_length(comment) <= 500),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (recipe_id, user_id)
+      );
+      CREATE INDEX recipe_reviews_recipe_idx ON recipe_reviews(recipe_id);
+
+      -- Recipes become reportable.
+      ALTER TABLE reports DROP CONSTRAINT reports_target_type_check;
+      ALTER TABLE reports ADD CONSTRAINT reports_target_type_check
+        CHECK (target_type IN ('user', 'plan', 'review', 'recipe', 'other'));
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

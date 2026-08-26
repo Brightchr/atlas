@@ -8,4 +8,5 @@ export * from './types/shopping';
 export * from './types/social';
 export * from './types/billing';
 export * from './types/report';
+export * from './types/recipe';
 export * from './membership';

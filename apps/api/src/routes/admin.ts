@@ -583,12 +583,15 @@ adminRoutes.get('/reports', async (c) => {
             reporter.username AS reporter,
             resolver.username AS resolved_by,
             -- Best-effort display label; reports on deleted targets keep the raw id.
-            CASE WHEN r.target_type = 'user' THEN target_user.username END AS target_label
+            CASE WHEN r.target_type = 'user' THEN target_user.username
+                 WHEN r.target_type = 'recipe' THEN target_recipe.name END AS target_label
        FROM reports r
        LEFT JOIN users reporter ON reporter.id = r.reporter_user_id
        LEFT JOIN users resolver ON resolver.id = r.resolved_by
        LEFT JOIN users target_user
               ON r.target_type = 'user' AND target_user.id::text = r.target_id
+       LEFT JOIN shared_recipes target_recipe
+              ON r.target_type = 'recipe' AND target_recipe.id::text = r.target_id
       WHERE $1 = 'all' OR r.status = $1
       ORDER BY r.created_at DESC
       LIMIT 200`,

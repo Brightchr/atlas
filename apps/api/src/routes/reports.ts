@@ -10,7 +10,7 @@ export const reportRoutes = new Hono<AppEnv>();
 reportRoutes.use('*', requireAuth);
 
 const reportSchema = z.object({
-  targetType: z.enum(['user', 'plan', 'review', 'other']),
+  targetType: z.enum(['user', 'plan', 'review', 'recipe', 'other']),
   /** For 'user' this is a username (resolved to an id here); for the rest an
    * entity id or free text. */
   targetId: z.string().trim().min(1).max(200),
