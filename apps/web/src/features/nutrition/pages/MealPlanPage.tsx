@@ -1,9 +1,21 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpenText, Cookie, Moon, NotebookPen, Plus, ShoppingCart, Sun, Sunrise, X } from 'lucide-react';
+import {
+  BookOpenText,
+  ChevronRight,
+  Cookie,
+  Moon,
+  NotebookPen,
+  Plus,
+  ShoppingCart,
+  Sun,
+  Sunrise,
+  X,
+} from 'lucide-react';
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
 import { FoodPicker } from '../components/FoodPicker';
+import { RecipeThumb } from '../components/RecipeArt';
 import {
   addMealPlanItem,
   addPlanRangeToShoppingList,
@@ -55,6 +67,23 @@ function amountLabel(item: MealPlanItem): string {
   if (item.kind === 'food') return `${item.grams ?? 0} g`;
   const s = item.servings ?? 1;
   return `${s} serving${s === 1 ? '' : 's'}`;
+}
+
+function sumMacros(items: MealPlanItem[], foods: Map<string, Food>, recipes: RecipeDetails[]) {
+  return items.reduce(
+    (acc, item) => {
+      const m = itemMacros(item, foods, recipes);
+      return m
+        ? {
+            kcal: acc.kcal + m.kcal,
+            proteinG: acc.proteinG + m.proteinG,
+            carbsG: acc.carbsG + m.carbsG,
+            fatG: acc.fatG + m.fatG,
+          }
+        : acc;
+    },
+    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
+  );
 }
 
 /** Inline add flow for one slot: pick a plain food (with grams) or a recipe
@@ -153,7 +182,65 @@ function SlotAdder({
   );
 }
 
+/** One meal of one day in the week overview: art strip, primary item, the
+ * rest as "+ item" lines — tap to jump into that day's editor. */
+function WeekMealCard({
+  meal,
+  items,
+  foods,
+  recipes,
+  onOpen,
+}: {
+  meal: MealType;
+  items: MealPlanItem[];
+  foods: Map<string, Food>;
+  recipes: RecipeDetails[];
+  onOpen: () => void;
+}) {
+  const kcal = Math.round(sumMacros(items, foods, recipes).kcal);
+  const primary = items[0];
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="springy flex w-full items-stretch overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+    >
+      <span
+        aria-hidden
+        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        className="flex w-6 shrink-0 items-center justify-center bg-elev/60 py-2 text-[10px] font-semibold tracking-wider text-muted uppercase"
+      >
+        {meal}
+      </span>
+      {primary ? (
+        <>
+          <RecipeThumb name={primary.name} className="w-16 self-stretch rounded-none text-2xl" />
+          <span className="min-w-0 flex-1 px-3 py-2.5">
+            <span className="block truncate text-sm font-semibold">{primary.name}</span>
+            {items.slice(1).map((i) => (
+              <span key={i.id} className="block truncate text-xs text-muted">
+                + {i.name}
+              </span>
+            ))}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 pr-3 text-xs text-muted tabular-nums">
+            {kcal > 0 && <span>{kcal} kcal</span>}
+            <ChevronRight size={14} aria-hidden />
+          </span>
+        </>
+      ) : (
+        <span className="flex flex-1 items-center gap-1.5 px-3 py-3 text-sm text-muted/70">
+          <Plus size={14} aria-hidden />
+          Add {meal}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function MealPlanPage() {
+  const [view, setView] = useState<'week' | 'day'>('week');
   const [day, setDay] = useState(todayIndex);
   const [openSlot, setOpenSlot] = useState<MealType | null>(null);
   const queryClient = useQueryClient();
@@ -175,8 +262,9 @@ export function MealPlanPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
   const addMutation = useMutation({ mutationFn: addMealPlanItem, onSuccess: invalidate });
   const removeMutation = useMutation({ mutationFn: removeMealPlanItem, onSuccess: invalidate });
+  const logDay = view === 'week' ? todayIndex() : day;
   const logDayMutation = useMutation({
-    mutationFn: () => logPlanDayToDiary(day, new Date().toISOString().slice(0, 10)),
+    mutationFn: () => logPlanDayToDiary(logDay, new Date().toISOString().slice(0, 10)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['diary'] });
       void queryClient.invalidateQueries({ queryKey: ['goals'] });
@@ -219,43 +307,86 @@ export function MealPlanPage() {
 
   const recipes = recipesQuery.data ?? [];
   const foods = foodsQuery.data ?? new Map<string, Food>();
-  const dayItems = (planQuery.data ?? []).filter((i) => i.dayOfWeek === day);
+  const allItems = planQuery.data ?? [];
+  const dayItems = allItems.filter((i) => i.dayOfWeek === day);
+  const dayTotals = sumMacros(dayItems, foods, recipes);
+  const hasAnyItems = allItems.length > 0;
 
-  const dayTotals = dayItems.reduce(
-    (acc, item) => {
-      const m = itemMacros(item, foods, recipes);
-      return m
-        ? {
-            kcal: acc.kcal + m.kcal,
-            proteinG: acc.proteinG + m.proteinG,
-            carbsG: acc.carbsG + m.carbsG,
-            fatG: acc.fatG + m.fatG,
-          }
-        : acc;
-    },
-    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
-  );
+  // Week summary: the average planned day, ignoring empty days.
+  const weekSummary = useMemo(() => {
+    const items = planQuery.data ?? [];
+    const foodMap = foodsQuery.data ?? new Map<string, Food>();
+    const recipeList = recipesQuery.data ?? [];
+    const perDay = DAYS.map((_, i) =>
+      sumMacros(
+        items.filter((it) => it.dayOfWeek === i),
+        foodMap,
+        recipeList,
+      ),
+    );
+    const planned = perDay.filter((d) => d.kcal > 0);
+    if (planned.length === 0) return null;
+    const avg = (pick: (m: Macros) => number) =>
+      Math.round(planned.reduce((s, d) => s + pick(d), 0) / planned.length);
+    return {
+      days: planned.length,
+      kcal: avg((m) => m.kcal),
+      proteinG: avg((m) => m.proteinG),
+      carbsG: avg((m) => m.carbsG),
+      fatG: avg((m) => m.fatG),
+      perDay,
+    };
+  }, [planQuery.data, foodsQuery.data, recipesQuery.data]);
 
-  const hasAnyItems = (planQuery.data ?? []).length > 0;
+  const openDaySlot = (d: number, meal: MealType | null) => {
+    setDay(d);
+    setView('day');
+    setOpenSlot(meal);
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-        <h1 className="text-2xl font-bold">Meal plan</h1>
-        <p className="text-sm text-muted">
-          Plan breakfast to snacks for each day — then log a day to your diary in one tap or turn
-          the week into a shopping list.
-        </p>
+          <h1 className="text-2xl font-bold">{view === 'week' ? 'This week' : DAYS[day]}</h1>
+          <p className="text-sm text-muted">
+            Plan breakfast to snacks for each day — then log a day to your diary in one tap or turn
+            the week into a shopping list.
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setBrowsing(!browsing)}
-          className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
-        >
-          <BookOpenText size={15} aria-hidden />
-          Starter plans
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 rounded-xl border border-line bg-surface p-1 text-xs font-semibold shadow-sm">
+            {(
+              [
+                ['week', 'Week'],
+                ['day', 'Day'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={view === value}
+                onClick={() => {
+                  setView(value);
+                  setOpenSlot(null);
+                }}
+                className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  view === value ? 'bg-accent text-accent-ink shadow-sm' : 'text-muted hover:text-ink'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setBrowsing(!browsing)}
+            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
+          >
+            <BookOpenText size={15} aria-hidden />
+            Starter plans
+          </button>
+        </div>
       </header>
 
       {browsing && (
@@ -354,150 +485,245 @@ export function MealPlanPage() {
         </section>
       )}
 
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-        {DAYS.map((label, i) => (
-          <button
-            key={label}
-            type="button"
-            aria-pressed={day === i}
-            onClick={() => {
-              setDay(i);
-              setOpenSlot(null);
-            }}
-            className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
-              day === i
-                ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                : 'border border-line bg-surface text-muted shadow-sm hover:bg-elev hover:text-ink'
-            }`}
-          >
-            {label.slice(0, 3)}
-            {i === todayIndex() && <span className="sr-only"> (today)</span>}
-          </button>
-        ))}
-      </div>
+      {view === 'week' && !hasAnyItems && !browsing && (
+        <section className="rounded-2xl border border-dashed border-line p-8 text-center">
+          <BookOpenText size={22} className="mx-auto mb-2 text-muted" aria-hidden />
+          <p className="text-sm text-muted">
+            Nothing planned yet — grab a <span className="font-semibold">starter plan</span> above
+            or switch to <span className="font-semibold">Day</span> and build your own.
+          </p>
+        </section>
+      )}
 
-      <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <p className="text-sm font-semibold">{DAYS[day]} totals</p>
-        <p className="text-sm text-muted tabular-nums">
-          {Math.round(dayTotals.kcal)}
-          {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal ·{' '}
-          {Math.round(dayTotals.proteinG)}
-          {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.proteinG)}` : ''} g protein ·{' '}
-          {Math.round(dayTotals.carbsG)} g carbs · {Math.round(dayTotals.fatG)} g fat
-        </p>
-        {targetsQuery.data && (
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elev">
-            <div
-              className={`h-full rounded-full transition-[width] duration-500 ${
-                dayTotals.kcal > targetsQuery.data.kcal
-                  ? 'bg-rose-500'
-                  : 'bg-linear-to-r from-accent to-accent-2'
-              }`}
-              style={{
-                width: `${Math.min(100, Math.round((dayTotals.kcal / targetsQuery.data.kcal) * 100))}%`,
-              }}
-            />
+      {view === 'week' && weekSummary && (
+        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-semibold">Average planned day</p>
+            <p className="text-xs text-muted">
+              {weekSummary.days} of 7 days planned
+            </p>
           </div>
-        )}
-      </div>
+          <p className="text-sm text-muted tabular-nums">
+            {weekSummary.kcal}
+            {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal ·{' '}
+            {weekSummary.proteinG}
+            {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.proteinG)}` : ''} g protein ·{' '}
+            {weekSummary.carbsG} g carbs · {weekSummary.fatG} g fat
+          </p>
+          {targetsQuery.data && (
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elev">
+              <div
+                className={`h-full rounded-full transition-[width] duration-500 ${
+                  weekSummary.kcal > targetsQuery.data.kcal
+                    ? 'bg-rose-500'
+                    : 'bg-linear-to-r from-accent to-accent-2'
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.round((weekSummary.kcal / targetsQuery.data.kcal) * 100))}%`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="space-y-3">
-        {MEALS.map((meal) => {
-          const slotItems = dayItems.filter((i) => i.meal === meal);
-          const { Icon, tint } = MEAL_META[meal];
-          return (
-            <section key={meal} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2.5">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}>
-                    <Icon size={16} strokeWidth={1.8} aria-hidden />
-                  </span>
-                  <h2 className="text-sm font-semibold capitalize">{meal}</h2>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setOpenSlot(openSlot === meal ? null : meal)}
-                  className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
-                >
-                  <Plus size={13} aria-hidden />
-                  Add
-                </button>
-              </div>
+      {view === 'week' && hasAnyItems && (
+        <div className="space-y-5">
+          {DAYS.map((label, i) => {
+            const isToday = i === todayIndex();
+            const kcal = Math.round(weekSummary?.perDay[i]?.kcal ?? 0);
+            return (
+              <section key={label}>
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <h2 className="font-display text-lg font-bold tracking-tight">
+                    {label}
+                    {isToday && (
+                      <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 align-middle text-[10px] font-semibold text-accent">
+                        Today
+                      </span>
+                    )}
+                  </h2>
+                  {kcal > 0 && (
+                    <span className="text-xs text-muted tabular-nums">
+                      {kcal}
+                      {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {MEALS.map((meal) => (
+                    <WeekMealCard
+                      key={meal}
+                      meal={meal}
+                      items={allItems.filter((it) => it.dayOfWeek === i && it.meal === meal)}
+                      foods={foods}
+                      recipes={recipes}
+                      onOpen={() => openDaySlot(i, null)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
 
-              {slotItems.length === 0 && openSlot !== meal && (
-                <p className="mt-1.5 text-sm text-muted/70">Nothing planned.</p>
-              )}
-              {slotItems.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {slotItems.map((item) => {
-                    const m = itemMacros(item, foods, recipes);
-                    return (
-                      <li key={item.id} className="flex items-center gap-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate">
-                          {item.name}
-                          <span className="text-muted"> · {amountLabel(item)}</span>
-                        </span>
-                        {m && (
-                          <span className="shrink-0 text-xs text-muted tabular-nums">
-                            {m.kcal} kcal
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeMutation.mutate(item.id)}
-                          aria-label={`Remove ${item.name}`}
-                          className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
-                        >
-                          <X size={13} aria-hidden />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+      {view === 'day' && (
+        <>
+          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+            {DAYS.map((label, i) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={day === i}
+                onClick={() => {
+                  setDay(i);
+                  setOpenSlot(null);
+                }}
+                className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+                  day === i
+                    ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
+                    : 'border border-line bg-surface text-muted shadow-sm hover:bg-elev hover:text-ink'
+                }`}
+              >
+                {label.slice(0, 3)}
+                {i === todayIndex() && <span className="sr-only"> (today)</span>}
+              </button>
+            ))}
+          </div>
 
-              {openSlot === meal && (
-                <SlotAdder
-                  recipes={recipes}
-                  onClose={() => setOpenSlot(null)}
-                  onAddFood={(food, grams) =>
-                    addMutation.mutate({
-                      dayOfWeek: day,
-                      meal,
-                      kind: 'food',
-                      refId: food.id,
-                      name: food.name,
-                      grams,
-                      servings: null,
-                    })
-                  }
-                  onAddRecipe={(recipe, servings) =>
-                    addMutation.mutate({
-                      dayOfWeek: day,
-                      meal,
-                      kind: 'recipe',
-                      refId: recipe.id,
-                      name: recipe.name,
-                      grams: null,
-                      servings,
-                    })
-                  }
+          <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+            <p className="text-sm font-semibold">{DAYS[day]} totals</p>
+            <p className="text-sm text-muted tabular-nums">
+              {Math.round(dayTotals.kcal)}
+              {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal ·{' '}
+              {Math.round(dayTotals.proteinG)}
+              {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.proteinG)}` : ''} g protein ·{' '}
+              {Math.round(dayTotals.carbsG)} g carbs · {Math.round(dayTotals.fatG)} g fat
+            </p>
+            {targetsQuery.data && (
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elev">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-500 ${
+                    dayTotals.kcal > targetsQuery.data.kcal
+                      ? 'bg-rose-500'
+                      : 'bg-linear-to-r from-accent to-accent-2'
+                  }`}
+                  style={{
+                    width: `${Math.min(100, Math.round((dayTotals.kcal / targetsQuery.data.kcal) * 100))}%`,
+                  }}
                 />
-              )}
-            </section>
-          );
-        })}
-      </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {MEALS.map((meal) => {
+              const slotItems = dayItems.filter((i) => i.meal === meal);
+              const { Icon, tint } = MEAL_META[meal];
+              return (
+                <section
+                  key={meal}
+                  className="rounded-2xl border border-line bg-surface p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2.5">
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}
+                      >
+                        <Icon size={16} strokeWidth={1.8} aria-hidden />
+                      </span>
+                      <h2 className="text-sm font-semibold capitalize">{meal}</h2>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOpenSlot(openSlot === meal ? null : meal)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
+                    >
+                      <Plus size={13} aria-hidden />
+                      Add
+                    </button>
+                  </div>
+
+                  {slotItems.length === 0 && openSlot !== meal && (
+                    <p className="mt-1.5 text-sm text-muted/70">Nothing planned.</p>
+                  )}
+                  {slotItems.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {slotItems.map((item) => {
+                        const m = itemMacros(item, foods, recipes);
+                        return (
+                          <li key={item.id} className="flex items-center gap-2.5 text-sm">
+                            <RecipeThumb name={item.name} className="h-9 w-9 rounded-lg text-base" />
+                            <span className="min-w-0 flex-1 truncate">
+                              {item.name}
+                              <span className="text-muted"> · {amountLabel(item)}</span>
+                            </span>
+                            {m && (
+                              <span className="shrink-0 text-xs text-muted tabular-nums">
+                                {m.kcal} kcal
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeMutation.mutate(item.id)}
+                              aria-label={`Remove ${item.name}`}
+                              className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
+                            >
+                              <X size={13} aria-hidden />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {openSlot === meal && (
+                    <SlotAdder
+                      recipes={recipes}
+                      onClose={() => setOpenSlot(null)}
+                      onAddFood={(food, grams) =>
+                        addMutation.mutate({
+                          dayOfWeek: day,
+                          meal,
+                          kind: 'food',
+                          refId: food.id,
+                          name: food.name,
+                          grams,
+                          servings: null,
+                        })
+                      }
+                      onAddRecipe={(recipe, servings) =>
+                        addMutation.mutate({
+                          dayOfWeek: day,
+                          meal,
+                          kind: 'recipe',
+                          refId: recipe.id,
+                          name: recipe.name,
+                          grams: null,
+                          servings,
+                        })
+                      }
+                    />
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={dayItems.length === 0 || logDayMutation.isPending}
+          disabled={
+            allItems.filter((i) => i.dayOfWeek === logDay).length === 0 || logDayMutation.isPending
+          }
           onClick={() => logDayMutation.mutate()}
           className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2.5 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           <NotebookPen size={15} aria-hidden />
-          Log {DAYS[day]} to today's diary
+          Log {view === 'week' ? 'today' : DAYS[day]} to today's diary
         </button>
         <span className="inline-flex items-center gap-1.5">
           <label htmlFor="shop-cadence" className="text-xs font-medium text-muted">
