@@ -3,10 +3,10 @@ import type { ReactNode } from 'react';
 
 export const THEMES = [
   { id: 'volt', label: 'Volt', mode: 'dark', swatch: ['#08090f', '#22d3ee'] },
-  { id: 'old-growth', label: 'Old Growth', mode: 'dark', swatch: ['#11150e', '#8fb573'] },
-  { id: 'ion', label: 'Ion', mode: 'dark', swatch: ['#0a0d0a', '#a3e635'] },
+  { id: 'circuit', label: 'Circuit', mode: 'dark', swatch: ['#0a0b0a', '#22c55e'] },
+  { id: 'fjord', label: 'Fjord', mode: 'dark', swatch: ['#1f242e', '#88c0d0'] },
+  { id: 'ember', label: 'Ember', mode: 'dark', swatch: ['#100b0c', '#ef4444'] },
   { id: 'glacier', label: 'Glacier', mode: 'light', swatch: ['#f4f6fa', '#2563eb'] },
-  { id: 'timberline', label: 'Timberline', mode: 'light', swatch: ['#f6f4ec', '#3d6b46'] },
   { id: 'prism', label: 'Prism', mode: 'light', swatch: ['#fafbfe', '#7c3aed'] },
 ] as const;
 
@@ -19,12 +19,15 @@ const DEFAULT_THEME: ThemeId = 'volt';
  * new home instead of silently resetting to the default. */
 const LEGACY_THEMES: Record<string, ThemeId> = {
   aurora: 'glacier',
-  mint: 'timberline',
+  mint: 'glacier',
   midnight: 'volt',
   carbon: 'volt',
   'indigo-night': 'volt',
-  tide: 'ion',
-  meadow: 'timberline',
+  tide: 'circuit',
+  meadow: 'glacier',
+  ion: 'circuit',
+  'old-growth': 'circuit',
+  timberline: 'glacier',
 };
 
 function readStoredTheme(): ThemeId {

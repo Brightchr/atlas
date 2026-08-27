@@ -4,15 +4,12 @@
    Design tokens. Every color in the app goes through these semantic variables;
    themes swap the variables, components never change. Utilities are mapped in
    @theme inline below (bg-surface, text-ink, border-line, bg-accent, …).
-   Themes: aurora (light, default) · mint (light) · midnight (dark) · carbon (dark)
 --------------------------------------------------------------------------- */
 
-/* Six themes in two families around the kept favorite, Glacier:
-   RUSTIC — Old Growth (dark) and Timberline (light): mountain-pine neutrals,
-   moss/pine accents, campfire-amber secondaries.
-   TECH — Volt (dark), Ion (dark), Prism (light): near-black or near-white
-   grounds with hard contrast and electric accents.
-   Volt is the default dark. */
+/* Six themes, one electric family: near-black or near-white grounds, hard
+   contrast, vivid accents. Darks — Volt (cyan/magenta, the default), Circuit
+   (pure black + signal green), Fjord (Nord-style slate + ice blue), Ember
+   (black cherry + red/orange fire). Lights — Glacier (blue), Prism (violet). */
 :root,
 :root[data-theme='volt'] {
   color-scheme: dark;
@@ -28,32 +25,46 @@
   --accent-soft: #0e2b38;
 }
 
-:root[data-theme='old-growth'] {
+:root[data-theme='circuit'] {
   color-scheme: dark;
-  --bg: #11150e;
-  --surface: #191f15;
-  --elev: #222b1c;
-  --line: #2f3a28;
-  --ink: #e9eddf;
-  --muted: #a0ab90;
-  --accent: #8fb573;
-  --accent-2: #d9a05b;
-  --accent-ink: #11150e;
-  --accent-soft: #26331e;
+  --bg: #0a0b0a;
+  --surface: #111411;
+  --elev: #1a1e1a;
+  --line: #272d27;
+  --ink: #eef4ee;
+  --muted: #8fa091;
+  --accent: #22c55e;
+  --accent-2: #a3e635;
+  --accent-ink: #06130a;
+  --accent-soft: #123320;
 }
 
-:root[data-theme='ion'] {
+:root[data-theme='fjord'] {
   color-scheme: dark;
-  --bg: #0a0d0a;
-  --surface: #121712;
-  --elev: #1a221a;
-  --line: #29342a;
-  --ink: #ecf5ec;
-  --muted: #93a596;
-  --accent: #a3e635;
-  --accent-2: #2dd4bf;
-  --accent-ink: #0a0d0a;
-  --accent-soft: #1d2f14;
+  --bg: #1f242e;
+  --surface: #272d39;
+  --elev: #2f3644;
+  --line: #3b4252;
+  --ink: #eceff4;
+  --muted: #94a3bd;
+  --accent: #88c0d0;
+  --accent-2: #81a1c1;
+  --accent-ink: #10151d;
+  --accent-soft: #23404b;
+}
+
+:root[data-theme='ember'] {
+  color-scheme: dark;
+  --bg: #100b0c;
+  --surface: #181114;
+  --elev: #22181b;
+  --line: #33242a;
+  --ink: #f7eef0;
+  --muted: #b39199;
+  --accent: #ef4444;
+  --accent-2: #fb923c;
+  --accent-ink: #180808;
+  --accent-soft: #3b1620;
 }
 
 :root[data-theme='glacier'] {
@@ -68,20 +79,6 @@
   --accent-2: #0891b2;
   --accent-ink: #ffffff;
   --accent-soft: #dbeafe;
-}
-
-:root[data-theme='timberline'] {
-  color-scheme: light;
-  --bg: #f6f4ec;
-  --surface: #fdfcf7;
-  --elev: #ece8db;
-  --line: #ddd7c4;
-  --ink: #232a1e;
-  --muted: #68705c;
-  --accent: #3d6b46;
-  --accent-2: #8b5e34;
-  --accent-ink: #ffffff;
-  --accent-soft: #dbe7d3;
 }
 
 :root[data-theme='prism'] {
