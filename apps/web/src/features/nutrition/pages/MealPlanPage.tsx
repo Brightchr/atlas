@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
@@ -17,8 +17,9 @@ import {
 } from 'lucide-react';
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
 import { getSavedTargets } from '@/features/goals/repository';
+import { getActiveMealPlan } from '../activeMealPlan';
 import { FoodPicker } from '../components/FoodPicker';
-import { foodGlyph, recipeArtBackground, RecipeThumb } from '../components/RecipeArt';
+import { NamesArtStrip, RecipeThumb } from '../components/RecipeArt';
 import { SwapPicker } from '../components/SwapPicker';
 import {
   addMealPlanItem,
@@ -31,8 +32,7 @@ import {
   swapMealPlanItemForCatalogRecipe,
 } from '../mealPlan';
 import type { CatalogRecipe } from '../recipeCatalog';
-import { applyMealPlanTemplate } from '../mealPlan';
-import { MEAL_PLAN_TEMPLATES, type MealPlanTemplate } from '../mealPlanCatalog';
+import { MEAL_PLAN_TEMPLATES, templateArtNames } from '../mealPlanCatalog';
 import { listRecipes, type RecipeDetails } from '../recipes';
 import { getFoodsByIds, scaleMacros } from '../repository';
 
@@ -89,30 +89,6 @@ function sumMacros(items: MealPlanItem[], foods: Map<string, Food>, recipes: Rec
         : acc;
     },
     { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
-  );
-}
-
-/** A taste of what a starter template serves: art tiles for its first
- * breakfast, lunch and dinner, striped across the card top. */
-function TemplateArt({ template }: { template: MealPlanTemplate }) {
-  const names: string[] = [];
-  for (const meal of ['breakfast', 'lunch', 'dinner'] as MealType[]) {
-    const slots = template.days ? template.days[0]![meal] : template.pools[meal];
-    const name = slots[0]?.recipe;
-    if (name && !names.includes(name)) names.push(name);
-  }
-  return (
-    <div className="-mx-3.5 -mt-3.5 mb-2.5 flex h-16 gap-px overflow-hidden rounded-t-2xl" aria-hidden>
-      {names.map((name) => (
-        <span
-          key={name}
-          style={{ background: recipeArtBackground(name) }}
-          className="flex min-w-0 flex-1 items-center justify-center text-2xl"
-        >
-          <span className="drop-shadow-sm">{foodGlyph(name)}</span>
-        </span>
-      ))}
-    </div>
   );
 }
 
@@ -343,23 +319,15 @@ export function MealPlanPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shopping'] }),
   });
 
-  // Starter templates: browse → confirm → the week is replaced.
-  const [browsing, setBrowsing] = useState(false);
-  const [templateGoal, setTemplateGoal] = useState<'all' | 'lose' | 'gain' | 'maintain'>('all');
-  const [confirmingTemplate, setConfirmingTemplate] = useState<MealPlanTemplate | null>(null);
-  const applyTemplate = useMutation({
-    mutationFn: (template: MealPlanTemplate) => applyMealPlanTemplate(template),
-    onSuccess: () => {
-      setConfirmingTemplate(null);
-      setBrowsing(false);
-      void queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
-      void queryClient.invalidateQueries({ queryKey: ['recipes'] });
-      void queryClient.invalidateQueries({ queryKey: ['foods'] });
-    },
+  // What the week is based on (template or custom) — the hero card's story.
+  const activePlanQuery = useQuery({
+    queryKey: ['mealPlan', 'active'],
+    queryFn: getActiveMealPlan,
   });
-  const visibleTemplates = MEAL_PLAN_TEMPLATES.filter(
-    (t) => templateGoal === 'all' || t.goal === templateGoal,
-  );
+  const activePlan = activePlanQuery.data ?? null;
+  const activeTemplate = activePlan?.key
+    ? MEAL_PLAN_TEMPLATES.find((t) => t.key === activePlan.key)
+    : undefined;
 
   const recipes = recipesQuery.data ?? [];
   const foods = foodsQuery.data ?? new Map<string, Food>();
@@ -438,11 +406,11 @@ export function MealPlanPage() {
           </div>
           <button
             type="button"
-            onClick={() => setBrowsing(!browsing)}
+            onClick={() => void navigate('/eat/meal-plan/browse')}
             className="springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
           >
             <BookOpenText size={15} aria-hidden />
-            Starter plans
+            Browse plans
           </button>
           <button
             type="button"
@@ -455,111 +423,76 @@ export function MealPlanPage() {
         </div>
       </header>
 
-      {browsing && (
-        <section className="space-y-3 rounded-2xl border border-accent/40 bg-surface p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold">
-              Pick a starting point — it fills your whole week (you can edit every slot after).
-            </p>
-            <span className="flex gap-1">
-              {(
-                [
-                  ['all', 'All'],
-                  ['lose', 'Weight loss'],
-                  ['gain', 'Weight gain'],
-                  ['maintain', 'Maintain'],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setTemplateGoal(value)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    templateGoal === value
-                      ? 'bg-accent text-accent-ink'
-                      : 'bg-elev text-muted hover:text-ink'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </span>
-          </div>
-          <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visibleTemplates.map((t) => (
-              <li
-                key={t.key}
-                className={`flex flex-col rounded-2xl border p-3.5 shadow-sm ${
-                  t.key === 'comeback-phase1'
-                    ? 'border-accent/60 ring-1 ring-accent/25'
-                    : 'border-line'
-                } bg-surface`}
-              >
-                <TemplateArt template={t} />
-                <p className="font-semibold">{t.name}</p>
-                <p className="text-xs text-muted">
-                  ~{t.kcalPerDay.toLocaleString()} kcal · {t.proteinPerDay} g protein / day
-                </p>
-                <div className="my-1.5 flex flex-wrap gap-1">
-                  {t.style.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <p className="grow text-xs text-muted">{t.tagline}</p>
-                {confirmingTemplate?.key === t.key ? (
-                  <span className="mt-2 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={applyTemplate.isPending}
-                      onClick={() => applyTemplate.mutate(t)}
-                      className="rounded-lg bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-500 disabled:opacity-50"
-                    >
-                      {applyTemplate.isPending ? 'Building…' : 'Replace my week'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingTemplate(null)}
-                      className="rounded-lg px-2 py-1.5 text-xs text-muted hover:text-ink"
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingTemplate(t)}
-                    className="mt-2 self-start rounded-lg bg-linear-to-r from-accent to-accent-2 px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-sm hover:opacity-90"
-                  >
-                    Use this plan
-                  </button>
-                )}
-                {t.note && confirmingTemplate?.key === t.key && (
-                  <p className="mt-2 rounded-lg bg-elev p-2 text-[11px] leading-snug text-muted">
-                    {t.note}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-          {applyTemplate.isError && (
-            <p className="text-sm text-rose-500">Could not apply the plan — try again.</p>
+      {hasAnyItems && activePlan && (
+        <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+          {activeTemplate && (
+            <NamesArtStrip names={templateArtNames(activeTemplate)} className="h-14" />
           )}
+          <div className="flex flex-wrap items-center gap-3 p-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold tracking-wider text-muted uppercase">
+                Your plan
+              </p>
+              <p className="truncate font-semibold">{activePlan.name}</p>
+              <p className="text-xs text-muted tabular-nums">
+                since {activePlan.appliedAt}
+                {activeTemplate &&
+                  ` · ~${activeTemplate.kcalPerDay.toLocaleString()} kcal · ${activeTemplate.proteinPerDay} g protein / day`}
+              </p>
+            </div>
+            {activeTemplate && (
+              <div className="hidden flex-wrap gap-1 sm:flex">
+                {activeTemplate.style.slice(0, 3).map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void navigate('/eat/meal-plan/browse')}
+              className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
+            >
+              Switch plan
+            </button>
+          </div>
         </section>
       )}
 
-      {view === 'week' && !hasAnyItems && !browsing && (
-        <section className="rounded-2xl border border-dashed border-line p-8 text-center">
-          <BookOpenText size={22} className="mx-auto mb-2 text-muted" aria-hidden />
-          <p className="text-sm text-muted">
-            Nothing planned yet — hit <span className="font-semibold">Build a plan</span> to pick
-            meals you love, grab a <span className="font-semibold">starter plan</span>, or switch
-            to <span className="font-semibold">Day</span> and build by hand.
-          </p>
+      {view === 'week' && !hasAnyItems && (
+        <section className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void navigate('/eat/meal-plan/browse')}
+            className="springy flex flex-col items-start rounded-2xl border border-line bg-surface p-5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <BookOpenText size={18} aria-hidden />
+            </span>
+            <span className="font-semibold">Browse meal plans</span>
+            <span className="text-sm text-muted">
+              21 ready-made weeks — weight loss, muscle gain, maintenance. Open one, see every day,
+              apply it.
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void navigate('/eat/meal-plan/build')}
+            className="springy flex flex-col items-start rounded-2xl border border-line bg-surface p-5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <Sparkles size={18} aria-hidden />
+            </span>
+            <span className="font-semibold">Build your own</span>
+            <span className="text-sm text-muted">
+              Pick meals you actually want to eat and they fill your week — or switch to Day and
+              plan by hand.
+            </span>
+          </button>
         </section>
       )}
 
@@ -756,7 +689,16 @@ export function MealPlanPage() {
                                 className="h-9 w-9 rounded-lg text-base"
                               />
                               <span className="min-w-0 flex-1 truncate">
-                                {item.name}
+                                {item.kind === 'recipe' ? (
+                                  <Link
+                                    to={`/eat/recipes/${item.refId}`}
+                                    className="hover:text-accent hover:underline"
+                                  >
+                                    {item.name}
+                                  </Link>
+                                ) : (
+                                  item.name
+                                )}
                                 <span className="text-muted"> · {amountLabel(item)}</span>
                               </span>
                               {m && (

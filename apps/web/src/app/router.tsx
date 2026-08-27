@@ -15,9 +15,12 @@ import { WorkoutsPage } from '@/features/workouts/pages/WorkoutsPage';
 import { WorkoutDetailPage } from '@/features/workouts/pages/WorkoutDetailPage';
 import { WorkoutSessionPage } from '@/features/workouts/pages/WorkoutSessionPage';
 import { MealPlanPage } from '@/features/nutrition/pages/MealPlanPage';
+import { BrowseMealPlansPage } from '@/features/nutrition/pages/BrowseMealPlansPage';
+import { MealPlanTemplatePage } from '@/features/nutrition/pages/MealPlanTemplatePage';
 import { PlanBuilderPage } from '@/features/nutrition/pages/PlanBuilderPage';
 import { NutritionPage } from '@/features/nutrition/pages/NutritionPage';
 import { RecipesPage } from '@/features/nutrition/pages/RecipesPage';
+import { CatalogRecipePage } from '@/features/nutrition/pages/CatalogRecipePage';
 import { CommunityRecipePage } from '@/features/nutrition/pages/CommunityRecipePage';
 import { RecipeDetailPage } from '@/features/nutrition/pages/RecipeDetailPage';
 import { FriendsPage } from '@/features/social/pages/FriendsPage';
@@ -87,9 +90,12 @@ export const router = createBrowserRouter([
         children: [
           { path: '/eat', element: <NutritionPage /> },
           { path: '/eat/meal-plan', element: <MealPlanPage /> },
+          { path: '/eat/meal-plan/browse', element: <BrowseMealPlansPage /> },
+          { path: '/eat/meal-plan/browse/:key', element: <MealPlanTemplatePage /> },
           { path: '/eat/meal-plan/build', element: <PlanBuilderPage /> },
           { path: '/eat/recipes', element: <RecipesPage /> },
           { path: '/eat/recipes/community/:id', element: <CommunityRecipePage /> },
+          { path: '/eat/recipes/catalog/:name', element: <CatalogRecipePage /> },
           { path: '/eat/recipes/:id', element: <RecipeDetailPage /> },
           { path: '/eat/shopping', element: <ShoppingPage /> },
         ],
