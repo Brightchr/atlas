@@ -1,7 +1,18 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Beef, ChevronLeft, Droplet, Flame, Plus, Trash2, UtensilsCrossed, Wheat, X } from 'lucide-react';
+import {
+  Beef,
+  ChevronLeft,
+  Droplet,
+  Flame,
+  Pencil,
+  Plus,
+  Trash2,
+  UtensilsCrossed,
+  Wheat,
+  X,
+} from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
 import { FoodPicker } from '../components/FoodPicker';
 import { RecipeHero } from '../components/RecipeArt';
@@ -12,6 +23,7 @@ import {
   listRecipes,
   logRecipeToDiary,
   removeIngredient,
+  setRecipeInstructions,
 } from '../recipes';
 
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -34,6 +46,8 @@ export function RecipeDetailPage() {
   const [meal, setMeal] = useState<MealType>('lunch');
   const [servings, setServings] = useState('1');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editingSteps, setEditingSteps] = useState(false);
+  const [stepsDraft, setStepsDraft] = useState('');
 
   const recipesQuery = useQuery({ queryKey: ['recipes'], queryFn: listRecipes });
   const recipe = recipesQuery.data?.find((r) => r.id === id);
@@ -48,6 +62,13 @@ export function RecipeDetailPage() {
     onSuccess: invalidate,
   });
   const removeMutation = useMutation({ mutationFn: removeIngredient, onSuccess: invalidate });
+  const stepsMutation = useMutation({
+    mutationFn: (text: string) => setRecipeInstructions(recipe!.id, text),
+    onSuccess: () => {
+      setEditingSteps(false);
+      invalidate();
+    },
+  });
   const deleteMutation = useMutation({
     mutationFn: deleteRecipe,
     onSuccess: () => {
@@ -145,6 +166,73 @@ export function RecipeDetailPage() {
             <p className="text-xs text-muted">{label} / serving</p>
           </div>
         ))}
+      </section>
+
+      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">How to make it</h2>
+          {!editingSteps && (
+            <button
+              type="button"
+              onClick={() => {
+                setStepsDraft(recipe.instructions ?? '');
+                setEditingSteps(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
+            >
+              <Pencil size={13} aria-hidden />
+              {recipe.instructions ? 'Edit' : 'Add steps'}
+            </button>
+          )}
+        </div>
+        {editingSteps ? (
+          <div className="space-y-2">
+            <textarea
+              value={stepsDraft}
+              autoFocus
+              rows={4}
+              onChange={(e) => setStepsDraft(e.target.value)}
+              placeholder="Whisk eggs. Sauté the vegetables 2 min. Pour in eggs, cook until just set, fold."
+              aria-label="Cooking instructions"
+              className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm leading-relaxed outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
+            />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={stepsMutation.isPending}
+                onClick={() => stepsMutation.mutate(stepsDraft)}
+                className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingSteps(false)}
+                className="rounded-xl px-2.5 py-1.5 text-xs text-muted hover:text-ink"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : recipe.instructions ? (
+          <ol className="space-y-1.5">
+            {recipe.instructions
+              .split(/(?<=\.)\s+/)
+              .filter((s) => s.trim())
+              .map((step, i) => (
+                <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[11px] font-bold text-accent tabular-nums">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">{step.trim()}</span>
+                </li>
+              ))}
+          </ol>
+        ) : (
+          <p className="text-sm text-muted/70">
+            No steps written down yet — add them and they'll be here every time you cook this.
+          </p>
+        )}
       </section>
 
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">

@@ -86,6 +86,15 @@ export async function createRecipe(name: string, servings: number): Promise<stri
   return id;
 }
 
+export async function setRecipeInstructions(id: string, instructions: string): Promise<void> {
+  const db = await getDb();
+  await db.run('UPDATE recipes SET instructions = ? WHERE id = ?', [
+    instructions.trim() || null,
+    id,
+  ]);
+  await persist();
+}
+
 export async function deleteRecipe(id: string): Promise<void> {
   const db = await getDb();
   await db.run('DELETE FROM recipes WHERE id = ?', [id]);
