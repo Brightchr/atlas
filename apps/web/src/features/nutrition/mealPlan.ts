@@ -1,7 +1,8 @@
 import type { MealPlanItem, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import { addNeededItem } from '@/features/shopping/repository';
-import type { MealPlanTemplate } from './mealPlanCatalog';
+import { setActiveMealPlan } from './activeMealPlan';
+import { templateSlotsForDay, type MealPlanTemplate } from './mealPlanCatalog';
 import { catalogRecipe, type CatalogRecipe } from './recipeCatalog';
 import { mealAffinity } from './recipeTags';
 import { getFoodsByIds, logFood } from './repository';
@@ -146,15 +147,7 @@ const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
  * works offline and never duplicates recipes on re-apply. */
 export async function applyMealPlanTemplate(template: MealPlanTemplate): Promise<void> {
   // Resolve every referenced recipe name to a local recipe id.
-  const slotsForDay = (day: number): Record<MealType, { recipe: string; servings?: number }[]> => {
-    if (template.days) return template.days[day]!;
-    const out = {} as Record<MealType, { recipe: string; servings?: number }[]>;
-    for (const meal of MEALS) {
-      const pool = template.pools[meal];
-      out[meal] = pool.length > 0 ? [pool[day % pool.length]!] : [];
-    }
-    return out;
-  };
+  const slotsForDay = (day: number) => templateSlotsForDay(template, day);
 
   const names = new Set<string>();
   for (let day = 0; day < 7; day++) {
@@ -184,6 +177,12 @@ export async function applyMealPlanTemplate(template: MealPlanTemplate): Promise
     }
   }
   await persist();
+  await setActiveMealPlan({
+    kind: 'template',
+    key: template.key,
+    name: template.name,
+    appliedAt: new Date().toISOString().slice(0, 10),
+  });
 }
 
 /** Build the week from hand-picked catalog recipes: each pick lands in the
@@ -218,6 +217,13 @@ export async function buildWeekFromCatalogSelections(entries: CatalogRecipe[]): 
     }
   }
   await persist();
+  if (mealsChanged > 0) {
+    await setActiveMealPlan({
+      kind: 'custom',
+      name: 'Custom plan',
+      appliedAt: new Date().toISOString().slice(0, 10),
+    });
+  }
   return mealsChanged;
 }
 

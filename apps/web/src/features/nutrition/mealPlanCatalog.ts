@@ -30,6 +30,36 @@ export interface MealPlanTemplate {
 const s = (recipe: string, servings?: number): TemplateSlot =>
   servings ? { recipe, servings } : { recipe };
 
+const ALL_MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+/** What a template serves on one day (0 = Monday): explicit `days` verbatim,
+ * otherwise the pools rotated by weekday — the same resolution the apply
+ * flow uses, so previews match what actually lands in the week. */
+export function templateSlotsForDay(
+  template: MealPlanTemplate,
+  day: number,
+): Record<MealType, TemplateSlot[]> {
+  if (template.days) return template.days[day]!;
+  const out = {} as Record<MealType, TemplateSlot[]>;
+  for (const meal of ALL_MEALS) {
+    const pool = template.pools[meal];
+    out[meal] = pool.length > 0 ? [pool[day % pool.length]!] : [];
+  }
+  return out;
+}
+
+/** The three recipes that give a template its face — its first breakfast,
+ * lunch and dinner. Drives the art strips on cards and heroes. */
+export function templateArtNames(template: MealPlanTemplate): string[] {
+  const names: string[] = [];
+  const first = templateSlotsForDay(template, 0);
+  for (const meal of ['breakfast', 'lunch', 'dinner'] as MealType[]) {
+    const name = first[meal][0]?.recipe;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
 export const MEAL_PLAN_TEMPLATES: MealPlanTemplate[] = [
   /* ------------------------------ Weight loss ------------------------------ */
   {
