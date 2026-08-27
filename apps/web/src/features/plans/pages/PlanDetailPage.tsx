@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   BedDouble,
@@ -8,13 +8,16 @@ import {
   Dumbbell,
   ShoppingCart,
   Star,
+  Trash2,
   UtensilsCrossed,
   Wrench,
 } from 'lucide-react';
+import { formatDate } from '@/lib/dates';
 import { fetchAllExercises } from '@/lib/exercise-db/client';
 import { DIET_LABELS, GOAL_LABELS, LEVEL_LABELS } from '@/features/training/profile';
 import { addDietStaplesToShoppingList, DIET_BLURBS, DIET_STAPLES } from '../dietStaples';
 import {
+  useDeleteSharedPlan,
   useImportSharedPlan,
   usePlanReviews,
   useSharedPlanDetail,
@@ -47,6 +50,9 @@ export function PlanDetailPage() {
   const reviews = usePlanReviews(id ?? null);
   const importPlan = useImportSharedPlan();
   const submit = useSubmitReview();
+  const navigate = useNavigate();
+  const removeShare = useDeleteSharedPlan();
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
 
@@ -117,16 +123,57 @@ export function PlanDetailPage() {
               )}
             </p>
           </div>
-          <button
-            type="button"
-            disabled={importPlan.isPending}
-            onClick={() => importPlan.mutate(p.id)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2.5 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
-          >
-            <Download size={15} aria-hidden />
-            {importPlan.isSuccess ? 'In your plans ✓' : 'Use this plan'}
-          </button>
+          <span className="flex items-center gap-2">
+            {p.mine &&
+              (confirmingRemove ? (
+                <span className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={removeShare.isPending}
+                    onClick={() =>
+                      removeShare.mutate(p.id, {
+                        onSuccess: () => void navigate('/train/schedule'),
+                      })
+                    }
+                    className="rounded-xl bg-rose-500/10 px-3 py-2.5 text-sm font-semibold text-rose-600 disabled:opacity-50"
+                  >
+                    {removeShare.isPending ? 'Removing…' : 'Unpublish'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRemove(false)}
+                    className="rounded-xl px-2.5 py-2.5 text-sm text-muted hover:text-ink"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingRemove(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
+                >
+                  <Trash2 size={14} aria-hidden />
+                  Unpublish
+                </button>
+              ))}
+            <button
+              type="button"
+              disabled={importPlan.isPending}
+              onClick={() => importPlan.mutate(p.id)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2.5 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
+            >
+              <Download size={15} aria-hidden />
+              {importPlan.isSuccess ? 'In your plans ✓' : 'Use this plan'}
+            </button>
+          </span>
         </div>
+        {p.mine && (
+          <p className="mt-2 text-xs text-muted">
+            This is your listing. To change it, edit your copy in My Plans and publish again —
+            it updates in place. Unpublishing removes it for everyone; your own copy stays.
+          </p>
+        )}
         {p.description && <p className="mt-3 text-sm">{p.description}</p>}
       </header>
 
@@ -235,9 +282,7 @@ export function PlanDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold">{r.author}</span>
                 <Stars rating={r.rating} />
-                <span className="text-[10px] text-muted">
-                  {new Date(r.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                </span>
+                <span className="text-[10px] text-muted">{formatDate(r.updatedAt)}</span>
               </div>
               {r.comment && <p className="mt-1 text-xs text-muted">{r.comment}</p>}
             </div>

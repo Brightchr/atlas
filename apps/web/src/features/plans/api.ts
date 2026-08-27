@@ -177,6 +177,18 @@ export function useImportSharedPlan() {
   });
 }
 
+/** Take one of your published plans off the community listing. Your local
+ * copy (if you still have one) is untouched. */
+export function useDeleteSharedPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/v1/plans/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['plans', 'shared'] });
+    },
+  });
+}
+
 /** The plan the user is following (null = none chosen). */
 export function useActivePlanId() {
   return useQuery({ queryKey: ['plans', 'active'], queryFn: getActivePlanId });

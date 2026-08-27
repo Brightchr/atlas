@@ -27,6 +27,7 @@ import {
   useActivePlanId,
   useCreatePlan,
   useDeletePlan,
+  useDeleteSharedPlan,
   useImportSharedPlan,
   usePlans,
   useRenamePlan,
@@ -90,6 +91,8 @@ function TagRow({ plan }: { plan: SharedPlanSummary }) {
  * full detail page (workouts, exercises, diet, reviews). */
 function CommunityCard({ shared }: { shared: SharedPlanSummary }) {
   const importPlan = useImportSharedPlan();
+  const removeShare = useDeleteSharedPlan();
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const { Icon } = VISIBILITY_META[shared.visibility];
 
   return (
@@ -123,15 +126,47 @@ function CommunityCard({ shared }: { shared: SharedPlanSummary }) {
             <Icon size={11} className="mb-0.5 ml-1.5 inline" aria-hidden />
           </p>
         </div>
-        <button
-          type="button"
-          disabled={importPlan.isPending}
-          onClick={() => importPlan.mutate(shared.id)}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
-        >
-          <Download size={13} aria-hidden />
-          {importPlan.isSuccess ? 'Imported ✓' : 'Import'}
-        </button>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {shared.mine &&
+            (confirmingRemove ? (
+              <>
+                <button
+                  type="button"
+                  disabled={removeShare.isPending}
+                  onClick={() => removeShare.mutate(shared.id)}
+                  className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-xs font-semibold text-rose-600 disabled:opacity-50"
+                >
+                  Unpublish
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingRemove(false)}
+                  className="rounded-lg px-2 py-1.5 text-xs text-muted hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingRemove(true)}
+                aria-label={`Unpublish ${shared.name}`}
+                data-tip="Unpublish from the community"
+                className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+              >
+                <Trash2 size={14} aria-hidden />
+              </button>
+            ))}
+          <button
+            type="button"
+            disabled={importPlan.isPending}
+            onClick={() => importPlan.mutate(shared.id)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
+          >
+            <Download size={13} aria-hidden />
+            {importPlan.isSuccess ? 'Imported ✓' : 'Import'}
+          </button>
+        </span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
