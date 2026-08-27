@@ -1,7 +1,18 @@
-/** Deterministic "food photo" stand-ins: recipes have no imagery, so every
- * recipe gets a rich gradient tile with a food glyph derived from its name.
- * The same recipe always renders the same art, at thumbnail or banner size —
- * the app's answer to the photo-first look of big meal-plan apps. */
+import imageManifest from '../recipeImages.json';
+
+/** Recipe imagery, in two layers:
+ *  1. Real photos — `recipeImages.json` maps recipe names to bundled photo
+ *     files under /assets/recipes (populated by scripts/fetch-recipe-images.mjs;
+ *     empty manifest = no photos, nothing breaks).
+ *  2. Deterministic "food art" fallback — a rich gradient tile with a food
+ *     glyph derived from the name, so every recipe has appetizing art even
+ *     offline and unphotographed. Same recipe always renders the same art. */
+
+const IMAGES = imageManifest as Record<string, string>;
+
+export function recipeImage(name: string): string | undefined {
+  return IMAGES[name] ?? IMAGES[name.toLowerCase()];
+}
 
 const GLYPHS: [string, string[]][] = [
   ['🌮', ['taco']],
@@ -72,15 +83,34 @@ export function recipeArtBackground(name: string): string {
   ].join(', ');
 }
 
-/** Square thumbnail — meal rows, selection trays. */
-export function RecipeThumb({ name, className = 'h-12 w-12' }: { name: string; className?: string }) {
+/** One art tile: real photo when the manifest has one, gradient+glyph
+ * otherwise. Fills its container. */
+function ArtFill({ name, glyphClass }: { name: string; glyphClass: string }) {
+  const src = recipeImage(name);
+  if (src) {
+    return <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />;
+  }
   return (
     <span
-      aria-hidden
       style={{ background: recipeArtBackground(name) }}
-      className={`flex shrink-0 items-center justify-center rounded-xl text-xl ${className}`}
+      className={`flex h-full w-full items-center justify-center ${glyphClass}`}
     >
       <span className="drop-shadow-sm">{foodGlyph(name)}</span>
+    </span>
+  );
+}
+
+/** Square thumbnail — meal rows, selection trays. */
+export function RecipeThumb({
+  name,
+  className = 'h-12 w-12 rounded-xl text-xl',
+}: {
+  name: string;
+  className?: string;
+}) {
+  return (
+    <span aria-hidden className={`block shrink-0 overflow-hidden ${className}`}>
+      <ArtFill name={name} glyphClass="text-[1em]" />
     </span>
   );
 }
@@ -90,10 +120,9 @@ export function RecipeHero({ name }: { name: string }) {
   return (
     <div
       aria-hidden
-      style={{ background: recipeArtBackground(name) }}
-      className="flex h-28 items-center justify-center rounded-2xl border border-line shadow-sm"
+      className="h-28 overflow-hidden rounded-2xl border border-line text-5xl shadow-sm md:h-36"
     >
-      <span className="text-5xl drop-shadow-md">{foodGlyph(name)}</span>
+      <ArtFill name={name} glyphClass="text-[1em]" />
     </div>
   );
 }
@@ -104,10 +133,29 @@ export function RecipeBanner({ name, height = 'h-24' }: { name: string; height?:
   return (
     <div
       aria-hidden
-      style={{ background: recipeArtBackground(name) }}
-      className={`-mx-4 -mt-4 mb-3 flex ${height} items-center justify-center overflow-hidden rounded-t-2xl`}
+      className={`-mx-4 -mt-4 mb-3 ${height} overflow-hidden rounded-t-2xl text-4xl`}
     >
-      <span className="text-4xl drop-shadow-md">{foodGlyph(name)}</span>
+      <ArtFill name={name} glyphClass="text-[1em]" />
+    </div>
+  );
+}
+
+/** A strip of art tiles for a set of recipe names — meal-plan cards and
+ * heroes. Negative margins are the caller's job (varies with card padding). */
+export function NamesArtStrip({
+  names,
+  className = 'h-16 rounded-t-2xl',
+}: {
+  names: string[];
+  className?: string;
+}) {
+  return (
+    <div aria-hidden className={`flex gap-px overflow-hidden text-2xl ${className}`}>
+      {names.map((name) => (
+        <span key={name} className="min-w-0 flex-1 overflow-hidden">
+          <ArtFill name={name} glyphClass="text-[1em]" />
+        </span>
+      ))}
     </div>
   );
 }
