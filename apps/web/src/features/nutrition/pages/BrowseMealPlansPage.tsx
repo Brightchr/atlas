@@ -1,10 +1,19 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Dumbbell, Sparkles } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronLeft, Dumbbell, Pencil, Sparkles, Trash2 } from 'lucide-react';
+import { formatDate } from '@/lib/dates';
 import { DIET_BLURBS } from '@/features/plans/dietStaples';
 import { getActivePlanId, listPlans } from '@/features/plans/repository';
 import { CATALOG_PLANS } from '@/features/training/catalog';
 import { MEAL_PLAN_TEMPLATES, templateArtNames, type MealPlanTemplate } from '../mealPlanCatalog';
+import {
+  applySavedMealPlan,
+  deleteSavedMealPlan,
+  listSavedMealPlans,
+  renameSavedMealPlan,
+  type SavedMealPlan,
+} from '../savedMealPlans';
 import { NamesArtStrip } from '../components/RecipeArt';
 
 /** One template as a catalog card — art strip, name, one-line pitch. Depth
@@ -27,6 +36,149 @@ function TemplateCard({ template }: { template: MealPlanTemplate }) {
           ~{template.kcalPerDay.toLocaleString()} kcal · {template.proteinPerDay} g protein / day
         </p>
       </button>
+    </li>
+  );
+}
+
+/** The three art tiles for a saved plan: its first distinct meals. */
+function savedArtNames(plan: SavedMealPlan): string[] {
+  const names: string[] = [];
+  for (const item of plan.items) {
+    if (!names.includes(item.name)) names.push(item.name);
+    if (names.length >= 3) break;
+  }
+  return names;
+}
+
+/** One saved plan: apply, rename, delete — all inline, all yours only. */
+function SavedPlanCard({ plan }: { plan: SavedMealPlan }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [mode, setMode] = useState<'idle' | 'confirm-apply' | 'confirm-delete' | 'rename'>('idle');
+  const [name, setName] = useState(plan.name);
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
+  };
+  const apply = useMutation({
+    mutationFn: () => applySavedMealPlan(plan.id),
+    onSuccess: () => {
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      void navigate('/eat/meal-plan');
+    },
+  });
+  const rename = useMutation({
+    mutationFn: () => renameSavedMealPlan(plan.id, name),
+    onSuccess: () => {
+      setMode('idle');
+      invalidate();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteSavedMealPlan(plan.id),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <li className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <NamesArtStrip names={savedArtNames(plan)} className="-mx-4 -mt-4 mb-3 h-20 rounded-t-2xl" />
+      {mode === 'rename' ? (
+        <div className="mb-1 flex items-center gap-1.5">
+          <input
+            value={name}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && name.trim() && rename.mutate()}
+            aria-label="Plan name"
+            className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            disabled={!name.trim() || rename.isPending}
+            onClick={() => rename.mutate()}
+            aria-label="Save name"
+            className="rounded-lg bg-accent p-1.5 text-accent-ink disabled:opacity-50"
+          >
+            <Check size={14} aria-hidden />
+          </button>
+        </div>
+      ) : (
+        <p className="font-semibold">{plan.name}</p>
+      )}
+      <p className="mb-3 grow text-xs text-muted tabular-nums">
+        ~{plan.kcalPerDay.toLocaleString()} kcal / day · saved {formatDate(plan.savedAt)}
+      </p>
+      <div className="flex items-center gap-1.5">
+        {mode === 'confirm-apply' ? (
+          <>
+            <button
+              type="button"
+              disabled={apply.isPending}
+              onClick={() => apply.mutate()}
+              className="rounded-lg bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-500 disabled:opacity-50"
+            >
+              {apply.isPending ? 'Applying…' : 'Replace my week'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('idle')}
+              className="rounded-lg px-2 py-1.5 text-xs text-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+          </>
+        ) : mode === 'confirm-delete' ? (
+          <>
+            <button
+              type="button"
+              disabled={remove.isPending}
+              onClick={() => remove.mutate()}
+              className="rounded-lg bg-rose-500/15 px-2.5 py-1.5 text-xs font-semibold text-rose-500 disabled:opacity-50"
+            >
+              Delete plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('idle')}
+              className="rounded-lg px-2 py-1.5 text-xs text-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setMode('confirm-apply')}
+              className="rounded-lg bg-linear-to-r from-accent to-accent-2 px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-sm hover:opacity-90"
+            >
+              Use this plan
+            </button>
+            <span className="flex-1" />
+            <button
+              type="button"
+              onClick={() => {
+                setName(plan.name);
+                setMode('rename');
+              }}
+              aria-label={`Rename ${plan.name}`}
+              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+            >
+              <Pencil size={13} aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('confirm-delete')}
+              aria-label={`Delete ${plan.name}`}
+              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+            >
+              <Trash2 size={13} aria-hidden />
+            </button>
+          </>
+        )}
+      </div>
+      {apply.isError && <p className="mt-1.5 text-xs text-rose-500">Could not apply — try again.</p>}
     </li>
   );
 }
@@ -87,6 +239,8 @@ export function BrowseMealPlansPage() {
   const navigate = useNavigate();
   const trainingQuery = useQuery({ queryKey: ['mealPlan', 'trainingDiet'], queryFn: activeTrainingDiet });
   const training = trainingQuery.data;
+  const savedQuery = useQuery({ queryKey: ['mealPlan', 'saved'], queryFn: listSavedMealPlans });
+  const saved = savedQuery.data ?? [];
 
   const templates = MEAL_PLAN_TEMPLATES;
   const program = templates.filter((t) => t.key === 'comeback-phase1');
@@ -120,6 +274,21 @@ export function BrowseMealPlansPage() {
           Build your own
         </button>
       </header>
+
+      {saved.length > 0 && (
+        <section>
+          <h2 className="font-display text-lg font-bold tracking-tight">My plans</h2>
+          <p className="mb-2 text-sm text-muted">
+            Weeks you saved — private to your account, synced to your devices. Apply one, tweak
+            the week, and save it again under the same name to update it.
+          </p>
+          <ul className="grid items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {saved.map((p) => (
+              <SavedPlanCard key={p.id} plan={p} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {training && (
         <section className="rounded-2xl border border-accent/40 bg-surface p-4 shadow-sm">

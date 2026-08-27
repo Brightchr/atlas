@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeftRight,
+  BookmarkPlus,
   BookOpenText,
   ChevronRight,
   Cookie,
@@ -34,6 +35,7 @@ import {
 } from '../mealPlan';
 import type { CatalogRecipe } from '../recipeCatalog';
 import { MEAL_PLAN_TEMPLATES, templateArtNames } from '../mealPlanCatalog';
+import { saveCurrentWeekAsPlan } from '../savedMealPlans';
 import { listRecipes, type RecipeDetails } from '../recipes';
 import { getFoodsByIds, scaleMacros } from '../repository';
 
@@ -318,6 +320,18 @@ export function MealPlanPage() {
   const shoppingMutation = useMutation({
     mutationFn: () => addPlanRangeToShoppingList(cadence),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shopping'] }),
+  });
+
+  // Saving the current week as a reusable named plan (Browse → My plans).
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planName, setPlanName] = useState('');
+  const savePlanMutation = useMutation({
+    mutationFn: () => saveCurrentWeekAsPlan(planName),
+    onSuccess: () => {
+      setSavingPlan(false);
+      setPlanName('');
+      void queryClient.invalidateQueries({ queryKey: ['mealPlan', 'saved'] });
+    },
   });
 
   // What the week is based on (template or custom) — the hero card's story.
@@ -839,7 +853,54 @@ export function MealPlanPage() {
           <ShoppingCart size={15} aria-hidden />
           Add next {cadence} day{cadence === 1 ? '' : 's'} to shopping list
         </button>
+        {savingPlan ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <input
+              value={planName}
+              autoFocus
+              onChange={(e) => setPlanName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && planName.trim() && savePlanMutation.mutate()}
+              placeholder="Plan name — e.g. My cutting week"
+              aria-label="Saved plan name"
+              className="w-52 min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            />
+            <button
+              type="button"
+              disabled={!planName.trim() || savePlanMutation.isPending}
+              onClick={() => savePlanMutation.mutate()}
+              className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-3.5 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setSavingPlan(false)}
+              aria-label="Cancel save"
+              className="rounded-xl p-2 text-muted hover:bg-elev hover:text-ink"
+            >
+              <X size={14} aria-hidden />
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={!hasAnyItems}
+            onClick={() => {
+              setPlanName(activePlan?.kind === 'custom' ? activePlan.name : '');
+              setSavingPlan(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
+          >
+            <BookmarkPlus size={15} aria-hidden />
+            Save week as plan
+          </button>
+        )}
       </div>
+      {savePlanMutation.isSuccess && (
+        <p className="text-sm text-accent">
+          Saved — find it under Browse plans → My plans. Saving the same name again updates it.
+        </p>
+      )}
       {logDayMutation.isSuccess && (
         <p className="text-sm text-accent">Planned meals logged to today's diary ✓</p>
       )}
