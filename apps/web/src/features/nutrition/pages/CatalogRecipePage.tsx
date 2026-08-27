@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Beef, BookmarkPlus, ChevronLeft, Droplet, Flame, UtensilsCrossed, Wheat } from 'lucide-react';
 import { catalogPerServing, catalogRecipe } from '../recipeCatalog';
 import { descriptionBlurb, parseRecipeTags } from '../recipeTags';
-import { importRecipeFromCatalog, listRecipes } from '../recipes';
+import { importRecipeFromCatalog, instructionSteps, listRecipes } from '../recipes';
 import { RecipeHero } from '../components/RecipeArt';
 
 const MACRO_TILES = [
@@ -130,10 +130,7 @@ export function CatalogRecipePage() {
         <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold">How to make it</h2>
           <ol className="space-y-1.5">
-            {entry.instructions
-              .split(/(?<=\.)\s+/)
-              .filter((s) => s.trim())
-              .map((step, i) => (
+            {instructionSteps(entry.instructions).map((step, i) => (
                 <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[11px] font-bold text-accent tabular-nums">
                     {i + 1}

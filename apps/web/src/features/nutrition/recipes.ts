@@ -1,5 +1,6 @@
 import type { Food, Macros, MealType, Recipe } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
+import { catalogRecipe } from './recipeCatalog';
 import { getFoodsByIds, importFood, logFood, scaleMacros } from './repository';
 
 /** Recipes = named food groups ("sandwich"): ingredients with gram amounts,
@@ -33,7 +34,58 @@ function divideMacros(m: Macros, by: number): Macros {
   };
 }
 
+/** Split stored instructions into display steps: authored steps are
+ * newline-separated; legacy one-line instructions fall back to sentences. */
+export function instructionSteps(text: string): string[] {
+  const byLine = text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (byLine.length > 1) return byLine;
+  return text
+    .split(/(?<=\.)\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** When the bundled catalog's instructions improve, recipes imported from it
+ * keep the old text — this one-time pass (per version, per device) refreshes
+ * name-matching local recipes so everyone cooks from the current steps. */
+const INSTRUCTIONS_VERSION = 2;
+const INSTRUCTIONS_KEY = 'catalog_instructions_v';
+let instructionsRefresh: Promise<void> | null = null;
+
+function refreshCatalogInstructionsOnce(): Promise<void> {
+  instructionsRefresh ??= (async () => {
+    const db = await getDb();
+    const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [INSTRUCTIONS_KEY]))
+      .values as { value: string }[];
+    if (Number(rows[0]?.value) >= INSTRUCTIONS_VERSION) return;
+
+    const recipes = (await db.query('SELECT id, name FROM recipes')).values as {
+      id: string;
+      name: string;
+    }[];
+    for (const r of recipes) {
+      const entry = catalogRecipe(r.name);
+      if (!entry?.instructions) continue;
+      await db.run(
+        `UPDATE recipes SET instructions = ?
+         WHERE id = ? AND (instructions IS NULL OR instructions != ?)`,
+        [entry.instructions, r.id, entry.instructions],
+      );
+    }
+    await db.run(
+      'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      [INSTRUCTIONS_KEY, INSTRUCTIONS_KEY, String(INSTRUCTIONS_VERSION)],
+    );
+    await persist();
+  })();
+  return instructionsRefresh;
+}
+
 export async function listRecipes(): Promise<RecipeDetails[]> {
+  await refreshCatalogInstructionsOnce();
   const db = await getDb();
   const recipes = (await db.query('SELECT * FROM recipes ORDER BY name')).values as {
     id: string;
