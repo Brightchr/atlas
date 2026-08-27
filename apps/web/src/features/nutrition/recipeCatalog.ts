@@ -20,11 +20,18 @@ export function catalogRecipe(name: string): CatalogRecipe | undefined {
   return byName.get(name.toLowerCase());
 }
 
-const perServingCache = new Map<string, { kcal: number; proteinG: number }>();
+export interface CatalogPerServing {
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
 
-/** Per-serving kcal and protein of a catalog recipe, from its ingredient
- * snapshot (memoized — the browser renders a hundred of these). */
-export function catalogPerServing(entry: CatalogRecipe): { kcal: number; proteinG: number } {
+const perServingCache = new Map<string, CatalogPerServing>();
+
+/** Per-serving macros of a catalog recipe, from its ingredient snapshot
+ * (memoized — the browser renders a hundred of these). */
+export function catalogPerServing(entry: CatalogRecipe): CatalogPerServing {
   const hit = perServingCache.get(entry.name);
   if (hit) return hit;
   const servings = Math.max(1, entry.servings);
@@ -32,12 +39,16 @@ export function catalogPerServing(entry: CatalogRecipe): { kcal: number; protein
     (acc, i) => ({
       kcal: acc.kcal + (i.food.per100g.kcal * i.grams) / 100,
       proteinG: acc.proteinG + (i.food.per100g.proteinG * i.grams) / 100,
+      carbsG: acc.carbsG + (i.food.per100g.carbsG * i.grams) / 100,
+      fatG: acc.fatG + (i.food.per100g.fatG * i.grams) / 100,
     }),
-    { kcal: 0, proteinG: 0 },
+    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
   );
   const per = {
     kcal: Math.round(total.kcal / servings),
     proteinG: Math.round(total.proteinG / servings),
+    carbsG: Math.round(total.carbsG / servings),
+    fatG: Math.round(total.fatG / servings),
   };
   perServingCache.set(entry.name, per);
   return per;
