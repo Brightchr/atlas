@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { CalendarCheck, Flame } from 'lucide-react';
+import { formatDate, formatDateShort } from '@/lib/dates';
 import { PlansPage } from '@/features/plans/pages/PlansPage';
 import { adherenceStats, type DayStatus } from '../stats';
 
@@ -51,14 +52,14 @@ export function SchedulePage() {
             {s.weeks.map((week, i) => (
               <div key={week.monday} className="grid grid-cols-[44px_repeat(7,minmax(0,1fr))] items-center gap-1.5">
                 <span className={`text-[9px] font-bold ${i === s.weeks.length - 1 ? 'text-accent' : 'text-muted'}`}>
-                  {i === s.weeks.length - 1
-                    ? 'NOW'
-                    : new Date(week.monday).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                  {i === s.weeks.length - 1 ? 'NOW' : formatDateShort(week.monday)}
                 </span>
                 {week.days.map((day) => (
-                  <span
+                  <button
                     key={day.date}
-                    title={`${day.date}: ${day.status}`}
+                    type="button"
+                    data-tip={`${formatDate(day.date)} · ${day.status}`}
+                    aria-label={`${formatDate(day.date)}: ${day.status}`}
                     className={`h-5 rounded-lg ${cellTone[day.status]}`}
                   />
                 ))}

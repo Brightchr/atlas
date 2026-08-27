@@ -17,6 +17,7 @@ import {
   useUnbanUser,
   type AdminUser,
 } from '../api';
+import { formatDate } from '@/lib/dates';
 
 const ROLES: UserRole[] = ['user', 'moderator', 'admin'];
 const PLANS: MembershipPlan[] = ['free', 'pro'];
@@ -197,7 +198,7 @@ export function UsersSection({ me }: { me: AuthUser }) {
                   <StatusBadge user={u} />
                   {u.status !== 'banned' && u.role === 'user' && u.trialEndsAt && (
                     <p className="mt-1 text-xs whitespace-nowrap text-muted">
-                      trial ends {new Date(u.trialEndsAt).toLocaleDateString()}
+                      trial ends {formatDate(u.trialEndsAt)}
                     </p>
                   )}
                 </td>
@@ -247,7 +248,7 @@ export function UsersSection({ me }: { me: AuthUser }) {
                   </label>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-muted">
-                  {new Date(u.createdAt).toLocaleDateString()}
+                  {formatDate(u.createdAt)}
                 </td>
                 <td className="px-4 py-3 tabular-nums">{u.activeSessions}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-muted">

@@ -5,6 +5,7 @@ import { AvatarIcon } from '../avatars';
 import { useCurrentUser } from '@/features/auth/api';
 import { ReportButton } from '@/features/reports/components/ReportButton';
 import { DIET_LABELS, GOAL_LABELS, LEVEL_LABELS } from '@/features/training/profile';
+import { formatDate } from '@/lib/dates';
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -204,7 +205,7 @@ export function PublicProfilePage() {
               {p.activity.map((a, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-xs">
                   <span className="w-16 shrink-0 text-muted tabular-nums">
-                    {new Date(a.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {formatDate(a.at)}
                   </span>
                   <span className="min-w-0 flex-1">
                     {a.kind === 'plan' ? (

@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
+import { formatDate } from '@/lib/dates';
 import { getSavedTargets } from '@/features/goals/repository';
 import { getActiveMealPlan } from '../activeMealPlan';
 import { FoodPicker } from '../components/FoodPicker';
@@ -435,7 +436,7 @@ export function MealPlanPage() {
               </p>
               <p className="truncate font-semibold">{activePlan.name}</p>
               <p className="text-xs text-muted tabular-nums">
-                since {activePlan.appliedAt}
+                since {formatDate(activePlan.appliedAt)}
                 {activeTemplate &&
                   ` · ~${activeTemplate.kcalPerDay.toLocaleString()} kcal · ${activeTemplate.proteinPerDay} g protein / day`}
               </p>

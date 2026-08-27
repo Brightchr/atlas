@@ -9,6 +9,7 @@ import {
   markBought,
   rebuyItem,
 } from '../repository';
+import { formatDate } from '@/lib/dates';
 
 function lastBoughtLabel(iso: string | null): string {
   if (!iso) return '';
@@ -16,7 +17,7 @@ function lastBoughtLabel(iso: string | null): string {
   if (days <= 0) return 'today';
   if (days === 1) return 'yesterday';
   if (days < 30) return `${days} days ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 export function ShoppingPage() {

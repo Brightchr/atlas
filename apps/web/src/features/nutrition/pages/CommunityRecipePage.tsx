@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BookmarkPlus, CalendarPlus, Trash2 } from 'lucide-react';
 import type { MealType, SharedRecipeDetail } from '@arcadia/shared';
+import { formatDate } from '@/lib/dates';
 import { ReportButton } from '@/features/reports/components/ReportButton';
 import {
   importSharedRecipe,
@@ -316,7 +317,7 @@ export function CommunityRecipePage() {
                 <Stars rating={r.rating} />
                 <span className="font-medium">{r.username ?? 'deleted user'}</span>
                 <span className="text-xs text-muted">
-                  {new Date(r.updatedAt).toLocaleDateString()}
+                  {formatDate(r.updatedAt)}
                 </span>
               </p>
               {r.comment && <p className="mt-0.5 text-muted">{r.comment}</p>}

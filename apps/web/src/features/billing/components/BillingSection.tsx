@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 import { BadgeCheck, CreditCard } from 'lucide-react';
 import { useCurrentUser } from '@/features/auth/api';
 import { useBillingStatus } from '../api';
+import { formatDate } from '@/lib/dates';
 
 function membershipLine(status: {
   membership: string;
@@ -14,12 +15,12 @@ function membershipLine(status: {
   }
   if (status.membership === 'pro') {
     return status.planExpiresAt
-      ? `Full access until ${new Date(status.planExpiresAt).toLocaleDateString()}.`
+      ? `Full access until ${formatDate(status.planExpiresAt)}.`
       : 'Full access — active subscription.';
   }
   if (status.membership === 'trial') {
     return `Free trial — ends ${
-      status.trialEndsAt ? new Date(status.trialEndsAt).toLocaleDateString() : 'soon'
+      status.trialEndsAt ? formatDate(status.trialEndsAt) : 'soon'
     }.`;
   }
   return 'Trial ended — subscribe to keep using the app.';

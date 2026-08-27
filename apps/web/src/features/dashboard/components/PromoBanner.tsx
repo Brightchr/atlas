@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { ArrowRight, TicketPercent } from 'lucide-react';
 import { useActivePromotions } from '@/features/billing/api';
+import { formatDate } from '@/lib/dates';
 
 /** The dashboard hero slot, reserved for things WE post: when a promotion is
  * live it takes over the banner; otherwise the evergreen brand card shows.
@@ -32,7 +33,7 @@ export function PromoBanner() {
           </h2>
           <p className="mt-1.5 max-w-sm text-sm opacity-85">
             {promo.description || 'Use the code below on the upgrade page.'}
-            {promo.endsAt && ` Ends ${new Date(promo.endsAt).toLocaleDateString()}.`}
+            {promo.endsAt && ` Ends ${formatDate(promo.endsAt)}.`}
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <span className="rounded-xl border border-accent-ink/25 bg-accent-ink/10 px-3.5 py-2 font-mono text-sm font-bold tracking-wider backdrop-blur-sm">
