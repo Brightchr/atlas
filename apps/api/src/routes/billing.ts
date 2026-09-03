@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
+  ANNUAL_PRICE_USD,
   MONTHLY_PRICE_USD,
   effectivePlan,
   resolveMembership,
@@ -9,7 +10,9 @@ import {
 } from '@arcadia/shared';
 import { pool, query } from '../db/pool';
 import { logAudit } from '../lib/audit';
+import { env } from '../lib/env';
 import { rateLimit } from '../lib/rate-limit';
+import { stripe, stripeConfigured } from '../lib/stripe';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Billing must stay reachable for EXPIRED members — it is the way back in.
@@ -25,7 +28,12 @@ billingRoutes.get('/', async (c) => {
     plan_expires_at: string | null;
     trial_ends_at: string | null;
     comped: boolean;
-  }>('SELECT plan, plan_expires_at, trial_ends_at, comped FROM users WHERE id = $1', [user.id]);
+    stripe_subscription_id: string | null;
+  }>(
+    `SELECT plan, plan_expires_at, trial_ends_at, comped, stripe_subscription_id
+       FROM users WHERE id = $1`,
+    [user.id],
+  );
   if (!row) return c.json({ error: 'User not found' }, 404);
 
   const redemptions = await query<{
@@ -47,7 +55,9 @@ billingRoutes.get('/', async (c) => {
     trialEndsAt: row.trial_ends_at,
     membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
     comped: row.comped,
+    hasSubscription: row.stripe_subscription_id !== null,
     priceUsd: MONTHLY_PRICE_USD,
+    annualPriceUsd: ANNUAL_PRICE_USD,
     redemptions: redemptions.map((r) => ({
       code: r.code,
       discountPercent: r.discount_percent,
@@ -185,10 +195,126 @@ billingRoutes.post(
   },
 );
 
-/** Placeholder until the payment processor (Stripe) is wired up: the client
- * shows the "coming soon" state off this 501. When payments land this becomes
- * "create checkout session, return its URL", and discount-only redemptions
- * get applied to the first invoice. */
-billingRoutes.post('/checkout', async (c) => {
-  return c.json({ error: 'Checkout is not open yet — payments are coming soon' }, 501);
-});
+/** Open a Stripe Checkout session and hand its URL to the client. This
+ * endpoint only STARTS the flow — the plan is granted by the webhook
+ * (routes/stripe.ts) once payment actually lands, never here. */
+billingRoutes.post(
+  '/checkout',
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 10, by: 'user' }),
+  zValidator('json', z.object({ interval: z.enum(['month', 'year']).default('month') })),
+  async (c) => {
+    if (!stripeConfigured()) {
+      return c.json({ error: 'Checkout is not open yet — payments are coming soon' }, 501);
+    }
+    const { interval } = c.req.valid('json');
+    const priceId = interval === 'year' ? env.stripePriceIdAnnual : env.stripePriceId;
+    if (!priceId) {
+      return c.json({ error: 'Annual billing isn’t available yet — choose monthly' }, 501);
+    }
+    const user = c.get('user')!;
+    const [row] = await query<{
+      email: string;
+      plan: 'free' | 'pro';
+      plan_expires_at: string | null;
+      comped: boolean;
+      stripe_customer_id: string | null;
+      stripe_subscription_id: string | null;
+    }>(
+      `SELECT email, plan, plan_expires_at, comped, stripe_customer_id, stripe_subscription_id
+         FROM users WHERE id = $1`,
+      [user.id],
+    );
+    if (!row) return c.json({ error: 'User not found' }, 404);
+    // Comped and lifetime accounts must never be charged; an existing
+    // subscription is managed through the portal, not doubled up.
+    if (row.comped || (row.plan === 'pro' && row.plan_expires_at === null)) {
+      return c.json({ error: 'You already have full access — no subscription needed' }, 409);
+    }
+    if (row.stripe_subscription_id) {
+      return c.json(
+        { error: 'You already have a subscription — manage it from Settings → Membership' },
+        409,
+      );
+    }
+
+    // One Stripe customer per user, created on first checkout. The WHERE guard
+    // keeps a concurrent double-click from attaching two customers.
+    let customerId = row.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe().customers.create({
+        email: row.email,
+        metadata: { userId: user.id },
+      });
+      customerId = customer.id;
+      await query('UPDATE users SET stripe_customer_id = $2 WHERE id = $1 AND stripe_customer_id IS NULL', [
+        user.id,
+        customerId,
+      ]);
+    }
+
+    // Discount-only promo codes apply to the first invoice (grant-day codes
+    // were consumed at redemption). Best percentage wins if they stacked.
+    const [discount] = await query<{ percent: number | null }>(
+      `SELECT max(p.discount_percent)::int AS percent
+         FROM promo_redemptions r JOIN promotions p ON p.id = r.promotion_id
+        WHERE r.user_id = $1 AND p.discount_percent > 0`,
+      [user.id],
+    );
+    let discounts: { coupon: string }[] | undefined;
+    if (discount?.percent) {
+      const coupon = await stripe().coupons.create({
+        percent_off: discount.percent,
+        duration: 'once',
+      });
+      discounts = [{ coupon: coupon.id }];
+    }
+
+    const session = await stripe().checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      discounts,
+      // Stripe Tax computes the right tax from the billing address entered at
+      // checkout; address 'auto' saves it onto the customer so renewals keep
+      // taxing correctly. Requires Stripe Tax activated in the dashboard.
+      automatic_tax: { enabled: true },
+      customer_update: { address: 'auto' },
+      success_url: `${env.publicUrl}/upgrade?checkout=success`,
+      cancel_url: `${env.publicUrl}/upgrade?checkout=cancelled`,
+      metadata: { userId: user.id },
+    });
+    if (!session.url) return c.json({ error: 'Could not start checkout — try again' }, 500);
+
+    await logAudit(user.id, 'checkout_started', 'user', user.id, {
+      customerId,
+      interval,
+      discountPercent: discount?.percent ?? null,
+    });
+    return c.json({ url: session.url });
+  },
+);
+
+/** Stripe's hosted billing portal: change card, cancel, past invoices. Doing
+ * dunning and cancellation UI in-app would be weeks of work Stripe already did. */
+billingRoutes.post(
+  '/portal',
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 10, by: 'user' }),
+  async (c) => {
+    if (!stripeConfigured()) {
+      return c.json({ error: 'Billing management is not available yet' }, 501);
+    }
+    const user = c.get('user')!;
+    const [row] = await query<{ stripe_customer_id: string | null }>(
+      'SELECT stripe_customer_id FROM users WHERE id = $1',
+      [user.id],
+    );
+    if (!row?.stripe_customer_id) {
+      return c.json({ error: 'No billing account yet — subscribe first' }, 404);
+    }
+    const session = await stripe().billingPortal.sessions.create({
+      customer: row.stripe_customer_id,
+      return_url: `${env.publicUrl}/settings`,
+    });
+    return c.json({ url: session.url });
+  },
+);

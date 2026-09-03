@@ -9,8 +9,11 @@ export interface BillingStatus {
   membership: MembershipStatus;
   /** Admin-granted complimentary access — membership resolves to 'pro'. */
   comped: boolean;
-  /** Monthly price in whole USD (display; the processor is authoritative). */
+  /** A Stripe subscription is attached — drives the "Manage billing" button. */
+  hasSubscription: boolean;
+  /** Prices in whole USD (display; the processor is authoritative). */
   priceUsd: number;
+  annualPriceUsd: number;
   redemptions: PromoRedemption[];
 }
 
