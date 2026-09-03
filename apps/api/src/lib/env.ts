@@ -65,6 +65,11 @@ export const env = {
   stripePriceId: process.env.STRIPE_PRICE_ID ?? '',
   /** Second price on the same product. Optional — unset hides annual billing. */
   stripePriceIdAnnual: process.env.STRIPE_PRICE_ID_ANNUAL ?? '',
+  /** Resend (resend.com → API Keys). Unset = password reset and email
+   * verification report themselves unavailable; nothing else breaks. */
+  resendApiKey: process.env.RESEND_API_KEY ?? '',
+  /** Sender for transactional mail — the domain must be verified in Resend. */
+  emailFrom: process.env.EMAIL_FROM ?? 'Atlas <no-reply@atlas-fitness.org>',
   /** Set TRUST_CF_PROXY=1 once traffic flows through Cloudflare: client IPs
    * then come from CF-Connecting-IP — the x-forwarded-for walk would stop at
    * a Cloudflare edge address (public) and rate-limit/ban the edge, not the

@@ -499,6 +499,29 @@ const migrations: { id: string; sql: string }[] = [
       );
     `,
   },
+  {
+    id: '022_email_auth',
+    sql: `
+      ALTER TABLE users ADD COLUMN email_verified boolean NOT NULL DEFAULT false;
+      -- Google sign-ins are only accepted with a Google-verified email
+      -- (google-auth.ts), so existing linked accounts are already proven.
+      UPDATE users SET email_verified = true WHERE google_id IS NOT NULL;
+
+      -- Single-use links (password reset, email verification). Same rule as
+      -- sessions: only the SHA-256 of the token is stored, so a database leak
+      -- yields nothing clickable.
+      CREATE TABLE email_tokens (
+        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        purpose    text NOT NULL CHECK (purpose IN ('password_reset', 'email_verify')),
+        token_hash text NOT NULL UNIQUE,
+        expires_at timestamptz NOT NULL,
+        used_at    timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX email_tokens_user_idx ON email_tokens(user_id);
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */
