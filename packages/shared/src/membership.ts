@@ -1,8 +1,13 @@
 import type { MembershipPlan, MembershipStatus } from './types/user';
 
-/** Monthly subscription price in whole USD. Single source for API and UI copy;
- * the payment processor's product config must match when it lands. */
-export const MONTHLY_PRICE_USD = 5;
+/** Subscription prices in whole USD. Single source for API and UI copy; the
+ * Stripe price objects are authoritative for what is actually charged and
+ * must be kept in step. Annual is pitched as its per-month equivalent. */
+export const MONTHLY_PRICE_USD = 10;
+export const ANNUAL_PRICE_USD = 72;
+export const ANNUAL_SAVINGS_PERCENT = Math.round(
+  (1 - ANNUAL_PRICE_USD / (MONTHLY_PRICE_USD * 12)) * 100,
+);
 
 /** Signup trial length. The database default mirrors this (migration 012). */
 export const TRIAL_DAYS = 7;
