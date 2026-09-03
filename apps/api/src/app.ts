@@ -18,6 +18,7 @@ import { profileRoutes } from './routes/profile';
 import { recipeRoutes } from './routes/recipes';
 import { reportRoutes } from './routes/reports';
 import { socialRoutes } from './routes/social';
+import { stripeRoutes } from './routes/stripe';
 import { syncRoutes } from './routes/sync';
 
 /** App is split from the server entry (index.ts) so route handlers can be
@@ -51,6 +52,9 @@ const planLimit = bodyLimit({ maxSize: 300 * KB });
 // the routes are role-gated so the headroom is safe.
 const adminLimit = bodyLimit({ maxSize: 512 * KB });
 const recipeLimit = bodyLimit({ maxSize: 128 * KB });
+// Stripe events are usually a few KB, but invoice events grow with line items;
+// the route is signature-verified so the headroom is safe.
+const stripeLimit = bodyLimit({ maxSize: 256 * KB });
 const defaultLimit = bodyLimit({ maxSize: 64 * KB });
 app.use('/v1/*', (c, next) => {
   const path = c.req.path;
@@ -58,6 +62,7 @@ app.use('/v1/*', (c, next) => {
   if (path.startsWith('/v1/plans')) return planLimit(c, next);
   if (path.startsWith('/v1/admin')) return adminLimit(c, next);
   if (path.startsWith('/v1/recipes')) return recipeLimit(c, next);
+  if (path.startsWith('/v1/stripe')) return stripeLimit(c, next);
   return defaultLimit(c, next);
 });
 
@@ -70,6 +75,7 @@ app.route('/v1/sync', syncRoutes);
 app.route('/v1/profiles', profileRoutes);
 app.route('/v1/admin', adminRoutes);
 app.route('/v1/billing', billingRoutes);
+app.route('/v1/stripe', stripeRoutes);
 app.route('/v1/reports', reportRoutes);
 app.route('/v1/recipes', recipeRoutes);
 // The social group's requireAuth is scoped to its own prefixes (friends,
