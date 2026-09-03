@@ -43,10 +43,28 @@ export function useRedeemPromo() {
   });
 }
 
-/** Placeholder flow: the API answers 501 until the payment processor lands,
- * and the UI surfaces that message. Later this returns a checkout URL. */
+/** Starts Stripe Checkout: the API returns the hosted page's URL and the
+ * browser hands over to Stripe. Membership flips via webhook while the user
+ * pays; the success redirect back to /upgrade re-fetches it. */
 export function useCheckout() {
   return useMutation({
-    mutationFn: () => apiFetch<{ url?: string }>('/v1/billing/checkout', { method: 'POST' }),
+    mutationFn: (interval: 'month' | 'year') =>
+      apiFetch<{ url: string }>('/v1/billing/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ interval }),
+      }),
+    onSuccess: (data) => {
+      window.location.assign(data.url);
+    },
+  });
+}
+
+/** Stripe's hosted billing portal — change card, cancel, past invoices. */
+export function useBillingPortal() {
+  return useMutation({
+    mutationFn: () => apiFetch<{ url: string }>('/v1/billing/portal', { method: 'POST' }),
+    onSuccess: (data) => {
+      window.location.assign(data.url);
+    },
   });
 }
