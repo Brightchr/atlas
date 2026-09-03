@@ -58,6 +58,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-1.5">
+        <MembershipChip />
         <ThemeMenu open={open === 'theme'} onToggle={() => toggle('theme')} />
         <NotificationsMenu
           open={open === 'notifications'}
@@ -67,6 +68,32 @@ export function TopBar() {
         <ProfileMenu open={open === 'profile'} onToggle={() => toggle('profile')} />
       </div>
     </header>
+  );
+}
+
+/** Membership at a glance. Staff have no membership to show; pro links to
+ * billing settings, trial/expired to the upgrade page. */
+function MembershipChip() {
+  const { data: user } = useCurrentUser();
+  if (!user || user.role !== 'user') return null;
+
+  const membership = user.membership;
+  const label = membership === 'pro' ? 'Pro' : membership === 'trial' ? 'Trial' : 'Expired';
+  const styles =
+    membership === 'pro'
+      ? 'bg-accent-soft text-accent'
+      : membership === 'trial'
+        ? 'bg-amber-500/10 text-amber-500'
+        : 'bg-rose-500/10 text-rose-500';
+
+  return (
+    <Link
+      to={membership === 'pro' ? '/settings' : '/upgrade'}
+      aria-label={`Membership: ${label}`}
+      className={`mr-1 rounded-full px-2.5 py-1 text-xs font-bold transition-opacity hover:opacity-80 ${styles}`}
+    >
+      {label}
+    </Link>
   );
 }
 

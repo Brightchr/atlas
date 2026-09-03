@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
-import { BadgeCheck, CreditCard } from 'lucide-react';
+import { BadgeCheck, CreditCard, Settings2 } from 'lucide-react';
 import { useCurrentUser } from '@/features/auth/api';
-import { useBillingStatus } from '../api';
+import { useBillingPortal, useBillingStatus } from '../api';
 import { formatDate } from '@/lib/dates';
 
 function membershipLine(status: {
@@ -31,6 +31,7 @@ function membershipLine(status: {
 export function BillingSection() {
   const { data: user } = useCurrentUser();
   const billing = useBillingStatus();
+  const portal = useBillingPortal();
   const status = billing.data;
 
   return (
@@ -73,6 +74,19 @@ export function BillingSection() {
           Subscribe or redeem a code
         </Link>
       )}
+
+      {status?.hasSubscription && (
+        <button
+          type="button"
+          disabled={portal.isPending}
+          onClick={() => portal.mutate()}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-line px-4 py-2 text-sm font-semibold transition-colors hover:bg-elev disabled:opacity-50"
+        >
+          <Settings2 size={15} aria-hidden />
+          Manage billing
+        </button>
+      )}
+      {portal.isError && <p className="mt-2 text-sm text-rose-500">{portal.error.message}</p>}
     </section>
   );
 }
