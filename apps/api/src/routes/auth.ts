@@ -5,12 +5,20 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { effectivePlan, resolveMembership } from '@arcadia/shared';
 import { query } from '../db/pool';
+import { logAudit } from '../lib/audit';
+import { emailConfigured, passwordResetEmail, sendEmail, verifyEmailEmail } from '../lib/email';
+import { consumeEmailToken, createEmailToken } from '../lib/email-tokens';
 import { exchangeGoogleCode, googleAuthUrl, googleConfigured } from '../lib/google-auth';
 import { env } from '../lib/env';
 import { createNotification } from '../lib/notify';
 import { DUMMY_HASH_PROMISE, hashPassword, verifyPassword } from '../lib/password';
 import { clientIp, rateLimit } from '../lib/rate-limit';
-import { createSession, deleteOtherSessions, deleteSession } from '../lib/session';
+import {
+  createSession,
+  deleteAllSessions,
+  deleteOtherSessions,
+  deleteSession,
+} from '../lib/session';
 import { requireAuth, SESSION_COOKIE, type AppEnv } from '../middleware/auth';
 
 const registerSchema = z.object({
@@ -69,6 +77,10 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
     'Welcome to Arcadia Atlas',
     'Set up your first workout to start tracking progress.',
   );
+  // Best-effort: signup must never fail because the mail provider hiccuped.
+  sendVerificationEmail(rows[0]!.id, email).catch((err) =>
+    console.warn('signup verification email failed:', err),
+  );
   return c.json(
     {
       user: {
@@ -79,6 +91,7 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
         plan: 'free',
         trialEndsAt: rows[0]!.trial_ends_at,
         membership: 'trial', // the INSERT default just started the 7-day window
+        emailVerified: false,
         createdAt: rows[0]!.created_at,
       },
       // Also returned in the body for the native app, which uses Bearer auth
@@ -103,11 +116,12 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     trial_ends_at: string | null;
     comped: boolean;
     status: string;
+    email_verified: boolean;
     created_at: string;
     password_hash: string | null;
   }>(
     `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status,
-            created_at, password_hash
+            email_verified, created_at, password_hash
        FROM users WHERE email = $1`,
     [email],
   );
@@ -143,10 +157,104 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       plan: effectivePlan(user.plan, user.plan_expires_at),
       trialEndsAt: user.trial_ends_at,
       membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at, user.comped),
+      emailVerified: user.email_verified,
       createdAt: user.created_at,
     },
     token,
   });
+});
+
+/* --------------------- Password reset & email verify ---------------------- */
+
+/** Creates a fresh verify link and emails it. Shared by signup and the
+ * re-send endpoint; throws on send failure — callers pick the policy. */
+async function sendVerificationEmail(userId: string, email: string): Promise<void> {
+  if (!emailConfigured()) return;
+  const token = await createEmailToken(userId, 'email_verify', 24 * 60);
+  const message = verifyEmailEmail(
+    `${env.publicUrl}/verify-email?token=${encodeURIComponent(token)}`,
+  );
+  await sendEmail(email, message.subject, message.html);
+}
+
+const forgotSchema = z.object({ email: z.email().max(254) });
+
+/** Always answers the same way, immediately: whether the account exists must
+ * not be readable from the response, its wording, or its timing — so the
+ * lookup-and-send runs after the response, fire-and-forget. */
+authRoutes.post(
+  '/forgot-password',
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }),
+  zValidator('json', forgotSchema),
+  async (c) => {
+    if (!emailConfigured()) {
+      return c.json({ error: 'Password reset isn’t available yet' }, 501);
+    }
+    const email = c.req.valid('json').email.trim().toLowerCase();
+    void (async () => {
+      const rows = await query<{ id: string; status: string }>(
+        'SELECT id, status FROM users WHERE email = $1',
+        [email],
+      );
+      const user = rows[0];
+      if (!user || user.status === 'banned') return;
+      const token = await createEmailToken(user.id, 'password_reset', 30);
+      const message = passwordResetEmail(
+        `${env.publicUrl}/reset-password?token=${encodeURIComponent(token)}`,
+      );
+      await sendEmail(email, message.subject, message.html);
+    })().catch((err) => console.error('password reset email failed:', err));
+    return c.json({ ok: true });
+  },
+);
+
+const resetSchema = z.object({
+  token: z.string().min(20).max(200),
+  password: z.string().min(8).max(128),
+});
+
+authRoutes.post('/reset-password', authLimiter, zValidator('json', resetSchema), async (c) => {
+  const { token, password } = c.req.valid('json');
+  const userId = await consumeEmailToken(token, 'password_reset');
+  if (!userId) {
+    return c.json({ error: 'This link is invalid or has expired — request a new one' }, 400);
+  }
+  const passwordHash = await hashPassword(password);
+  // Completing a reset proves the person controls the email address.
+  await query('UPDATE users SET password_hash = $2, email_verified = true WHERE id = $1', [
+    userId,
+    passwordHash,
+  ]);
+  // Every session dies — including any held by whoever prompted the reset.
+  await deleteAllSessions(userId);
+  await logAudit(userId, 'password_reset', 'user', userId);
+  return c.json({ ok: true });
+});
+
+authRoutes.post(
+  '/send-verification',
+  requireAuth,
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 3, by: 'user' }),
+  async (c) => {
+    if (!emailConfigured()) {
+      return c.json({ error: 'Email verification isn’t available yet' }, 501);
+    }
+    const user = c.get('user')!;
+    if (user.emailVerified) return c.json({ ok: true, alreadyVerified: true });
+    await sendVerificationEmail(user.id, user.email);
+    return c.json({ ok: true });
+  },
+);
+
+const verifySchema = z.object({ token: z.string().min(20).max(200) });
+
+authRoutes.post('/verify-email', authLimiter, zValidator('json', verifySchema), async (c) => {
+  const userId = await consumeEmailToken(c.req.valid('json').token, 'email_verify');
+  if (!userId) {
+    return c.json({ error: 'This link is invalid or has expired' }, 400);
+  }
+  await query('UPDATE users SET email_verified = true WHERE id = $1', [userId]);
+  return c.json({ ok: true });
 });
 
 /* ------------------------- Google sign-in (OAuth) ------------------------- */
@@ -214,7 +322,8 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
   );
   if (rows.length === 0) {
     rows = await query<GoogleUserRow>(
-      `UPDATE users SET google_id = $1 WHERE email = $2 AND google_id IS NULL
+      `UPDATE users SET google_id = $1, email_verified = true
+        WHERE email = $2 AND google_id IS NULL
        RETURNING ${GOOGLE_USER_COLUMNS}`,
       [identity.sub, identity.email],
     );
@@ -223,8 +332,8 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
     const username = await availableUsername(identity.email);
     try {
       rows = await query<GoogleUserRow>(
-        `INSERT INTO users (email, username, google_id, display_name)
-         VALUES ($1, $2, $3, $4) RETURNING ${GOOGLE_USER_COLUMNS}`,
+        `INSERT INTO users (email, username, google_id, display_name, email_verified)
+         VALUES ($1, $2, $3, $4, true) RETURNING ${GOOGLE_USER_COLUMNS}`,
         [identity.email, username, identity.sub, identity.name.slice(0, 60) || null],
       );
     } catch {

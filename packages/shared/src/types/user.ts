@@ -20,6 +20,9 @@ export interface AuthUser {
   /** When the signup trial ends. Null only for accounts predating trials. */
   trialEndsAt: string | null;
   membership: MembershipStatus;
+  /** Proven ownership of the email (verification link, password reset, or
+   * Google sign-in). Unverified accounts work — this drives nudge UI only. */
+  emailVerified: boolean;
   createdAt: string;
 }
 
