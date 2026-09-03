@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useLocation, useSearchParams } from 'react-router';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router';
 import { useLogin, useRegister, useSession } from '../api';
 
 type Mode = 'signin' | 'register';
@@ -130,6 +130,14 @@ export function SignInPage() {
           placeholder={mode === 'register' ? 'Password (min. 8 characters)' : 'Password'}
           className={inputClasses}
         />
+
+        {mode === 'signin' && (
+          <p className="text-right">
+            <Link to="/forgot-password" className="text-xs font-medium text-muted hover:text-accent">
+              Forgot password?
+            </Link>
+          </p>
+        )}
 
         {active.isError && <p className="text-sm text-rose-500">{active.error.message}</p>}
 

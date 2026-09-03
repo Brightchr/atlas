@@ -16,6 +16,7 @@ import { TopBar } from '@/app/layout/TopBar';
 import { DbStatusBanner } from '@/components/DbStatusBanner';
 import { useStopImpersonation } from '@/features/admin/api';
 import { TrialBanner } from '@/features/billing/components/TrialBanner';
+import { VerifyEmailBanner } from '@/features/auth/components/VerifyEmailBanner';
 import { useCurrentUser, useSession } from '@/features/auth/api';
 import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 import { FriendsRail } from '@/features/social/components/FriendsRail';
@@ -162,6 +163,7 @@ export function AppLayout() {
       <DbStatusBanner />
       <ImpersonationBanner />
       <TrialBanner />
+      <VerifyEmailBanner />
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar — desktop only */}
