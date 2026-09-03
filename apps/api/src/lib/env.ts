@@ -57,6 +57,14 @@ export const env = {
    * Unset = the "Continue with Google" flow reports itself unavailable. */
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  /** Stripe (dashboard.stripe.com → Developers). All three must be set for
+   * checkout to open; unset = billing endpoints report payments closed and
+   * the UI keeps its "coming soon" state. */
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  stripePriceId: process.env.STRIPE_PRICE_ID ?? '',
+  /** Second price on the same product. Optional — unset hides annual billing. */
+  stripePriceIdAnnual: process.env.STRIPE_PRICE_ID_ANNUAL ?? '',
   /** Set TRUST_CF_PROXY=1 once traffic flows through Cloudflare: client IPs
    * then come from CF-Connecting-IP — the x-forwarded-for walk would stop at
    * a Cloudflare edge address (public) and rate-limit/ban the edge, not the

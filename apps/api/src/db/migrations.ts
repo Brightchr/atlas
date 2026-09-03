@@ -480,6 +480,25 @@ const migrations: { id: string; sql: string }[] = [
         CHECK (target_type IN ('user', 'plan', 'review', 'recipe', 'other'));
     `,
   },
+  {
+    id: '021_stripe',
+    sql: `
+      -- Stripe references only: entitlement stays on plan/plan_expires_at so
+      -- resolveMembership(), promo grants and comped accounts are untouched.
+      -- The webhook finds the user by customer id; the subscription id drives
+      -- the "Manage billing" portal button.
+      ALTER TABLE users ADD COLUMN stripe_customer_id text UNIQUE;
+      ALTER TABLE users ADD COLUMN stripe_subscription_id text;
+
+      -- Stripe retries webhook deliveries; recording event ids makes each
+      -- event apply exactly once.
+      CREATE TABLE stripe_events (
+        id          text PRIMARY KEY,
+        type        text NOT NULL,
+        received_at timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */
