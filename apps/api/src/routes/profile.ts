@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { query } from '../db/pool';
+import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** User profiles: a customizable public page (banner, avatar, per-section
@@ -10,6 +11,9 @@ import { requireAuth, type AppEnv } from '../middleware/auth';
 export const profileRoutes = new Hono<AppEnv>();
 
 profileRoutes.use('*', requireAuth);
+// Public profiles are browsable, so this also caps scraping other users'
+// pages ('user' keys on the caller, falling back to IP).
+profileRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 60, by: 'user' }));
 
 const BANNERS = new Set(['indigo', 'tide', 'ember', 'meadow', 'sunset', 'mono']);
 // Keep in step with AVATAR_ICONS / AVATAR_TONES in

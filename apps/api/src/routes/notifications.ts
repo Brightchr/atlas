@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import { query } from '../db/pool';
+import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 export const notificationRoutes = new Hono<AppEnv>();
 
 notificationRoutes.use('*', requireAuth);
+// Polled by the top bar — generous, but a runaway client loop gets stopped.
+notificationRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 60, by: 'user' }));
 
 notificationRoutes.get('/', async (c) => {
   const user = c.get('user')!;

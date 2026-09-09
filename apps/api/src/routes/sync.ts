@@ -45,8 +45,9 @@ export const syncRoutes = new Hono<AppEnv>();
 syncRoutes.use('*', requireAuth);
 syncRoutes.use('*', requireActiveMember);
 // Sync is chatty by design (bursts after offline periods); the cap exists to
-// stop a runaway client loop, not to throttle normal use.
-syncRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120 }));
+// stop a runaway client loop, not to throttle normal use. Keyed per USER —
+// by IP, one carrier NAT would make unrelated users share a budget.
+syncRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 
 interface PushChange {
   entity?: string;
