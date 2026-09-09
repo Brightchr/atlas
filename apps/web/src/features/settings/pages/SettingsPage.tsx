@@ -19,6 +19,7 @@ import {
 } from '@/lib/trainingSetup';
 import { useSetUnits, useUnits, type UnitSystem } from '@/lib/units';
 import { BillingSection } from '@/features/billing/components/BillingSection';
+import { DangerZoneSection } from '../components/DangerZoneSection';
 
 const UNIT_OPTIONS: { id: UnitSystem; label: string; hint: string }[] = [
   { id: 'imperial', label: 'US units', hint: 'Pounds, feet & inches (default)' },
@@ -367,6 +368,8 @@ export function SettingsPage() {
           </div>
         )}
       </section>
+
+      <DangerZoneSection />
 
       <p className="text-xs text-muted/70">
         Theme lives in the top bar. Training goals and password live under{' '}

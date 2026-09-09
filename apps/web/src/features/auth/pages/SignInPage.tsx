@@ -35,6 +35,7 @@ export function SignInPage() {
   const session = useSession();
   const [params] = useSearchParams();
   const oauthError = OAUTH_ERRORS[params.get('error') ?? ''];
+  const accountDeleted = params.get('notice') === 'account-deleted';
 
   const login = useLogin();
   const register = useRegister();
@@ -74,6 +75,13 @@ export function SignInPage() {
           </p>
         </div>
       </div>
+
+      {accountDeleted && (
+        <p className="mb-4 rounded-xl border border-line bg-surface p-3 text-center text-sm text-muted">
+          Your account is scheduled for deletion. Changed your mind? Sign back in within 14 days
+          and it will be restored.
+        </p>
+      )}
 
       <div className="mb-4 grid grid-cols-2 rounded-xl border border-line bg-surface p-1 text-sm font-medium shadow-sm">
         {(

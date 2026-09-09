@@ -100,6 +100,22 @@ export function useSendVerification() {
   });
 }
 
+export function useDeleteAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { password?: string; confirm?: string }) =>
+      apiFetch<{ ok: boolean; graceDays: number }>('/v1/auth/delete-account', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    // Same hygiene as logout: nothing of this account stays in memory.
+    onSuccess: () => {
+      queryClient.setQueryData(['auth', 'me'], null);
+      queryClient.clear();
+    },
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
