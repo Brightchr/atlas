@@ -6,8 +6,11 @@ import { env } from '../lib/env';
  *
  * Sizing: instances × max (10) + one migration connection must stay under
  * the Postgres plan's connection limit. TLS: Railway's internal hostname is
- * a private network (no TLS needed); any OTHER production host gets TLS so
- * credentials never cross the public internet in plaintext. */
+ * a private network (no TLS needed); any OTHER production host gets TLS
+ * WITH certificate verification — skipping verification would make the
+ * connection MITM-able, which is worse odds than a failed boot. A host with
+ * self-signed certs (e.g. Railway's public proxy) can opt out explicitly
+ * via DATABASE_SSL_NO_VERIFY=1, an informed decision instead of a default. */
 export const pool = new pg.Pool({
   connectionString: env.databaseUrl,
   max: 10,
@@ -18,7 +21,7 @@ export const pool = new pg.Pool({
     env.isProd &&
     !env.databaseUrl.includes('railway.internal') &&
     !env.databaseUrl.includes('sslmode=')
-      ? { rejectUnauthorized: false }
+      ? { rejectUnauthorized: !env.databaseSslNoVerify }
       : undefined,
 });
 

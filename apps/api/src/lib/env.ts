@@ -31,6 +31,9 @@ export const env = {
   isProd: process.env.NODE_ENV === 'production',
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://arcadia:arcadia@localhost:55432/arcadia',
+  /** Explicit opt-out of Postgres TLS certificate verification, for hosts
+   * with self-signed certs (Railway's public proxy). Never set it elsewhere. */
+  databaseSslNoVerify: process.env.DATABASE_SSL_NO_VERIFY === '1',
   /** Browser origins allowed to call this API with credentials (cookies). */
   corsOrigins: (
     process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://localhost:5174,http://localhost:8080'
@@ -82,3 +85,32 @@ export const env = {
   fatSecretClientId: process.env.FATSECRET_CLIENT_ID ?? '',
   fatSecretClientSecret: process.env.FATSECRET_CLIENT_SECRET ?? '',
 } as const;
+
+/** Refuses to boot a production instance whose config still carries dev
+ * defaults — a missing PUBLIC_URL yields broken OAuth redirects and reset
+ * links, and localhost CORS silently blocks the real site. A crash at deploy
+ * time is diagnosable in seconds; the silent version costs an evening. */
+export function assertProductionEnv(): void {
+  if (!env.isProd) return;
+  const problems: string[] = [];
+  if (env.publicUrl.includes('localhost')) {
+    problems.push('PUBLIC_URL is unset (or points at localhost)');
+  }
+  if (env.corsOrigins.every((origin) => origin.includes('localhost'))) {
+    problems.push('CORS_ORIGINS is unset (or only allows localhost)');
+  }
+  if (problems.length > 0) {
+    throw new Error(`Refusing to start in production: ${problems.join('; ')}`);
+  }
+  // Degraded-but-runnable states get a loud line in the deploy logs instead.
+  if (!env.trustCfProxy) {
+    console.warn(
+      'TRUST_CF_PROXY is not set — behind Cloudflare, rate limits and IP bans would target edge IPs',
+    );
+  }
+  if (!env.stripeSecretKey) console.warn('Stripe is not configured — checkout is closed');
+  if (!env.resendApiKey) console.warn('Resend is not configured — password reset is unavailable');
+  if (env.fdcApiKey === 'DEMO_KEY') {
+    console.warn('FDC_API_KEY is the demo key (~30 requests/hour) — set a real one');
+  }
+}

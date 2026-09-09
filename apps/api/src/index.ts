@@ -3,7 +3,7 @@ import { app } from './app';
 import { query } from './db/pool';
 import { runMigrations } from './db/migrations';
 import { seedAccounts } from './db/seed';
-import { env } from './lib/env';
+import { assertProductionEnv, env } from './lib/env';
 import { purgeDeletedAccounts } from './lib/account';
 import { deleteExpiredEmailTokens } from './lib/email-tokens';
 import { deleteExpiredSessions } from './lib/session';
@@ -24,6 +24,7 @@ async function runMaintenance(): Promise<void> {
 }
 
 async function main() {
+  assertProductionEnv();
   await runMigrations();
   await seedAccounts();
   await runMaintenance();
