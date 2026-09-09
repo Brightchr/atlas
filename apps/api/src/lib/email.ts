@@ -60,6 +60,17 @@ ${linkButton(url, 'Reset password')}`,
   };
 }
 
+export function accountDeletionEmail(graceDays: number): { subject: string; html: string } {
+  return {
+    subject: 'Your Atlas account is scheduled for deletion',
+    html: emailShell(
+      'Account scheduled for deletion',
+      `<p style="margin:0;font-size:14px;color:#44403c">Your account and all its data will be permanently deleted in ${graceDays} days. Any subscription has been cancelled — you won’t be charged again.</p>
+<p style="margin:12px 0 0;font-size:14px;color:#44403c">Changed your mind? Just sign back in within ${graceDays} days and your account will be restored exactly as you left it.</p>`,
+    ),
+  };
+}
+
 export function verifyEmailEmail(url: string): { subject: string; html: string } {
   return {
     subject: 'Verify your email for Atlas',

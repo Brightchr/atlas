@@ -36,10 +36,11 @@ interface AuthUserRow {
   trial_ends_at: string | null;
   comped: boolean;
   email_verified: boolean;
+  has_password: boolean;
   created_at: string;
 }
 const AUTH_USER_COLUMNS =
-  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, email_verified, created_at';
+  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, email_verified, password_hash IS NOT NULL AS has_password, created_at';
 
 function toAuthUser(row: AuthUserRow): AuthUser {
   return {
@@ -51,6 +52,7 @@ function toAuthUser(row: AuthUserRow): AuthUser {
     trialEndsAt: row.trial_ends_at,
     membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
     emailVerified: row.email_verified,
+    hasPassword: row.has_password,
     createdAt: row.created_at,
   };
 }

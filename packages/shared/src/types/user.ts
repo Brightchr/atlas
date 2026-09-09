@@ -23,6 +23,9 @@ export interface AuthUser {
   /** Proven ownership of the email (verification link, password reset, or
    * Google sign-in). Unverified accounts work — this drives nudge UI only. */
   emailVerified: boolean;
+  /** False for Google-only accounts — they confirm sensitive actions (like
+   * account deletion) with a typed phrase instead of a password. */
+  hasPassword: boolean;
   createdAt: string;
 }
 

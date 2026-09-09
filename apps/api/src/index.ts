@@ -4,6 +4,7 @@ import { query } from './db/pool';
 import { runMigrations } from './db/migrations';
 import { seedAccounts } from './db/seed';
 import { env } from './lib/env';
+import { purgeDeletedAccounts } from './lib/account';
 import { deleteExpiredEmailTokens } from './lib/email-tokens';
 import { deleteExpiredSessions } from './lib/session';
 
@@ -15,6 +16,7 @@ async function runMaintenance(): Promise<void> {
   try {
     await deleteExpiredSessions();
     await deleteExpiredEmailTokens();
+    await purgeDeletedAccounts();
     await query(`DELETE FROM notifications WHERE created_at < now() - interval '90 days'`);
   } catch (err) {
     console.warn('maintenance sweep failed (will retry next cycle):', err);

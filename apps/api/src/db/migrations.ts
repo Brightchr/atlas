@@ -522,6 +522,15 @@ const migrations: { id: string; sql: string }[] = [
       CREATE INDEX email_tokens_user_idx ON email_tokens(user_id);
     `,
   },
+  {
+    id: '023_account_deletion',
+    sql: `
+      -- Soft delete: the row (and everything cascading off it) survives a
+      -- 14-day grace window so signing back in can restore the account; the
+      -- daily maintenance sweep hard-deletes rows past the window.
+      ALTER TABLE users ADD COLUMN deleted_at timestamptz;
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

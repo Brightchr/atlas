@@ -45,15 +45,20 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
     trial_ends_at: string | null;
     comped: boolean;
     email_verified: boolean;
+    has_password: boolean;
     created_at: string;
     impersonator_user_id: string | null;
   }>(
     `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
-            u.comped, u.email_verified, u.created_at, s.impersonator_user_id
+            u.comped, u.email_verified, u.password_hash IS NOT NULL AS has_password,
+            u.created_at, s.impersonator_user_id
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()
         -- A ban takes effect on the very next request, on every device.
-        AND u.status = 'active'`,
+        AND u.status = 'active'
+        -- Soft-deleted accounts have no valid sessions; signing in again
+        -- (which restores the account) is the only way back.
+        AND u.deleted_at IS NULL`,
     [hashToken(token)],
   );
   const row = rows[0];
@@ -70,6 +75,7 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
       trialEndsAt: row.trial_ends_at,
       membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
       emailVerified: row.email_verified,
+      hasPassword: row.has_password,
       createdAt: row.created_at,
     },
     impersonatorId: row.impersonator_user_id,

@@ -5,8 +5,15 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { effectivePlan, resolveMembership } from '@arcadia/shared';
 import { query } from '../db/pool';
+import { DELETION_GRACE_DAYS, cancelStripeForUser } from '../lib/account';
 import { logAudit } from '../lib/audit';
-import { emailConfigured, passwordResetEmail, sendEmail, verifyEmailEmail } from '../lib/email';
+import {
+  accountDeletionEmail,
+  emailConfigured,
+  passwordResetEmail,
+  sendEmail,
+  verifyEmailEmail,
+} from '../lib/email';
 import { consumeEmailToken, createEmailToken } from '../lib/email-tokens';
 import { exchangeGoogleCode, googleAuthUrl, googleConfigured } from '../lib/google-auth';
 import { env } from '../lib/env';
@@ -92,6 +99,7 @@ authRoutes.post('/register', authLimiter, zValidator('json', registerSchema), as
         trialEndsAt: rows[0]!.trial_ends_at,
         membership: 'trial', // the INSERT default just started the 7-day window
         emailVerified: false,
+        hasPassword: true,
         createdAt: rows[0]!.created_at,
       },
       // Also returned in the body for the native app, which uses Bearer auth
@@ -117,11 +125,12 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     comped: boolean;
     status: string;
     email_verified: boolean;
+    deleted_at: string | null;
     created_at: string;
     password_hash: string | null;
   }>(
     `SELECT id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status,
-            email_verified, created_at, password_hash
+            email_verified, deleted_at, created_at, password_hash
        FROM users WHERE email = $1`,
     [email],
   );
@@ -146,6 +155,19 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
     return c.json({ error: 'This account has been suspended' }, 403);
   }
 
+  // Signing in during the deletion grace window restores the account —
+  // proving the credentials IS the recovery flow.
+  if (user.deleted_at !== null) {
+    await query('UPDATE users SET deleted_at = NULL WHERE id = $1', [user.id]);
+    await logAudit(user.id, 'account_restored', 'user', user.id);
+    await createNotification(
+      user.id,
+      'account',
+      'Welcome back',
+      'Your account was restored — deletion has been cancelled.',
+    );
+  }
+
   const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
   return c.json({
@@ -158,6 +180,7 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       trialEndsAt: user.trial_ends_at,
       membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at, user.comped),
       emailVerified: user.email_verified,
+      hasPassword: user.password_hash !== null,
       createdAt: user.created_at,
     },
     token,
@@ -246,6 +269,66 @@ authRoutes.post(
   },
 );
 
+/* ---------------------------- Account deletion ---------------------------- */
+
+const deleteAccountSchema = z.object({
+  /** Required for accounts with a password. */
+  password: z.string().max(128).optional(),
+  /** Google-only accounts type DELETE instead — no password exists to check. */
+  confirm: z.string().max(20).optional(),
+});
+
+/** Soft delete: access ends now, billing ends now, data survives a grace
+ * window (signing back in restores everything), then the daily sweep purges
+ * it permanently. */
+authRoutes.post(
+  '/delete-account',
+  requireAuth,
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 5, by: 'user' }),
+  zValidator('json', deleteAccountSchema),
+  async (c) => {
+    const user = c.get('user')!;
+    const body = c.req.valid('json');
+
+    const [row] = await query<{ password_hash: string | null; role: string }>(
+      'SELECT password_hash, role FROM users WHERE id = $1',
+      [user.id],
+    );
+    if (!row) return c.json({ error: 'User not found' }, 404);
+    // The last admin deleting themselves would orphan the instance.
+    if (row.role === 'admin') {
+      return c.json({ error: 'Admin accounts can’t self-delete — demote the role first' }, 403);
+    }
+
+    // Deletion is the most destructive action an account has, so holding a
+    // session isn't enough — re-prove it: password, or for Google-only
+    // accounts (nothing to verify against) an explicit typed phrase.
+    if (row.password_hash !== null) {
+      const valid = body.password
+        ? await verifyPassword(row.password_hash, body.password)
+        : false;
+      if (!valid) return c.json({ error: 'Incorrect password' }, 403);
+    } else if (body.confirm !== 'DELETE') {
+      return c.json({ error: 'Type DELETE to confirm' }, 400);
+    }
+
+    await cancelStripeForUser(user.id);
+    await query('UPDATE users SET deleted_at = now() WHERE id = $1', [user.id]);
+    await deleteAllSessions(user.id);
+    await logAudit(user.id, 'account_delete_requested', 'user', user.id, {
+      graceDays: DELETION_GRACE_DAYS,
+    });
+    if (emailConfigured()) {
+      const message = accountDeletionEmail(DELETION_GRACE_DAYS);
+      sendEmail(user.email, message.subject, message.html).catch((err) =>
+        console.warn('deletion email failed:', err),
+      );
+    }
+    deleteCookie(c, SESSION_COOKIE, { path: '/' });
+    return c.json({ ok: true, graceDays: DELETION_GRACE_DAYS });
+  },
+);
+
 const verifySchema = z.object({ token: z.string().min(20).max(200) });
 
 authRoutes.post('/verify-email', authLimiter, zValidator('json', verifySchema), async (c) => {
@@ -261,11 +344,12 @@ authRoutes.post('/verify-email', authLimiter, zValidator('json', verifySchema), 
 
 const OAUTH_STATE_COOKIE = 'arcadia_oauth_state';
 const GOOGLE_USER_COLUMNS =
-  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status, created_at';
+  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, status, deleted_at, created_at';
 
 interface GoogleUserRow {
   id: string;
   status: string;
+  deleted_at: string | null;
 }
 
 /** Email local part → available username: sanitized, padded to the minimum
@@ -349,6 +433,18 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
 
   const user = rows[0]!;
   if (user.status === 'banned') return fail('suspended');
+
+  // Same recovery rule as password login: signing in restores the account.
+  if (user.deleted_at !== null) {
+    await query('UPDATE users SET deleted_at = NULL WHERE id = $1', [user.id]);
+    await logAudit(user.id, 'account_restored', 'user', user.id);
+    await createNotification(
+      user.id,
+      'account',
+      'Welcome back',
+      'Your account was restored — deletion has been cancelled.',
+    );
+  }
 
   const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
