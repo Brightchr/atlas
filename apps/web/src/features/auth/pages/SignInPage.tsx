@@ -27,7 +27,11 @@ function GoogleG() {
 }
 
 export function SignInPage() {
-  const [mode, setMode] = useState<Mode>('signin');
+  const [initialParams] = useSearchParams();
+  // The landing page's "Start free" CTA lands here in register mode.
+  const [mode, setMode] = useState<Mode>(
+    initialParams.get('mode') === 'register' ? 'register' : 'signin',
+  );
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

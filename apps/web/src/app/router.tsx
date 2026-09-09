@@ -7,6 +7,7 @@ import { RequireMembership } from '@/features/billing/components/RequireMembersh
 import { AdminPage } from '@/features/admin/pages/AdminPage';
 import { UpgradePage } from '@/features/billing/pages/UpgradePage';
 import { SignInPage } from '@/features/auth/pages/SignInPage';
+import { LandingPage } from '@/features/marketing/pages/LandingPage';
 import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/pages/VerifyEmailPage';
@@ -53,7 +54,8 @@ function GroupRedirect() {
  * persists through every drill-down. Old paths redirect so bookmarks,
  * notifications, and muscle memory keep working. */
 export const router = createBrowserRouter([
-  // Public: reachable without a session (sign-in and the emailed-link pages).
+  // Public: reachable without a session (marketing, sign-in, emailed links).
+  { path: '/home', element: <LandingPage />, errorElement: <ErrorPage /> },
   { path: '/signin', element: <SignInPage />, errorElement: <ErrorPage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage />, errorElement: <ErrorPage /> },
   { path: '/reset-password', element: <ResetPasswordPage />, errorElement: <ErrorPage /> },

@@ -23,6 +23,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (!session.data) {
+    // The bare root is a first visit — that's the marketing page's audience.
+    // A deep link (someone shared /train, a bookmark) means they want IN, so
+    // it goes straight to sign-in and returns them there afterwards.
+    if (location.pathname === '/') {
+      return <Navigate to="/home" replace />;
+    }
     return <Navigate to="/signin" replace state={{ from: location.pathname }} />;
   }
 
