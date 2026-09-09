@@ -7,7 +7,7 @@ import { query } from '../db/pool';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
 import { invalidateIpBlockCache } from '../lib/ip-block';
-import { clientIp } from '../lib/rate-limit';
+import { clientIp, rateLimit } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
 import { sharedRecipeIngredientSchema } from './recipes';
 import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
@@ -83,6 +83,9 @@ adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
 });
 
 adminRoutes.use('*', requireRole('admin'));
+// Admins are trusted, their credentials aren't — a stolen admin session
+// shouldn't get unlimited throughput on bulk endpoints.
+adminRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 
 adminRoutes.get('/stats', async (c) => {
   const [stats] = await query<{
@@ -695,14 +698,22 @@ adminRoutes.patch('/reports/:id', zValidator('json', reportUpdateSchema), async 
 });
 
 adminRoutes.get('/audit', async (c) => {
+  // Explicit columns + a resolved username: SELECT * would keep shipping
+  // whatever columns migrations add later, sight unseen.
   const entries = await query<{
     id: string;
     actor_id: string | null;
+    actor_username: string | null;
     action: string;
     target_type: string;
     target_id: string;
     detail: unknown;
     created_at: string;
-  }>('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100');
+  }>(
+    `SELECT a.id, a.actor_id, u.username AS actor_username, a.action,
+            a.target_type, a.target_id, a.detail, a.created_at
+       FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
+      ORDER BY a.created_at DESC LIMIT 100`,
+  );
   return c.json({ entries });
 });
