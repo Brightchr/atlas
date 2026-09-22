@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { query } from '../db/pool';
+import { and, eq, gt, isNull, lte, sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { emailTokens } from '../db/schema';
 
 /** Single-use email link tokens (password reset, email verification). Same
  * storage rule as sessions: high-entropy random value to the user, SHA-256
@@ -19,12 +21,15 @@ export async function createEmailToken(
   const token = randomBytes(32).toString('base64url');
   // A new link supersedes older ones of the same purpose — only the freshest
   // email works, so a mistyped-then-retried request can't leave live spares.
-  await query('DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2', [userId, purpose]);
-  await query(
-    `INSERT INTO email_tokens (user_id, purpose, token_hash, expires_at)
-     VALUES ($1, $2, $3, now() + make_interval(mins => $4))`,
-    [userId, purpose, hashToken(token), ttlMinutes],
-  );
+  await db
+    .delete(emailTokens)
+    .where(and(eq(emailTokens.userId, userId), eq(emailTokens.purpose, purpose)));
+  await db.insert(emailTokens).values({
+    userId,
+    purpose,
+    tokenHash: hashToken(token),
+    expiresAt: sql`now() + make_interval(mins => ${ttlMinutes})`,
+  });
   return token;
 }
 
@@ -35,16 +40,22 @@ export async function consumeEmailToken(
   token: string,
   purpose: EmailTokenPurpose,
 ): Promise<string | null> {
-  const rows = await query<{ user_id: string }>(
-    `UPDATE email_tokens SET used_at = now()
-      WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > now()
-      RETURNING user_id`,
-    [hashToken(token), purpose],
-  );
-  return rows[0]?.user_id ?? null;
+  const rows = await db
+    .update(emailTokens)
+    .set({ usedAt: sql`now()` })
+    .where(
+      and(
+        eq(emailTokens.tokenHash, hashToken(token)),
+        eq(emailTokens.purpose, purpose),
+        isNull(emailTokens.usedAt),
+        gt(emailTokens.expiresAt, new Date()),
+      ),
+    )
+    .returning({ userId: emailTokens.userId });
+  return rows[0]?.userId ?? null;
 }
 
 /** Housekeeping for the daily maintenance sweep. */
 export async function deleteExpiredEmailTokens(): Promise<void> {
-  await query('DELETE FROM email_tokens WHERE expires_at <= now()');
+  await db.delete(emailTokens).where(lte(emailTokens.expiresAt, new Date()));
 }

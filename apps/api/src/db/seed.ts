@@ -1,6 +1,7 @@
 import { env } from '../lib/env';
 import { hashPassword } from '../lib/password';
-import { query } from './pool';
+import { db } from './db';
+import { users } from './schema';
 
 /** Idempotent startup seeding for the demo and admin accounts. In production
  * an account is only created when its password comes from env — never a
@@ -16,13 +17,16 @@ export async function seedAccounts(): Promise<void> {
   ].filter((a): a is NonNullable<typeof a> => a !== null);
 
   for (const account of accounts) {
-    const rows = await query<{ id: string }>(
-      `INSERT INTO users (email, username, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (email) DO NOTHING
-       RETURNING id`,
-      [account.email, account.username, await hashPassword(account.password), account.role],
-    );
+    const rows = await db
+      .insert(users)
+      .values({
+        email: account.email,
+        username: account.username,
+        passwordHash: await hashPassword(account.password),
+        role: account.role as 'admin' | 'user',
+      })
+      .onConflictDoNothing({ target: users.email })
+      .returning({ id: users.id });
     if (rows.length > 0) {
       console.log(`seeded account: ${account.username} (${account.role})`);
     }

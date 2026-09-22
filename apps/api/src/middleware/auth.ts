@@ -1,7 +1,9 @@
 import type { MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
+import { eq, sql } from 'drizzle-orm';
 import type { AuthUser } from '@arcadia/shared';
-import { query } from '../db/pool';
+import { db } from '../db/db';
+import { users } from '../db/schema';
 import { getSessionForToken } from '../lib/session';
 
 export const SESSION_COOKIE = 'arcadia_session';
@@ -31,9 +33,13 @@ function touchPresence(userId: string): void {
   const now = Date.now();
   if (now - (lastTouch.get(userId) ?? 0) < PRESENCE_TOUCH_MS) return;
   lastTouch.set(userId, now);
-  void query('UPDATE users SET last_seen_at = now() WHERE id = $1', [userId]).catch(() => {
-    lastTouch.delete(userId);
-  });
+  void db
+    .update(users)
+    .set({ lastSeenAt: sql`now()` })
+    .where(eq(users.id, userId))
+    .catch(() => {
+      lastTouch.delete(userId);
+    });
   // Bounded: prune entries older than an hour once the map grows.
   if (lastTouch.size > 10_000) {
     for (const [id, at] of lastTouch) if (now - at > 60 * 60 * 1000) lastTouch.delete(id);

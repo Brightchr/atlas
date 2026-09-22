@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { and, eq, gt, isNull, lte, ne } from 'drizzle-orm';
 import { effectivePlan, resolveMembership, type AuthUser } from '@arcadia/shared';
-import { query } from '../db/pool';
+import { db } from '../db/db';
+import { sessions, users } from '../db/schema';
 
 const SESSION_DAYS = 30;
 
@@ -27,40 +29,45 @@ export async function createSession(
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + (ttlMs ?? SESSION_DAYS * 24 * 60 * 60 * 1000));
-  await query(
-    'INSERT INTO sessions (user_id, token_hash, expires_at, impersonator_user_id, ip) VALUES ($1, $2, $3, $4, $5)',
-    [userId, hashToken(token), expiresAt, impersonatorId ?? null, ip ?? null],
-  );
+  await db.insert(sessions).values({
+    userId,
+    tokenHash: hashToken(token),
+    expiresAt,
+    impersonatorUserId: impersonatorId ?? null,
+    ip: ip ?? null,
+  });
   return { token, expiresAt };
 }
 
 export async function getSessionForToken(token: string): Promise<SessionInfo | null> {
-  const rows = await query<{
-    id: string;
-    email: string;
-    username: string;
-    role: AuthUser['role'];
-    plan: AuthUser['plan'];
-    plan_expires_at: string | null;
-    trial_ends_at: string | null;
-    comped: boolean;
-    email_verified: boolean;
-    has_password: boolean;
-    created_at: string;
-    impersonator_user_id: string | null;
-  }>(
-    `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
-            u.comped, u.email_verified, u.password_hash IS NOT NULL AS has_password,
-            u.created_at, s.impersonator_user_id
-       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = $1 AND s.expires_at > now()
-        -- A ban takes effect on the very next request, on every device.
-        AND u.status = 'active'
-        -- Soft-deleted accounts have no valid sessions; signing in again
-        -- (which restores the account) is the only way back.
-        AND u.deleted_at IS NULL`,
-    [hashToken(token)],
-  );
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      role: users.role,
+      plan: users.plan,
+      planExpiresAt: users.planExpiresAt,
+      trialEndsAt: users.trialEndsAt,
+      comped: users.comped,
+      emailVerified: users.emailVerified,
+      passwordHash: users.passwordHash,
+      createdAt: users.createdAt,
+      impersonatorUserId: sessions.impersonatorUserId,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(
+      and(
+        eq(sessions.tokenHash, hashToken(token)),
+        gt(sessions.expiresAt, new Date()),
+        // A ban takes effect on the very next request, on every device.
+        eq(users.status, 'active'),
+        // Soft-deleted accounts have no valid sessions; signing in again
+        // (which restores the account) is the only way back.
+        isNull(users.deletedAt),
+      ),
+    );
   const row = rows[0];
   if (!row) return null;
   return {
@@ -71,38 +78,37 @@ export async function getSessionForToken(token: string): Promise<SessionInfo | n
       role: row.role,
       // Plan expiry and trial windows are applied here, once — everything
       // downstream (requirePro, membership gates, the UI) sees resolved values.
-      plan: effectivePlan(row.plan, row.plan_expires_at),
-      trialEndsAt: row.trial_ends_at,
-      membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
-      emailVerified: row.email_verified,
-      hasPassword: row.has_password,
-      createdAt: row.created_at,
+      plan: effectivePlan(row.plan, row.planExpiresAt),
+      trialEndsAt: row.trialEndsAt?.toISOString() ?? null,
+      membership: resolveMembership(row.plan, row.planExpiresAt, row.trialEndsAt, row.comped),
+      emailVerified: row.emailVerified,
+      hasPassword: row.passwordHash !== null,
+      createdAt: row.createdAt.toISOString(),
     },
-    impersonatorId: row.impersonator_user_id,
+    impersonatorId: row.impersonatorUserId,
   };
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  await query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)]);
+  await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(token)));
 }
 
 /** Revokes every session for a user EXCEPT the one making the request —
  * standard hygiene after a password change: stolen sessions die, the person
  * changing the password stays signed in. */
 export async function deleteOtherSessions(userId: string, currentToken: string): Promise<void> {
-  await query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [
-    userId,
-    hashToken(currentToken),
-  ]);
+  await db
+    .delete(sessions)
+    .where(and(eq(sessions.userId, userId), ne(sessions.tokenHash, hashToken(currentToken))));
 }
 
 /** Revokes EVERY session for a user — for password reset, where the person
  * proving email ownership may not be the person holding a stolen session. */
 export async function deleteAllSessions(userId: string): Promise<void> {
-  await query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 }
 
 /** Housekeeping — expired rows are already unusable; this just keeps the table tidy. */
 export async function deleteExpiredSessions(): Promise<void> {
-  await query('DELETE FROM sessions WHERE expires_at <= now()');
+  await db.delete(sessions).where(lte(sessions.expiresAt, new Date()));
 }
