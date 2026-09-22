@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
-import { query } from '../db/pool';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { planReviews, sharedPlans, users } from '../db/schema';
 import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -84,14 +86,14 @@ function normalizeProfile(raw: unknown): ProfileDoc {
 /** The caller's own profile (includes fields only they may see). */
 profileRoutes.get('/me', async (c) => {
   const user = c.get('user')!;
-  const rows = await query<{ display_name: string | null; bio: string; profile: unknown }>(
-    'SELECT display_name, bio, profile FROM users WHERE id = $1',
-    [user.id],
-  );
+  const rows = await db
+    .select({ displayName: users.displayName, bio: users.bio, profile: users.profile })
+    .from(users)
+    .where(eq(users.id, user.id));
   return c.json({
     username: user.username,
     email: user.email,
-    displayName: rows[0]?.display_name ?? null,
+    displayName: rows[0]?.displayName ?? null,
     bio: rows[0]?.bio ?? '',
     memberSince: user.createdAt,
     profile: normalizeProfile(rows[0]?.profile),
@@ -107,14 +109,14 @@ profileRoutes.patch('/me', async (c) => {
   } | null;
   if (!body) return c.json({ error: 'Nothing to update' }, 400);
 
-  const current = await query<{ display_name: string | null; bio: string; profile: unknown }>(
-    'SELECT display_name, bio, profile FROM users WHERE id = $1',
-    [user.id],
-  );
+  const current = await db
+    .select({ displayName: users.displayName, bio: users.bio, profile: users.profile })
+    .from(users)
+    .where(eq(users.id, user.id));
   const displayName =
     body.displayName !== undefined
       ? body.displayName?.trim() || null
-      : (current[0]?.display_name ?? null);
+      : (current[0]?.displayName ?? null);
   const bio = body.bio !== undefined ? body.bio.trim() : (current[0]?.bio ?? '');
   const profile =
     body.profile !== undefined
@@ -123,129 +125,125 @@ profileRoutes.patch('/me', async (c) => {
   if (displayName && displayName.length > 60) return c.json({ error: 'Display name too long' }, 400);
   if (bio.length > 500) return c.json({ error: 'Bio too long (500 characters max)' }, 400);
 
-  await query('UPDATE users SET display_name = $1, bio = $2, profile = $3::jsonb WHERE id = $4', [
-    displayName,
-    bio,
-    JSON.stringify(profile),
-    user.id,
-  ]);
+  await db.update(users).set({ displayName, bio, profile }).where(eq(users.id, user.id));
   return c.json({ ok: true });
 });
 
 /** Public profile by username: identity, appearance, and only the sections
  * the owner has left visible. */
 profileRoutes.get('/:username', async (c) => {
-  const rows = await query<{
-    id: string;
-    username: string;
-    display_name: string | null;
-    bio: string;
-    created_at: string;
-    profile: unknown;
-    last_seen_at: string | null;
-  }>(
-    'SELECT id, username, display_name, bio, created_at, profile, last_seen_at FROM users WHERE lower(username) = lower($1)',
-    [c.req.param('username')],
-  );
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      displayName: users.displayName,
+      bio: users.bio,
+      createdAt: users.createdAt,
+      profile: users.profile,
+      lastSeenAt: users.lastSeenAt,
+    })
+    .from(users)
+    .where(sql`lower(${users.username}) = lower(${c.req.param('username')})`);
   const person = rows[0];
   if (!person) return c.json({ error: 'No such user' }, 404);
   const doc = normalizeProfile(person.profile);
 
   const base = {
     username: person.username,
-    displayName: person.display_name,
+    displayName: person.displayName,
     bio: person.bio,
-    memberSince: person.created_at,
+    memberSince: person.createdAt,
     bannerId: doc.bannerId,
     avatarIcon: doc.avatarIcon,
     avatarTone: doc.avatarTone,
     // null = the owner keeps presence private.
     online: doc.show.online
-      ? person.last_seen_at !== null &&
-        Date.now() - Date.parse(person.last_seen_at) < ONLINE_WINDOW_MS
+      ? person.lastSeenAt !== null && Date.now() - person.lastSeenAt.getTime() < ONLINE_WINDOW_MS
       : null,
   };
+
+  const publiclyOwned = and(
+    eq(sharedPlans.ownerUserId, person.id),
+    eq(sharedPlans.visibility, 'public'),
+  );
 
   // Overall reputation: the average across every review on their public plans.
   const stats = doc.show.stats
     ? (
-        await query<{ avg_rating: string | null; review_count: string; plan_count: string }>(
-          `SELECT AVG(r.rating) AS avg_rating, COUNT(r.id) AS review_count,
-                  COUNT(DISTINCT p.id) AS plan_count
-             FROM shared_plans p
-             LEFT JOIN plan_reviews r ON r.plan_id = p.id
-            WHERE p.owner_user_id = $1 AND p.visibility = 'public'`,
-          [person.id],
-        )
+        await db
+          .select({
+            avgRating: sql<string | null>`AVG(${planReviews.rating})`,
+            reviewCount: sql<number>`COUNT(${planReviews.id})::int`,
+            planCount: sql<number>`COUNT(DISTINCT ${sharedPlans.id})::int`,
+          })
+          .from(sharedPlans)
+          .leftJoin(planReviews, eq(planReviews.planId, sharedPlans.id))
+          .where(publiclyOwned)
       )[0]
     : undefined;
 
   const plans = doc.show.plans
-    ? await query<{
-        id: string;
-        name: string;
-        description: string;
-        difficulty: string;
-        goal: string;
-        diet: string | null;
-        avg_rating: string | null;
-        review_count: string;
-        updated_at: string;
-      }>(
-        `SELECT p.id, p.name, p.description, p.difficulty, p.goal, p.diet, p.updated_at,
-                AVG(r.rating) AS avg_rating, COUNT(r.id) AS review_count
-           FROM shared_plans p
-           LEFT JOIN plan_reviews r ON r.plan_id = p.id
-          WHERE p.owner_user_id = $1 AND p.visibility = 'public'
-          GROUP BY p.id
-          ORDER BY p.updated_at DESC
-          LIMIT 50`,
-        [person.id],
-      )
+    ? await db
+        .select({
+          id: sharedPlans.id,
+          name: sharedPlans.name,
+          description: sharedPlans.description,
+          difficulty: sharedPlans.difficulty,
+          goal: sharedPlans.goal,
+          diet: sharedPlans.diet,
+          updatedAt: sharedPlans.updatedAt,
+          avgRating: sql<string | null>`AVG(${planReviews.rating})`,
+          reviewCount: sql<number>`COUNT(${planReviews.id})::int`,
+        })
+        .from(sharedPlans)
+        .leftJoin(planReviews, eq(planReviews.planId, sharedPlans.id))
+        .where(publiclyOwned)
+        .groupBy(sharedPlans.id)
+        .orderBy(desc(sharedPlans.updatedAt))
+        .limit(50)
     : [];
 
   // Reviews they have written on public plans.
   const reviews = doc.show.reviews
-    ? await query<{
-        id: string;
-        rating: number;
-        comment: string;
-        plan_id: string;
-        plan_name: string;
-        updated_at: string;
-      }>(
-        `SELECT r.id, r.rating, r.comment, p.id AS plan_id, p.name AS plan_name, r.updated_at
-           FROM plan_reviews r
-           JOIN shared_plans p ON p.id = r.plan_id
-          WHERE r.user_id = $1 AND p.visibility = 'public'
-          ORDER BY r.updated_at DESC
-          LIMIT 10`,
-        [person.id],
-      )
+    ? await db
+        .select({
+          id: planReviews.id,
+          rating: planReviews.rating,
+          comment: planReviews.comment,
+          planId: sharedPlans.id,
+          planName: sharedPlans.name,
+          updatedAt: planReviews.updatedAt,
+        })
+        .from(planReviews)
+        .innerJoin(sharedPlans, eq(sharedPlans.id, planReviews.planId))
+        .where(and(eq(planReviews.userId, person.id), eq(sharedPlans.visibility, 'public')))
+        .orderBy(desc(planReviews.updatedAt))
+        .limit(10)
     : [];
 
   // Activity: published plans and written reviews, one merged timeline.
+  // UNION ALL across differently-shaped sources reads best as plain SQL.
   const activity = doc.show.activity
-    ? await query<{ kind: string; title: string; detail: string; at: string }>(
-        `(SELECT 'plan' AS kind, name AS title, '' AS detail, updated_at AS at
-            FROM shared_plans WHERE owner_user_id = $1 AND visibility = 'public')
-         UNION ALL
-         (SELECT 'review' AS kind, p.name AS title, r.rating::text AS detail, r.updated_at AS at
-            FROM plan_reviews r JOIN shared_plans p ON p.id = r.plan_id
-           WHERE r.user_id = $1 AND p.visibility = 'public')
-         ORDER BY at DESC
-         LIMIT 12`,
-        [person.id],
-      )
+    ? ((
+        await db.execute(sql`
+          (SELECT 'plan' AS kind, name AS title, '' AS detail, updated_at AS at
+              FROM shared_plans WHERE owner_user_id = ${person.id} AND visibility = 'public')
+           UNION ALL
+           (SELECT 'review' AS kind, p.name AS title, r.rating::text AS detail, r.updated_at AS at
+              FROM plan_reviews r JOIN shared_plans p ON p.id = r.plan_id
+             WHERE r.user_id = ${person.id} AND p.visibility = 'public')
+           ORDER BY at DESC
+           LIMIT 12`)
+      ).rows as { kind: string; title: string; detail: string; at: string }[])
     : [];
 
   return c.json({
     ...base,
     stats: stats
       ? {
-          rating: stats.avg_rating === null ? null : Math.round(Number(stats.avg_rating) * 10) / 10,
-          reviewCount: Number(stats.review_count),
-          planCount: Number(stats.plan_count),
+          rating: stats.avgRating === null ? null : Math.round(Number(stats.avgRating) * 10) / 10,
+          reviewCount: stats.reviewCount,
+          planCount: stats.planCount,
         }
       : null,
     plans: plans.map((p) => ({
@@ -255,18 +253,11 @@ profileRoutes.get('/:username', async (c) => {
       difficulty: p.difficulty,
       goal: p.goal,
       diet: p.diet,
-      rating: p.avg_rating === null ? null : Math.round(Number(p.avg_rating) * 10) / 10,
-      reviewCount: Number(p.review_count),
-      updatedAt: p.updated_at,
+      rating: p.avgRating === null ? null : Math.round(Number(p.avgRating) * 10) / 10,
+      reviewCount: p.reviewCount,
+      updatedAt: p.updatedAt,
     })),
-    reviews: reviews.map((r) => ({
-      id: r.id,
-      rating: r.rating,
-      comment: r.comment,
-      planId: r.plan_id,
-      planName: r.plan_name,
-      updatedAt: r.updated_at,
-    })),
+    reviews,
     activity: activity.map((a) => ({
       kind: a.kind as 'plan' | 'review',
       title: a.title,

@@ -1,18 +1,13 @@
-import { query } from '../db/pool';
+import { db } from '../db/db';
+import { notifications } from '../db/schema';
 
-/** Creates an in-app notification. Email delivery is intentionally not wired
- * yet — it needs a sending provider (Resend/Postmark/SES) and a verified
- * domain; when that lands, this is the single place to fan out to email. */
+/** Creates an in-app notification. Fan-out to email (via lib/email.ts) can
+ * hook in here later — this is the single place notifications are born. */
 export async function createNotification(
   userId: string,
   type: string,
   title: string,
   body = '',
 ): Promise<void> {
-  await query('INSERT INTO notifications (user_id, type, title, body) VALUES ($1, $2, $3, $4)', [
-    userId,
-    type,
-    title,
-    body,
-  ]);
+  await db.insert(notifications).values({ userId, type, title, body });
 }

@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
-import { query } from '../db/pool';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { notifications } from '../db/schema';
 import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -11,33 +13,32 @@ notificationRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 60, by: 'user'
 
 notificationRoutes.get('/', async (c) => {
   const user = c.get('user')!;
-  const notifications = await query<{
-    id: string;
-    type: string;
-    title: string;
-    body: string;
-    read: boolean;
-    created_at: string;
-  }>(
-    `SELECT id, type, title, body, read, created_at
-       FROM notifications
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT 20`,
-    [user.id],
-  );
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      title: notifications.title,
+      body: notifications.body,
+      read: notifications.read,
+      created_at: notifications.createdAt,
+    })
+    .from(notifications)
+    .where(eq(notifications.userId, user.id))
+    .orderBy(desc(notifications.createdAt))
+    .limit(20);
   // Counted in SQL — the visible page alone would undercount the badge.
-  const unreadRows = await query<{ n: string }>(
-    'SELECT count(*) FILTER (WHERE NOT read) AS n FROM notifications WHERE user_id = $1',
-    [user.id],
-  );
-  return c.json({ notifications, unread: Number(unreadRows[0]?.n ?? 0) });
+  const [unread] = await db
+    .select({ n: sql<number>`count(*) FILTER (WHERE NOT ${notifications.read})::int` })
+    .from(notifications)
+    .where(eq(notifications.userId, user.id));
+  return c.json({ notifications: rows, unread: unread?.n ?? 0 });
 });
 
 notificationRoutes.post('/read-all', async (c) => {
   const user = c.get('user')!;
-  await query('UPDATE notifications SET read = true WHERE user_id = $1 AND read = false', [
-    user.id,
-  ]);
+  await db
+    .update(notifications)
+    .set({ read: true })
+    .where(and(eq(notifications.userId, user.id), eq(notifications.read, false)));
   return c.json({ ok: true });
 });
