@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
-import { pool, query } from '../db/pool';
+import { eq, sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { syncRows } from '../db/schema';
 import { rateLimit } from '../lib/rate-limit';
 import { requireActiveMember, requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -75,15 +77,15 @@ function mergeQuantities(a: string | null, b: string | null): string | null {
  * deterministic keeper), the rest become tombstones, and the rewritten rows
  * are attributed to device 'server' so every device converges on them. */
 async function mergeDuplicateShoppingItems(
-  client: { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+  client: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> },
   userId: string,
 ): Promise<void> {
-  const { rows } = (await client.query(
-    `SELECT row_id, payload FROM sync_rows
-      WHERE user_id = $1 AND entity = 'shopping_items' AND deleted = false
-        AND payload->>'status' = 'needed'`,
-    [userId],
-  )) as { rows: { row_id: string; payload: Record<string, unknown> }[] };
+  const { rows } = (await client.execute(sql`
+    SELECT row_id, payload FROM sync_rows
+     WHERE user_id = ${userId} AND entity = 'shopping_items' AND deleted = false
+       AND payload->>'status' = 'needed'`)) as unknown as {
+    rows: { row_id: string; payload: Record<string, unknown> }[];
+  };
 
   const groups = new Map<string, { row_id: string; payload: Record<string, unknown> }[]>();
   for (const r of rows) {
@@ -103,21 +105,17 @@ async function mergeDuplicateShoppingItems(
       quantity = mergeQuantities(quantity, (dup.payload.quantity as string | null) ?? null);
     }
     const mergedPayload = { ...keeper.payload, quantity };
-    await client.query(
-      `UPDATE sync_rows
-          SET payload = $1::jsonb, changed_at = now(), device_id = 'server',
-              seq = nextval('sync_rows_seq')
-        WHERE user_id = $2 AND entity = 'shopping_items' AND row_id = $3`,
-      [JSON.stringify(mergedPayload), userId, keeper.row_id],
-    );
+    await client.execute(sql`
+      UPDATE sync_rows
+         SET payload = ${JSON.stringify(mergedPayload)}::jsonb, changed_at = now(),
+             device_id = 'server', seq = nextval('sync_rows_seq')
+       WHERE user_id = ${userId} AND entity = 'shopping_items' AND row_id = ${keeper.row_id}`);
     for (const dup of list.slice(1)) {
-      await client.query(
-        `UPDATE sync_rows
-            SET payload = NULL, deleted = true, changed_at = now(), device_id = 'server',
-                seq = nextval('sync_rows_seq')
-          WHERE user_id = $1 AND entity = 'shopping_items' AND row_id = $2`,
-        [userId, dup.row_id],
-      );
+      await client.execute(sql`
+        UPDATE sync_rows
+           SET payload = NULL, deleted = true, changed_at = now(), device_id = 'server',
+               seq = nextval('sync_rows_seq')
+         WHERE user_id = ${userId} AND entity = 'shopping_items' AND row_id = ${dup.row_id}`);
     }
   }
 }
@@ -171,55 +169,43 @@ syncRoutes.post('/push', async (c) => {
 
   // Quota gate — an index-only count on (user_id, seq). Upserts of existing
   // rows don't grow the table, so only block once the ceiling is truly hit.
-  const countRows = await query<{ n: string }>(
-    'SELECT count(*) AS n FROM sync_rows WHERE user_id = $1',
-    [user.id],
-  );
-  if (Number(countRows[0]!.n) >= MAX_ROWS_PER_USER) {
+  const [count] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(syncRows)
+    .where(eq(syncRows.userId, user.id));
+  if ((count?.n ?? 0) >= MAX_ROWS_PER_USER) {
     return c.json({ error: 'Sync storage quota exceeded' }, 403);
   }
 
   // One transaction per batch: a push is all-or-nothing, so the client can
-  // safely clear its pending set on success.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    for (const ch of body.changes) {
-      await client.query(
-        `INSERT INTO sync_rows (user_id, entity, row_id, payload, deleted, changed_at, device_id)
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
-         ON CONFLICT (user_id, entity, row_id) DO UPDATE
-           SET payload = EXCLUDED.payload, deleted = EXCLUDED.deleted,
-               changed_at = EXCLUDED.changed_at, device_id = EXCLUDED.device_id,
-               seq = nextval('sync_rows_seq')
-         WHERE sync_rows.changed_at <= EXCLUDED.changed_at`,
-        [
-          user.id,
-          ch.entity,
-          ch.rowId,
-          ch.deleted ? null : JSON.stringify(ch.payload),
-          ch.deleted === true,
-          ch.changedAt,
-          deviceId,
-        ],
-      );
+  // safely clear its pending set on success. The upsert stays raw SQL: its
+  // conditional DO UPDATE ... WHERE is the last-write-wins rule, preserved
+  // byte-for-byte.
+  // Captured so TypeScript keeps the non-undefined narrowing inside closures.
+  const changes = body.changes;
+  await db.transaction(async (tx) => {
+    for (const ch of changes) {
+      await tx.execute(sql`
+        INSERT INTO sync_rows (user_id, entity, row_id, payload, deleted, changed_at, device_id)
+        VALUES (${user.id}, ${ch.entity}, ${ch.rowId},
+                ${ch.deleted ? null : JSON.stringify(ch.payload)}::jsonb,
+                ${ch.deleted === true}, ${ch.changedAt}, ${deviceId})
+        ON CONFLICT (user_id, entity, row_id) DO UPDATE
+          SET payload = EXCLUDED.payload, deleted = EXCLUDED.deleted,
+              changed_at = EXCLUDED.changed_at, device_id = EXCLUDED.device_id,
+              seq = nextval('sync_rows_seq')
+        WHERE sync_rows.changed_at <= EXCLUDED.changed_at`);
     }
-    if (body.changes.some((ch) => ch.entity === 'shopping_items' && !ch.deleted)) {
-      await mergeDuplicateShoppingItems(client, user.id);
+    if (changes.some((ch) => ch.entity === 'shopping_items' && !ch.deleted)) {
+      await mergeDuplicateShoppingItems(tx, user.id);
     }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 
-  const rows = await query<{ cursor: string }>(
-    'SELECT COALESCE(MAX(seq), 0)::text AS cursor FROM sync_rows WHERE user_id = $1',
-    [user.id],
-  );
-  return c.json({ accepted: body.changes.length, cursor: rows[0]!.cursor });
+  const [cursorRow] = await db
+    .select({ cursor: sql<string>`COALESCE(MAX(${syncRows.seq}), 0)::text` })
+    .from(syncRows)
+    .where(eq(syncRows.userId, user.id));
+  return c.json({ accepted: body.changes.length, cursor: cursorRow!.cursor });
 });
 
 /** Page through this user's log from a cursor. The scan includes the calling
@@ -233,33 +219,32 @@ syncRoutes.get('/pull', async (c) => {
   if (!deviceId || deviceId.length > 64) return c.json({ error: 'deviceId is required' }, 400);
   if (!/^\d{1,19}$/.test(since)) return c.json({ error: 'Invalid cursor' }, 400);
 
-  const rows = await query<{
-    entity: string;
-    row_id: string;
-    payload: Record<string, unknown> | null;
-    deleted: boolean;
-    changed_at: string;
-    device_id: string;
-    seq: string;
-  }>(
-    `SELECT entity, row_id, payload, deleted, changed_at, device_id, seq::text
-       FROM sync_rows
-      WHERE user_id = $1 AND seq > $2
-      ORDER BY seq ASC
-      LIMIT ${PULL_PAGE_SIZE}`,
-    [user.id, since],
-  );
+  const rows = await db
+    .select({
+      entity: syncRows.entity,
+      rowId: syncRows.rowId,
+      payload: syncRows.payload,
+      deleted: syncRows.deleted,
+      changedAt: syncRows.changedAt,
+      deviceId: syncRows.deviceId,
+      // Cursors travel as text so a bigint can never lose precision in JS.
+      seq: sql<string>`${syncRows.seq}::text`,
+    })
+    .from(syncRows)
+    .where(sql`${syncRows.userId} = ${user.id} AND ${syncRows.seq} > ${since}::bigint`)
+    .orderBy(syncRows.seq)
+    .limit(PULL_PAGE_SIZE);
 
   const last = rows[rows.length - 1];
   return c.json({
     changes: rows
-      .filter((r) => r.device_id !== deviceId)
+      .filter((r) => r.deviceId !== deviceId)
       .map((r) => ({
         entity: r.entity,
-        rowId: r.row_id,
+        rowId: r.rowId,
         payload: r.payload,
         deleted: r.deleted,
-        changedAt: r.changed_at,
+        changedAt: r.changedAt,
       })),
     cursor: last ? last.seq : since,
     hasMore: rows.length === PULL_PAGE_SIZE,
@@ -270,6 +255,6 @@ syncRoutes.get('/pull', async (c) => {
  * privacy. Their devices keep their local databases untouched. */
 syncRoutes.delete('/data', async (c) => {
   const user = c.get('user')!;
-  await query('DELETE FROM sync_rows WHERE user_id = $1', [user.id]);
+  await db.delete(syncRows).where(eq(syncRows.userId, user.id));
   return c.json({ ok: true });
 });

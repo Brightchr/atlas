@@ -2,8 +2,19 @@ import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { effectivePlan, resolveMembership, type AuthUser, type MembershipPlan, type UserRole } from '@arcadia/shared';
-import { query } from '../db/pool';
+import { and, desc, eq, getTableColumns, ne, sql } from 'drizzle-orm';
+import { effectivePlan, resolveMembership, type AuthUser } from '@arcadia/shared';
+import { db } from '../db/db';
+import {
+  auditLog,
+  curatedFoods,
+  ipBlocks,
+  promoRedemptions,
+  promotions,
+  sessions,
+  sharedRecipes,
+  users,
+} from '../db/schema';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
 import { invalidateIpBlockCache } from '../lib/ip-block';
@@ -26,21 +37,33 @@ export const adminRoutes = new Hono<AppEnv>();
 
 /** Row → AuthUser for endpoints whose response lands in the client's session
  * cache (impersonation) — must match what /auth/me returns. */
+const authUserColumns = {
+  id: users.id,
+  email: users.email,
+  username: users.username,
+  role: users.role,
+  plan: users.plan,
+  planExpiresAt: users.planExpiresAt,
+  trialEndsAt: users.trialEndsAt,
+  comped: users.comped,
+  emailVerified: users.emailVerified,
+  hasPassword: sql<boolean>`${users.passwordHash} IS NOT NULL`,
+  createdAt: users.createdAt,
+};
+
 interface AuthUserRow {
   id: string;
   email: string;
   username: string;
-  role: UserRole;
-  plan: MembershipPlan;
-  plan_expires_at: string | null;
-  trial_ends_at: string | null;
+  role: 'user' | 'moderator' | 'admin';
+  plan: 'free' | 'pro';
+  planExpiresAt: Date | null;
+  trialEndsAt: Date | null;
   comped: boolean;
-  email_verified: boolean;
-  has_password: boolean;
-  created_at: string;
+  emailVerified: boolean;
+  hasPassword: boolean;
+  createdAt: Date;
 }
-const AUTH_USER_COLUMNS =
-  'id, email, username, role, plan, plan_expires_at, trial_ends_at, comped, email_verified, password_hash IS NOT NULL AS has_password, created_at';
 
 function toAuthUser(row: AuthUserRow): AuthUser {
   return {
@@ -48,12 +71,12 @@ function toAuthUser(row: AuthUserRow): AuthUser {
     email: row.email,
     username: row.username,
     role: row.role,
-    plan: effectivePlan(row.plan, row.plan_expires_at),
-    trialEndsAt: row.trial_ends_at,
-    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
-    emailVerified: row.email_verified,
-    hasPassword: row.has_password,
-    createdAt: row.created_at,
+    plan: effectivePlan(row.plan, row.planExpiresAt),
+    trialEndsAt: row.trialEndsAt?.toISOString() ?? null,
+    membership: resolveMembership(row.plan, row.planExpiresAt, row.trialEndsAt, row.comped),
+    emailVerified: row.emailVerified,
+    hasPassword: row.hasPassword,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -75,10 +98,7 @@ adminRoutes.post('/impersonation/stop', requireAuth, async (c) => {
     clientIp(c),
   );
   setSessionCookie(c, adminToken, expiresAt);
-  const rows = await query<AuthUserRow>(
-    `SELECT ${AUTH_USER_COLUMNS} FROM users WHERE id = $1`,
-    [impersonatorId],
-  );
+  const rows = await db.select(authUserColumns).from(users).where(eq(users.id, impersonatorId));
   return c.json({ user: rows[0] ? toAuthUser(rows[0]) : null, token: adminToken });
 });
 
@@ -88,96 +108,57 @@ adminRoutes.use('*', requireRole('admin'));
 adminRoutes.use('*', rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 
 adminRoutes.get('/stats', async (c) => {
-  const [stats] = await query<{
-    users: string;
-    active_sessions: string;
-    signups_7d: string;
-    notifications: string;
-    pro_users: string;
-    trial_users: string;
-    banned_users: string;
-    open_reports: string;
-    ip_blocks: string;
-  }>(
-    `SELECT
-       (SELECT count(*) FROM users) AS users,
-       (SELECT count(*) FROM sessions WHERE expires_at > now()) AS active_sessions,
-       (SELECT count(*) FROM users WHERE created_at > now() - interval '7 days') AS signups_7d,
-       (SELECT count(*) FROM notifications) AS notifications,
-       (SELECT count(*) FROM users
-         WHERE plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now())) AS pro_users,
-       (SELECT count(*) FROM users
-         WHERE trial_ends_at > now() AND status = 'active'
-           AND NOT (plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now()))) AS trial_users,
-       (SELECT count(*) FROM users WHERE status = 'banned') AS banned_users,
-       (SELECT count(*) FROM reports WHERE status = 'open') AS open_reports,
-       (SELECT count(*) FROM ip_blocks
-         WHERE expires_at IS NULL OR expires_at > now()) AS ip_blocks`,
-  );
-  return c.json({
-    users: Number(stats!.users),
-    activeSessions: Number(stats!.active_sessions),
-    signups7d: Number(stats!.signups_7d),
-    notifications: Number(stats!.notifications),
-    proUsers: Number(stats!.pro_users),
-    trialUsers: Number(stats!.trial_users),
-    bannedUsers: Number(stats!.banned_users),
-    openReports: Number(stats!.open_reports),
-    ipBlocks: Number(stats!.ip_blocks),
-  });
+  // Raw SQL: nine scalar subqueries in one round trip.
+  const [stats] = (
+    await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM users) AS users,
+        (SELECT count(*)::int FROM sessions WHERE expires_at > now()) AS "activeSessions",
+        (SELECT count(*)::int FROM users WHERE created_at > now() - interval '7 days') AS "signups7d",
+        (SELECT count(*)::int FROM notifications) AS notifications,
+        (SELECT count(*)::int FROM users
+          WHERE plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now())) AS "proUsers",
+        (SELECT count(*)::int FROM users
+          WHERE trial_ends_at > now() AND status = 'active'
+            AND NOT (plan = 'pro' AND (plan_expires_at IS NULL OR plan_expires_at > now()))) AS "trialUsers",
+        (SELECT count(*)::int FROM users WHERE status = 'banned') AS "bannedUsers",
+        (SELECT count(*)::int FROM reports WHERE status = 'open') AS "openReports",
+        (SELECT count(*)::int FROM ip_blocks
+          WHERE expires_at IS NULL OR expires_at > now()) AS "ipBlocks"`)
+  ).rows as unknown as {
+    users: number;
+    activeSessions: number;
+    signups7d: number;
+    notifications: number;
+    proUsers: number;
+    trialUsers: number;
+    bannedUsers: number;
+    openReports: number;
+    ipBlocks: number;
+  }[];
+  return c.json(stats!);
 });
 
 adminRoutes.get('/users', async (c) => {
   const q = c.req.query('q')?.trim() ?? '';
-  const users = await query<{
-    id: string;
-    email: string;
-    username: string;
-    role: string;
-    plan: string;
-    plan_expires_at: string | null;
-    trial_ends_at: string | null;
-    comped: boolean;
-    status: string;
-    banned_at: string | null;
-    ban_reason: string | null;
-    created_at: string;
-    active_sessions: string;
-    last_login: string | null;
-    last_ip: string | null;
-  }>(
-    `SELECT u.id, u.email, u.username, u.role, u.plan, u.plan_expires_at, u.trial_ends_at,
-            u.comped, u.status, u.banned_at, u.ban_reason, u.created_at,
-            count(s.id) FILTER (WHERE s.expires_at > now()) AS active_sessions,
-            max(s.created_at) AS last_login,
-            (array_agg(s.ip ORDER BY s.created_at DESC) FILTER (WHERE s.ip IS NOT NULL))[1] AS last_ip
-       FROM users u
-       LEFT JOIN sessions s ON s.user_id = u.id
-      WHERE $1 = '' OR u.email ILIKE '%' || $1 || '%' OR u.username ILIKE '%' || $1 || '%'
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-      LIMIT 100`,
-    [q],
-  );
-  return c.json({
-    users: users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      username: u.username,
-      role: u.role,
-      plan: u.plan,
-      planExpiresAt: u.plan_expires_at,
-      trialEndsAt: u.trial_ends_at,
-      comped: u.comped,
-      status: u.status,
-      bannedAt: u.banned_at,
-      banReason: u.ban_reason,
-      createdAt: u.created_at,
-      activeSessions: Number(u.active_sessions),
-      lastLogin: u.last_login,
-      lastIp: u.last_ip,
-    })),
-  });
+  // Raw SQL: the FILTERed aggregates and array_agg-first trick for last IP.
+  const rows = (
+    await db.execute(sql`
+      SELECT u.id, u.email, u.username, u.role, u.plan,
+             u.plan_expires_at AS "planExpiresAt", u.trial_ends_at AS "trialEndsAt",
+             u.comped, u.status, u.banned_at AS "bannedAt", u.ban_reason AS "banReason",
+             u.created_at AS "createdAt",
+             count(s.id) FILTER (WHERE s.expires_at > now())::int AS "activeSessions",
+             max(s.created_at) AS "lastLogin",
+             (array_agg(s.ip ORDER BY s.created_at DESC) FILTER (WHERE s.ip IS NOT NULL))[1] AS "lastIp"
+        FROM users u
+        LEFT JOIN sessions s ON s.user_id = u.id
+       WHERE ${q} = '' OR u.email ILIKE '%' || ${q} || '%' OR u.username ILIKE '%' || ${q} || '%'
+       GROUP BY u.id
+       ORDER BY u.created_at DESC
+       LIMIT 100`)
+  ).rows;
+  return c.json({ users: rows });
 });
 
 const exemptSchema = z.object({ comped: z.boolean() });
@@ -188,10 +169,11 @@ adminRoutes.patch('/users/:id/exempt', zValidator('json', exemptSchema), async (
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
   const { comped } = c.req.valid('json');
-  const rows = await query<{ id: string }>(
-    'UPDATE users SET comped = $1 WHERE id = $2 RETURNING id',
-    [comped, targetId],
-  );
+  const rows = await db
+    .update(users)
+    .set({ comped })
+    .where(eq(users.id, targetId))
+    .returning({ id: users.id });
   if (rows.length === 0) return c.json({ error: 'User not found' }, 404);
   await logAudit(admin.id, 'set_comped', 'user', targetId, { comped });
   return c.json({ ok: true, comped });
@@ -213,36 +195,36 @@ adminRoutes.post('/users/:id/ban', zValidator('json', banSchema), async (c) => {
 
   // role <> 'admin' in the WHERE, not a pre-check — admins stay unbannable
   // even if two requests race a concurrent promotion.
-  const rows = await query<{ id: string }>(
-    `UPDATE users SET status = 'banned', banned_at = now(), ban_reason = $2
-      WHERE id = $1 AND role <> 'admin' AND status = 'active'
-      RETURNING id`,
-    [targetId, reason],
-  );
+  const rows = await db
+    .update(users)
+    .set({ status: 'banned', bannedAt: sql`now()`, banReason: reason })
+    .where(and(eq(users.id, targetId), ne(users.role, 'admin'), eq(users.status, 'active')))
+    .returning({ id: users.id });
   if (rows.length === 0) {
     return c.json({ error: 'User not found, already banned, or an admin' }, 404);
   }
 
-  // Collect IPs BEFORE deleting the sessions that hold them.
+  // Collect IPs BEFORE deleting the sessions that hold them. Raw SQL:
+  // INSERT ... SELECT DISTINCT from another table.
   let blockedIps = 0;
   if (blockIps) {
-    const inserted = await query<{ ip: string }>(
-      `INSERT INTO ip_blocks (ip, reason, created_by)
-       SELECT DISTINCT s.ip, $2, $3
-         FROM sessions s
-        WHERE s.user_id = $1 AND s.ip IS NOT NULL AND s.ip <> 'unknown'
-          AND s.created_at > now() - interval '30 days'
-       ON CONFLICT (ip) DO NOTHING
-       RETURNING ip`,
-      [targetId, `Banned account: ${reason || 'no reason given'}`, admin.id],
-    );
+    const inserted = (
+      await db.execute(sql`
+        INSERT INTO ip_blocks (ip, reason, created_by)
+        SELECT DISTINCT s.ip, ${`Banned account: ${reason || 'no reason given'}`}, ${admin.id}
+          FROM sessions s
+         WHERE s.user_id = ${targetId} AND s.ip IS NOT NULL AND s.ip <> 'unknown'
+           AND s.created_at > now() - interval '30 days'
+        ON CONFLICT (ip) DO NOTHING
+        RETURNING ip`)
+    ).rows;
     blockedIps = inserted.length;
     invalidateIpBlockCache();
   }
 
   // The session-lookup filter already locks them out; deleting is hygiene so
   // dead tokens don't linger for 30 days.
-  await query('DELETE FROM sessions WHERE user_id = $1', [targetId]);
+  await db.delete(sessions).where(eq(sessions.userId, targetId));
   await logAudit(admin.id, 'ban_user', 'user', targetId, { reason, blockedIps });
   return c.json({ ok: true, blockedIps });
 });
@@ -250,12 +232,11 @@ adminRoutes.post('/users/:id/ban', zValidator('json', banSchema), async (c) => {
 adminRoutes.post('/users/:id/unban', async (c) => {
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
-  const rows = await query<{ id: string }>(
-    `UPDATE users SET status = 'active', banned_at = NULL, ban_reason = NULL
-      WHERE id = $1 AND status = 'banned'
-      RETURNING id`,
-    [targetId],
-  );
+  const rows = await db
+    .update(users)
+    .set({ status: 'active', bannedAt: null, banReason: null })
+    .where(and(eq(users.id, targetId), eq(users.status, 'banned')))
+    .returning({ id: users.id });
   if (rows.length === 0) return c.json({ error: 'User not found or not banned' }, 404);
   await logAudit(admin.id, 'unban_user', 'user', targetId, {});
   return c.json({ ok: true });
@@ -264,29 +245,20 @@ adminRoutes.post('/users/:id/unban', async (c) => {
 /* ---- IP blocks: network-level lockout, enforced before authentication ---- */
 
 adminRoutes.get('/ip-blocks', async (c) => {
-  const rows = await query<{
-    id: string;
-    ip: string;
-    reason: string;
-    created_at: string;
-    expires_at: string | null;
-    created_by_username: string | null;
-  }>(
-    `SELECT b.id, b.ip, b.reason, b.created_at, b.expires_at, u.username AS created_by_username
-       FROM ip_blocks b LEFT JOIN users u ON u.id = b.created_by
-      ORDER BY b.created_at DESC
-      LIMIT 200`,
-  );
-  return c.json({
-    blocks: rows.map((b) => ({
-      id: b.id,
-      ip: b.ip,
-      reason: b.reason,
-      createdAt: b.created_at,
-      expiresAt: b.expires_at,
-      createdBy: b.created_by_username,
-    })),
-  });
+  const rows = await db
+    .select({
+      id: ipBlocks.id,
+      ip: ipBlocks.ip,
+      reason: ipBlocks.reason,
+      createdAt: ipBlocks.createdAt,
+      expiresAt: ipBlocks.expiresAt,
+      createdBy: users.username,
+    })
+    .from(ipBlocks)
+    .leftJoin(users, eq(users.id, ipBlocks.createdBy))
+    .orderBy(desc(ipBlocks.createdAt))
+    .limit(200);
+  return c.json({ blocks: rows });
 });
 
 const ipBlockSchema = z.object({
@@ -299,13 +271,19 @@ const ipBlockSchema = z.object({
 adminRoutes.post('/ip-blocks', zValidator('json', ipBlockSchema), async (c) => {
   const admin = c.get('user')!;
   const body = c.req.valid('json');
-  const rows = await query<{ id: string }>(
-    `INSERT INTO ip_blocks (ip, reason, created_by, expires_at)
-     VALUES ($1, $2, $3, CASE WHEN $4::int IS NULL THEN NULL
-                              ELSE now() + make_interval(hours => $4::int) END)
-     ON CONFLICT (ip) DO NOTHING RETURNING id`,
-    [body.ip, body.reason, admin.id, body.expiresInHours ?? null],
-  );
+  const rows = await db
+    .insert(ipBlocks)
+    .values({
+      ip: body.ip,
+      reason: body.reason,
+      createdBy: admin.id,
+      expiresAt:
+        body.expiresInHours === undefined
+          ? null
+          : sql`now() + make_interval(hours => ${body.expiresInHours})`,
+    })
+    .onConflictDoNothing({ target: ipBlocks.ip })
+    .returning({ id: ipBlocks.id });
   if (rows.length === 0) return c.json({ error: 'This IP is already blocked' }, 409);
   invalidateIpBlockCache();
   await logAudit(admin.id, 'block_ip', 'ip', body.ip, { reason: body.reason });
@@ -314,9 +292,10 @@ adminRoutes.post('/ip-blocks', zValidator('json', ipBlockSchema), async (c) => {
 
 adminRoutes.delete('/ip-blocks/:id', async (c) => {
   const admin = c.get('user')!;
-  const rows = await query<{ ip: string }>('DELETE FROM ip_blocks WHERE id = $1 RETURNING ip', [
-    c.req.param('id'),
-  ]);
+  const rows = await db
+    .delete(ipBlocks)
+    .where(eq(ipBlocks.id, c.req.param('id')))
+    .returning({ ip: ipBlocks.ip });
   if (rows.length === 0) return c.json({ error: 'Block not found' }, 404);
   invalidateIpBlockCache();
   await logAudit(admin.id, 'unblock_ip', 'ip', rows[0]!.ip, {});
@@ -329,48 +308,41 @@ adminRoutes.patch('/users/:id/plan', zValidator('json', planSchema), async (c) =
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
   const { plan } = c.req.valid('json');
-  const rows = await query<{ id: string }>(
-    'UPDATE users SET plan = $1, plan_expires_at = NULL WHERE id = $2 RETURNING id',
-    [plan, targetId],
-  );
+  const rows = await db
+    .update(users)
+    .set({ plan, planExpiresAt: null })
+    .where(eq(users.id, targetId))
+    .returning({ id: users.id });
   if (rows.length === 0) return c.json({ error: 'User not found' }, 404);
   await logAudit(admin.id, 'set_plan', 'user', targetId, { plan });
   return c.json({ ok: true, plan });
 });
 
-/* ---- Promotions (structure for launches/discounts; payment wiring later) ---- */
+/* ---- Promotions (structure for launches/discounts) ---- */
 
 adminRoutes.get('/promotions', async (c) => {
-  const rows = await query<{
-    id: string;
-    code: string;
-    description: string;
-    discount_percent: number;
-    active: boolean;
-    starts_at: string;
-    ends_at: string | null;
-    max_redemptions: number | null;
-    grant_days: number | null;
-    redemptions: string;
-  }>(
-    `SELECT p.*, count(r.id) AS redemptions
-       FROM promotions p LEFT JOIN promo_redemptions r ON r.promotion_id = p.id
-      GROUP BY p.id
-      ORDER BY p.created_at DESC
-      LIMIT 100`,
-  );
+  const rows = await db
+    .select({
+      ...getTableColumns(promotions),
+      redemptions: sql<number>`count(${promoRedemptions.id})::int`,
+    })
+    .from(promotions)
+    .leftJoin(promoRedemptions, eq(promoRedemptions.promotionId, promotions.id))
+    .groupBy(promotions.id)
+    .orderBy(desc(promotions.createdAt))
+    .limit(100);
   return c.json({
     promotions: rows.map((p) => ({
       id: p.id,
       code: p.code,
       description: p.description,
-      discountPercent: p.discount_percent,
+      discountPercent: p.discountPercent,
       active: p.active,
-      startsAt: p.starts_at,
-      endsAt: p.ends_at,
-      maxRedemptions: p.max_redemptions,
-      grantDays: p.grant_days,
-      redemptions: Number(p.redemptions),
+      startsAt: p.startsAt,
+      endsAt: p.endsAt,
+      maxRedemptions: p.maxRedemptions,
+      grantDays: p.grantDays,
+      redemptions: p.redemptions,
     })),
   });
 });
@@ -390,17 +362,17 @@ const promotionSchema = z.object({
 adminRoutes.post('/promotions', zValidator('json', promotionSchema), async (c) => {
   const admin = c.get('user')!;
   const body = c.req.valid('json');
-  const rows = await query<{ id: string }>(
-    `INSERT INTO promotions (code, description, discount_percent, max_redemptions, grant_days)
-     VALUES ($1, $2, $3, $4, $5) ON CONFLICT (code) DO NOTHING RETURNING id`,
-    [
-      body.code.toUpperCase(),
-      body.description,
-      body.discountPercent,
-      body.maxRedemptions ?? null,
-      body.grantDays ?? null,
-    ],
-  );
+  const rows = await db
+    .insert(promotions)
+    .values({
+      code: body.code.toUpperCase(),
+      description: body.description,
+      discountPercent: body.discountPercent,
+      maxRedemptions: body.maxRedemptions ?? null,
+      grantDays: body.grantDays ?? null,
+    })
+    .onConflictDoNothing({ target: promotions.code })
+    .returning({ id: promotions.id });
   if (rows.length === 0) return c.json({ error: 'Code already exists' }, 409);
   await logAudit(admin.id, 'create_promotion', 'promotion', rows[0]!.id, { code: body.code });
   return c.json({ ok: true }, 201);
@@ -409,10 +381,11 @@ adminRoutes.post('/promotions', zValidator('json', promotionSchema), async (c) =
 adminRoutes.patch('/promotions/:id', zValidator('json', z.object({ active: z.boolean() })), async (c) => {
   const admin = c.get('user')!;
   const { active } = c.req.valid('json');
-  const rows = await query<{ id: string }>(
-    'UPDATE promotions SET active = $1 WHERE id = $2 RETURNING id',
-    [active, c.req.param('id')],
-  );
+  const rows = await db
+    .update(promotions)
+    .set({ active })
+    .where(eq(promotions.id, c.req.param('id')))
+    .returning({ id: promotions.id });
   if (rows.length === 0) return c.json({ error: 'Promotion not found' }, 404);
   await logAudit(admin.id, 'toggle_promotion', 'promotion', rows[0]!.id, { active });
   return c.json({ ok: true });
@@ -422,10 +395,7 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   const admin = c.get('user')!;
   const targetId = c.req.param('id');
 
-  const rows = await query<AuthUserRow>(
-    `SELECT ${AUTH_USER_COLUMNS} FROM users WHERE id = $1`,
-    [targetId],
-  );
+  const rows = await db.select(authUserColumns).from(users).where(eq(users.id, targetId));
   const target = rows[0];
   if (!target) return c.json({ error: 'User not found' }, 404);
   // Admins cannot masquerade as other admins — limits blast radius of one
@@ -450,10 +420,11 @@ adminRoutes.patch('/users/:id/role', zValidator('json', roleSchema), async (c) =
   if (targetId === admin.id) {
     return c.json({ error: 'You cannot change your own role' }, 400);
   }
-  const rows = await query<{ id: string; role: string }>(
-    'UPDATE users SET role = $1 WHERE id = $2 RETURNING id, role',
-    [role, targetId],
-  );
+  const rows = await db
+    .update(users)
+    .set({ role })
+    .where(eq(users.id, targetId))
+    .returning({ id: users.id, role: users.role });
   if (rows.length === 0) return c.json({ error: 'User not found' }, 404);
 
   await logAudit(admin.id, 'set_role', 'user', targetId, { role });
@@ -482,40 +453,27 @@ const curatedFoodSchema = z.object({
 const foodImportSchema = z.object({ foods: z.array(curatedFoodSchema).min(1).max(200) });
 
 /** Bulk import (clients chunk big guides into batches). Upsert by
- * name+brand, so re-importing an updated guide refreshes in place. */
+ * name+brand. Raw SQL: the conflict target is an EXPRESSION index
+ * (lower(name), coalesce(lower(brand), '')), which the builder can't name. */
 adminRoutes.post('/foods', zValidator('json', foodImportSchema), async (c) => {
   const admin = c.get('user')!;
   const { foods } = c.req.valid('json');
   for (const f of foods) {
-    await query(
-      `INSERT INTO curated_foods
-         (name, brand, barcode, kcal, protein_g, carbs_g, fat_g, sugar_g, fiber_g,
-          saturated_fat_g, sodium_g, serving_name, serving_grams, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       ON CONFLICT (lower(name), coalesce(lower(brand), '')) DO UPDATE SET
-         barcode = EXCLUDED.barcode, kcal = EXCLUDED.kcal,
-         protein_g = EXCLUDED.protein_g, carbs_g = EXCLUDED.carbs_g,
-         fat_g = EXCLUDED.fat_g, sugar_g = EXCLUDED.sugar_g,
-         fiber_g = EXCLUDED.fiber_g, saturated_fat_g = EXCLUDED.saturated_fat_g,
-         sodium_g = EXCLUDED.sodium_g, serving_name = EXCLUDED.serving_name,
-         serving_grams = EXCLUDED.serving_grams, created_by = EXCLUDED.created_by`,
-      [
-        f.name,
-        f.brand ?? null,
-        f.barcode ?? null,
-        f.kcal,
-        f.proteinG,
-        f.carbsG,
-        f.fatG,
-        f.sugarG ?? null,
-        f.fiberG ?? null,
-        f.saturatedFatG ?? null,
-        f.sodiumG ?? null,
-        f.servingName ?? null,
-        f.servingGrams ?? null,
-        admin.id,
-      ],
-    );
+    await db.execute(sql`
+      INSERT INTO curated_foods
+        (name, brand, barcode, kcal, protein_g, carbs_g, fat_g, sugar_g, fiber_g,
+         saturated_fat_g, sodium_g, serving_name, serving_grams, created_by)
+      VALUES (${f.name}, ${f.brand ?? null}, ${f.barcode ?? null}, ${f.kcal}, ${f.proteinG},
+              ${f.carbsG}, ${f.fatG}, ${f.sugarG ?? null}, ${f.fiberG ?? null},
+              ${f.saturatedFatG ?? null}, ${f.sodiumG ?? null}, ${f.servingName ?? null},
+              ${f.servingGrams ?? null}, ${admin.id})
+      ON CONFLICT (lower(name), coalesce(lower(brand), '')) DO UPDATE SET
+        barcode = EXCLUDED.barcode, kcal = EXCLUDED.kcal,
+        protein_g = EXCLUDED.protein_g, carbs_g = EXCLUDED.carbs_g,
+        fat_g = EXCLUDED.fat_g, sugar_g = EXCLUDED.sugar_g,
+        fiber_g = EXCLUDED.fiber_g, saturated_fat_g = EXCLUDED.saturated_fat_g,
+        sodium_g = EXCLUDED.sodium_g, serving_name = EXCLUDED.serving_name,
+        serving_grams = EXCLUDED.serving_grams, created_by = EXCLUDED.created_by`);
   }
   await logAudit(admin.id, 'import_foods', 'curated_foods', 'bulk', { count: foods.length });
   return c.json({ ok: true, imported: foods.length }, 201);
@@ -523,41 +481,33 @@ adminRoutes.post('/foods', zValidator('json', foodImportSchema), async (c) => {
 
 adminRoutes.get('/foods', async (c) => {
   const q = c.req.query('q')?.trim() ?? '';
-  const rows = await query<{
-    id: string;
-    name: string;
-    brand: string | null;
-    kcal: number;
-    serving_name: string | null;
-    created_at: string;
-  }>(
-    `SELECT id, name, brand, kcal, serving_name, created_at
-       FROM curated_foods
-      WHERE $1 = '' OR name ILIKE '%' || $1 || '%' OR coalesce(brand, '') ILIKE '%' || $1 || '%'
-      ORDER BY created_at DESC, name
-      LIMIT 100`,
-    [q],
-  );
-  const [{ n }] = await query<{ n: string }>('SELECT count(*) AS n FROM curated_foods');
-  return c.json({
-    total: Number(n),
-    foods: rows.map((f) => ({
-      id: f.id,
-      name: f.name,
-      brand: f.brand,
-      kcal: f.kcal,
-      servingName: f.serving_name,
-      createdAt: f.created_at,
-    })),
-  });
+  const pattern = `%${q}%`;
+  const rows = await db
+    .select({
+      id: curatedFoods.id,
+      name: curatedFoods.name,
+      brand: curatedFoods.brand,
+      kcal: curatedFoods.kcal,
+      servingName: curatedFoods.servingName,
+      createdAt: curatedFoods.createdAt,
+    })
+    .from(curatedFoods)
+    .where(
+      sql`${q} = '' OR ${curatedFoods.name} ILIKE ${pattern}
+          OR coalesce(${curatedFoods.brand}, '') ILIKE ${pattern}`,
+    )
+    .orderBy(desc(curatedFoods.createdAt), curatedFoods.name)
+    .limit(100);
+  const [total] = await db.select({ n: sql<number>`count(*)::int` }).from(curatedFoods);
+  return c.json({ total: total?.n ?? 0, foods: rows });
 });
 
 adminRoutes.delete('/foods/:id', async (c) => {
   const admin = c.get('user')!;
-  const rows = await query<{ name: string }>(
-    'DELETE FROM curated_foods WHERE id = $1 RETURNING name',
-    [c.req.param('id')],
-  );
+  const rows = await db
+    .delete(curatedFoods)
+    .where(eq(curatedFoods.id, c.req.param('id')))
+    .returning({ name: curatedFoods.name });
   if (rows.length === 0) return c.json({ error: 'Food not found' }, 404);
   await logAudit(admin.id, 'delete_food', 'curated_foods', c.req.param('id'), {
     name: rows[0]!.name,
@@ -589,24 +539,28 @@ adminRoutes.post(
         (sum, i) => sum + (i.food.per100g.kcal * i.grams) / 100,
         0,
       );
-      await query(
-        `INSERT INTO shared_recipes
-           (owner_user_id, local_recipe_id, name, description, servings, kcal_per_serving, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (owner_user_id, local_recipe_id) DO UPDATE SET
-           name = EXCLUDED.name, description = EXCLUDED.description,
-           servings = EXCLUDED.servings, kcal_per_serving = EXCLUDED.kcal_per_serving,
-           payload = EXCLUDED.payload, updated_at = now()`,
-        [
-          admin.id,
-          slug,
-          r.name,
-          r.description,
-          r.servings,
-          Math.round(totalKcal / r.servings),
-          JSON.stringify({ instructions: r.instructions, ingredients: r.ingredients }),
-        ],
-      );
+      await db
+        .insert(sharedRecipes)
+        .values({
+          ownerUserId: admin.id,
+          localRecipeId: slug,
+          name: r.name,
+          description: r.description,
+          servings: r.servings,
+          kcalPerServing: Math.round(totalKcal / r.servings),
+          payload: { instructions: r.instructions, ingredients: r.ingredients },
+        })
+        .onConflictDoUpdate({
+          target: [sharedRecipes.ownerUserId, sharedRecipes.localRecipeId],
+          set: {
+            name: sql`excluded.name`,
+            description: sql`excluded.description`,
+            servings: sql`excluded.servings`,
+            kcalPerServing: sql`excluded.kcal_per_serving`,
+            payload: sql`excluded.payload`,
+            updatedAt: sql`now()`,
+          },
+        });
     }
     await logAudit(admin.id, 'import_recipes', 'shared_recipes', 'bulk', {
       count: recipes.length,
@@ -622,55 +576,30 @@ adminRoutes.get('/reports', async (c) => {
   if (!['open', 'resolved', 'dismissed', 'all'].includes(status)) {
     return c.json({ error: 'Invalid status filter' }, 400);
   }
-  const rows = await query<{
-    id: string;
-    target_type: string;
-    target_id: string;
-    target_label: string | null;
-    reason: string;
-    detail: string;
-    status: string;
-    reporter: string | null;
-    created_at: string;
-    resolved_by: string | null;
-    resolved_at: string | null;
-    resolution_note: string;
-  }>(
-    `SELECT r.id, r.target_type, r.target_id, r.reason, r.detail, r.status,
-            r.created_at, r.resolved_at, r.resolution_note,
-            reporter.username AS reporter,
-            resolver.username AS resolved_by,
-            -- Best-effort display label; reports on deleted targets keep the raw id.
-            CASE WHEN r.target_type = 'user' THEN target_user.username
-                 WHEN r.target_type = 'recipe' THEN target_recipe.name END AS target_label
-       FROM reports r
-       LEFT JOIN users reporter ON reporter.id = r.reporter_user_id
-       LEFT JOIN users resolver ON resolver.id = r.resolved_by
-       LEFT JOIN users target_user
-              ON r.target_type = 'user' AND target_user.id::text = r.target_id
-       LEFT JOIN shared_recipes target_recipe
-              ON r.target_type = 'recipe' AND target_recipe.id::text = r.target_id
-      WHERE $1 = 'all' OR r.status = $1
-      ORDER BY r.created_at DESC
-      LIMIT 200`,
-    [status],
-  );
-  return c.json({
-    reports: rows.map((r) => ({
-      id: r.id,
-      targetType: r.target_type,
-      targetId: r.target_id,
-      targetLabel: r.target_label,
-      reason: r.reason,
-      detail: r.detail,
-      status: r.status,
-      reporter: r.reporter,
-      createdAt: r.created_at,
-      resolvedBy: r.resolved_by,
-      resolvedAt: r.resolved_at,
-      resolutionNote: r.resolution_note,
-    })),
-  });
+  // Raw SQL: four role-joins against users/recipes with ::text id matching.
+  const rows = (
+    await db.execute(sql`
+      SELECT r.id, r.target_type AS "targetType", r.target_id AS "targetId",
+             r.reason, r.detail, r.status,
+             r.created_at AS "createdAt", r.resolved_at AS "resolvedAt",
+             r.resolution_note AS "resolutionNote",
+             reporter.username AS reporter,
+             resolver.username AS "resolvedBy",
+             -- Best-effort display label; reports on deleted targets keep the raw id.
+             CASE WHEN r.target_type = 'user' THEN target_user.username
+                  WHEN r.target_type = 'recipe' THEN target_recipe.name END AS "targetLabel"
+        FROM reports r
+        LEFT JOIN users reporter ON reporter.id = r.reporter_user_id
+        LEFT JOIN users resolver ON resolver.id = r.resolved_by
+        LEFT JOIN users target_user
+               ON r.target_type = 'user' AND target_user.id::text = r.target_id
+        LEFT JOIN shared_recipes target_recipe
+               ON r.target_type = 'recipe' AND target_recipe.id::text = r.target_id
+       WHERE ${status} = 'all' OR r.status = ${status}
+       ORDER BY r.created_at DESC
+       LIMIT 200`)
+  ).rows;
+  return c.json({ reports: rows });
 });
 
 const reportUpdateSchema = z.object({
@@ -682,38 +611,37 @@ adminRoutes.patch('/reports/:id', zValidator('json', reportUpdateSchema), async 
   const admin = c.get('user')!;
   const { status, note } = c.req.valid('json');
   const reopened = status === 'open';
-  const rows = await query<{ id: string }>(
-    `UPDATE reports
-        SET status = $1,
-            resolution_note = $2,
-            resolved_by = CASE WHEN $3 THEN NULL ELSE $4::uuid END,
-            resolved_at = CASE WHEN $3 THEN NULL ELSE now() END
-      WHERE id = $5
-      RETURNING id`,
-    [status, reopened ? '' : note, reopened, admin.id, c.req.param('id')],
-  );
+  const rows = (
+    await db.execute(sql`
+      UPDATE reports
+         SET status = ${status},
+             resolution_note = ${reopened ? '' : note},
+             resolved_by = CASE WHEN ${reopened} THEN NULL ELSE ${admin.id}::uuid END,
+             resolved_at = CASE WHEN ${reopened} THEN NULL ELSE now() END
+       WHERE id = ${c.req.param('id')}
+       RETURNING id`)
+  ).rows as unknown as { id: string }[];
   if (rows.length === 0) return c.json({ error: 'Report not found' }, 404);
   await logAudit(admin.id, 'update_report', 'report', rows[0]!.id, { status, note });
   return c.json({ ok: true });
 });
 
 adminRoutes.get('/audit', async (c) => {
-  // Explicit columns + a resolved username: SELECT * would keep shipping
-  // whatever columns migrations add later, sight unseen.
-  const entries = await query<{
-    id: string;
-    actor_id: string | null;
-    actor_username: string | null;
-    action: string;
-    target_type: string;
-    target_id: string;
-    detail: unknown;
-    created_at: string;
-  }>(
-    `SELECT a.id, a.actor_id, u.username AS actor_username, a.action,
-            a.target_type, a.target_id, a.detail, a.created_at
-       FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
-      ORDER BY a.created_at DESC LIMIT 100`,
-  );
+  // Response keys stay snake_case — the admin UI reads them as delivered.
+  const entries = await db
+    .select({
+      id: auditLog.id,
+      actor_id: auditLog.actorId,
+      actor_username: users.username,
+      action: auditLog.action,
+      target_type: auditLog.targetType,
+      target_id: auditLog.targetId,
+      detail: auditLog.detail,
+      created_at: auditLog.createdAt,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorId))
+    .orderBy(desc(auditLog.createdAt))
+    .limit(100);
   return c.json({ entries });
 });

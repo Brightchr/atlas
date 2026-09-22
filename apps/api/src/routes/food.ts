@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { query } from '../db/pool';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/db';
 import { env } from '../lib/env';
 import {
   autocompleteFatSecret,
@@ -269,22 +270,25 @@ function curatedToProduct(f: CuratedFoodRow): Product {
 async function searchCurated(term: string): Promise<Product[]> {
   const tokens = tokenizeSearch(term);
   if (tokens.length === 0) return [];
-  const hitSum = tokens
-    .map(
-      (_, i) =>
-        `(CASE WHEN name ILIKE $${i + 1} OR coalesce(brand, '') ILIKE $${i + 1} THEN 1 ELSE 0 END)`,
-    )
-    .join(' + ');
-  const minHits = minTokenHits(tokens.length);
-  const rows = await query<CuratedFoodRow>(
-    `SELECT * FROM (
-       SELECT *, ${hitSum} AS hits FROM curated_foods
-     ) scored
-     WHERE hits >= ${minHits}
-     ORDER BY hits DESC, char_length(name)
-     LIMIT 8`,
-    tokens.map((t) => `%${t}%`),
+  // Dynamic per-token scoring — composed with sql`` so every user token
+  // stays a bound parameter, exactly as the hand-built version did.
+  const hitSum = sql.join(
+    tokens.map((t) => {
+      const pattern = `%${t}%`;
+      return sql`(CASE WHEN name ILIKE ${pattern} OR coalesce(brand, '') ILIKE ${pattern} THEN 1 ELSE 0 END)`;
+    }),
+    sql` + `,
   );
+  const minHits = minTokenHits(tokens.length);
+  const rows = (
+    await db.execute(sql`
+      SELECT * FROM (
+        SELECT *, ${hitSum} AS hits FROM curated_foods
+      ) scored
+      WHERE hits >= ${minHits}
+      ORDER BY hits DESC, char_length(name)
+      LIMIT 8`)
+  ).rows as unknown as CuratedFoodRow[];
   return rows.map(curatedToProduct);
 }
 

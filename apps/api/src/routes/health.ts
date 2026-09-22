@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { query } from '../db/pool';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/db';
 
 export const healthRoutes = new Hono();
 
@@ -8,7 +9,7 @@ export const healthRoutes = new Hono();
 healthRoutes.get('/', async (c) => {
   try {
     await Promise.race([
-      query('SELECT 1'),
+      db.execute(sql`SELECT 1`),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3_000)),
     ]);
   } catch {

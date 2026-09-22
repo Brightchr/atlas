@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { query } from '../db/pool';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { users } from '../db/schema';
 import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -32,10 +34,10 @@ reportRoutes.post(
     let targetId = body.targetId;
     let targetOk = true;
     if (body.targetType === 'user') {
-      const [target] = await query<{ id: string }>(
-        'SELECT id FROM users WHERE lower(username) = lower($1)',
-        [body.targetId],
-      );
+      const [target] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(sql`lower(${users.username}) = lower(${body.targetId})`);
       if (!target) targetOk = false;
       else if (target.id === user.id) {
         return c.json({ error: 'You cannot report yourself' }, 400);
@@ -43,13 +45,13 @@ reportRoutes.post(
     }
     if (!targetOk) return c.json({ error: 'Target not found' }, 404);
 
-    await query(
-      `INSERT INTO reports (reporter_user_id, target_type, target_id, reason, detail)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (reporter_user_id, target_type, target_id) WHERE status = 'open'
-       DO NOTHING`,
-      [user.id, body.targetType, targetId, body.reason, body.detail],
-    );
+    // Raw SQL: the conflict target is a PARTIAL unique index (WHERE
+    // status = 'open'), which the builder's onConflict can't express safely.
+    await db.execute(sql`
+      INSERT INTO reports (reporter_user_id, target_type, target_id, reason, detail)
+      VALUES (${user.id}, ${body.targetType}, ${targetId}, ${body.reason}, ${body.detail})
+      ON CONFLICT (reporter_user_id, target_type, target_id) WHERE status = 'open'
+      DO NOTHING`);
     return c.json({ ok: true }, 201);
   },
 );

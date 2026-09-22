@@ -25,10 +25,5 @@ export const pool = new pg.Pool({
       : undefined,
 });
 
-export async function query<T extends pg.QueryResultRow>(
-  text: string,
-  params?: unknown[],
-): Promise<T[]> {
-  const result = await pool.query<T>(text, params);
-  return result.rows;
-}
+// Application queries go through the Drizzle client in db.ts (same pool).
+// Only the migration runner and test cleanup touch the pool directly.

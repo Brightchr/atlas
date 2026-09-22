@@ -1,5 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
-import { query } from '../db/pool';
+import { isNull, gt, or } from 'drizzle-orm';
+import { db } from '../db/db';
+import { ipBlocks } from '../db/schema';
 import { clientIp } from './rate-limit';
 import type { AppEnv } from '../middleware/auth';
 
@@ -14,9 +16,10 @@ let loadedAt = 0;
 let refreshing: Promise<void> | null = null;
 
 async function refresh(): Promise<void> {
-  const rows = await query<{ ip: string }>(
-    'SELECT ip FROM ip_blocks WHERE expires_at IS NULL OR expires_at > now()',
-  );
+  const rows = await db
+    .select({ ip: ipBlocks.ip })
+    .from(ipBlocks)
+    .where(or(isNull(ipBlocks.expiresAt), gt(ipBlocks.expiresAt, new Date())));
   blocked = new Set(rows.map((r) => r.ip));
   loadedAt = Date.now();
 }

@@ -1,6 +1,8 @@
 import { serve } from '@hono/node-server';
+import { lt, sql } from 'drizzle-orm';
 import { app } from './app';
-import { query } from './db/pool';
+import { db } from './db/db';
+import { notifications } from './db/schema';
 import { runMigrations } from './db/migrations';
 import { seedAccounts } from './db/seed';
 import { assertProductionEnv, env } from './lib/env';
@@ -17,7 +19,7 @@ async function runMaintenance(): Promise<void> {
     await deleteExpiredSessions();
     await deleteExpiredEmailTokens();
     await purgeDeletedAccounts();
-    await query(`DELETE FROM notifications WHERE created_at < now() - interval '90 days'`);
+    await db.delete(notifications).where(lt(notifications.createdAt, sql`now() - interval '90 days'`));
   } catch (err) {
     console.warn('maintenance sweep failed (will retry next cycle):', err);
   }

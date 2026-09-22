@@ -1,4 +1,5 @@
-import { query } from '../db/pool';
+import { db } from '../db/db';
+import { auditLog } from '../db/schema';
 
 /** Append-only audit trail for sensitive actions. Never deleted by app code. */
 export async function logAudit(
@@ -8,8 +9,5 @@ export async function logAudit(
   targetId: string,
   detail: Record<string, unknown> = {},
 ): Promise<void> {
-  await query(
-    'INSERT INTO audit_log (actor_id, action, target_type, target_id, detail) VALUES ($1, $2, $3, $4, $5)',
-    [actorId, action, targetType, targetId, JSON.stringify(detail)],
-  );
+  await db.insert(auditLog).values({ actorId, action, targetType, targetId, detail });
 }
