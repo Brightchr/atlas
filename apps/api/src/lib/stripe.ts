@@ -1,5 +1,7 @@
 import Stripe from 'stripe';
-import { query } from '../db/pool';
+import { and, eq, isNull, not, sql } from 'drizzle-orm';
+import { db } from '../db/db';
+import { users } from '../db/schema';
 import { env } from './env';
 
 /** Stripe wiring. Entitlement design: Stripe never gets its own membership
@@ -52,9 +54,10 @@ export async function syncStripeMembership(customerId: string): Promise<void> {
   if (!live) {
     // Canceled or gone: only detach the reference. plan_expires_at stays — the
     // user keeps what they paid for until the period they already covered ends.
-    await query('UPDATE users SET stripe_subscription_id = NULL WHERE stripe_customer_id = $1', [
-      customerId,
-    ]);
+    await db
+      .update(users)
+      .set({ stripeSubscriptionId: null })
+      .where(eq(users.stripeCustomerId, customerId));
     return;
   }
 
@@ -63,21 +66,20 @@ export async function syncStripeMembership(customerId: string): Promise<void> {
   // correct if more prices ever share the subscription.
   const periodEnd = Math.max(...live.items.data.map((item) => item.current_period_end));
 
-  await query(
-    `UPDATE users
-        SET stripe_subscription_id = $2,
-            plan = 'pro',
-            plan_expires_at = GREATEST(coalesce(plan_expires_at, 'epoch'::timestamptz),
-                                       to_timestamp($3))
-      WHERE stripe_customer_id = $1
-        AND NOT (plan = 'pro' AND plan_expires_at IS NULL)`,
-    [customerId, live.id, periodEnd],
-  );
+  const lifetime = and(eq(users.plan, 'pro'), isNull(users.planExpiresAt))!;
+  await db
+    .update(users)
+    .set({
+      stripeSubscriptionId: live.id,
+      plan: 'pro',
+      planExpiresAt: sql`GREATEST(coalesce(${users.planExpiresAt}, 'epoch'::timestamptz),
+                                  to_timestamp(${periodEnd}))`,
+    })
+    .where(and(eq(users.stripeCustomerId, customerId), not(lifetime)));
   // Lifetime accounts keep their NULL expiry but still record the subscription
   // id so the billing-portal button works for them too.
-  await query(
-    `UPDATE users SET stripe_subscription_id = $2
-      WHERE stripe_customer_id = $1 AND plan = 'pro' AND plan_expires_at IS NULL`,
-    [customerId, live.id],
-  );
+  await db
+    .update(users)
+    .set({ stripeSubscriptionId: live.id })
+    .where(and(eq(users.stripeCustomerId, customerId), lifetime));
 }

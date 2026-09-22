@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { and, desc, eq, gt, gte, isNull, lte, not, or, sql } from 'drizzle-orm';
 import {
   ANNUAL_PRICE_USD,
   MONTHLY_PRICE_USD,
@@ -8,7 +9,8 @@ import {
   resolveMembership,
   type BillingStatus,
 } from '@arcadia/shared';
-import { pool, query } from '../db/pool';
+import { db } from '../db/db';
+import { promoRedemptions, promotions, users } from '../db/schema';
 import { logAudit } from '../lib/audit';
 import { env } from '../lib/env';
 import { rateLimit } from '../lib/rate-limit';
@@ -21,48 +23,50 @@ export const billingRoutes = new Hono<AppEnv>();
 
 billingRoutes.use('*', requireAuth);
 
+/** An indefinite pro plan (admin-granted or lifetime) must never gain an
+ * expiry or a charge — several handlers below guard on it. */
+const lifetimePro = () => and(eq(users.plan, 'pro'), isNull(users.planExpiresAt))!;
+
 billingRoutes.get('/', async (c) => {
   const user = c.get('user')!;
-  const [row] = await query<{
-    plan: 'free' | 'pro';
-    plan_expires_at: string | null;
-    trial_ends_at: string | null;
-    comped: boolean;
-    stripe_subscription_id: string | null;
-  }>(
-    `SELECT plan, plan_expires_at, trial_ends_at, comped, stripe_subscription_id
-       FROM users WHERE id = $1`,
-    [user.id],
-  );
+  const [row] = await db
+    .select({
+      plan: users.plan,
+      planExpiresAt: users.planExpiresAt,
+      trialEndsAt: users.trialEndsAt,
+      comped: users.comped,
+      stripeSubscriptionId: users.stripeSubscriptionId,
+    })
+    .from(users)
+    .where(eq(users.id, user.id));
   if (!row) return c.json({ error: 'User not found' }, 404);
 
-  const redemptions = await query<{
-    code: string;
-    discount_percent: number;
-    grant_days: number | null;
-    created_at: string;
-  }>(
-    `SELECT p.code, p.discount_percent, p.grant_days, r.created_at
-       FROM promo_redemptions r JOIN promotions p ON p.id = r.promotion_id
-      WHERE r.user_id = $1
-      ORDER BY r.created_at DESC`,
-    [user.id],
-  );
+  const redemptions = await db
+    .select({
+      code: promotions.code,
+      discountPercent: promotions.discountPercent,
+      grantDays: promotions.grantDays,
+      redeemedAt: promoRedemptions.createdAt,
+    })
+    .from(promoRedemptions)
+    .innerJoin(promotions, eq(promotions.id, promoRedemptions.promotionId))
+    .where(eq(promoRedemptions.userId, user.id))
+    .orderBy(desc(promoRedemptions.createdAt));
 
   const status: BillingStatus = {
-    plan: effectivePlan(row.plan, row.plan_expires_at),
-    planExpiresAt: row.plan_expires_at,
-    trialEndsAt: row.trial_ends_at,
-    membership: resolveMembership(row.plan, row.plan_expires_at, row.trial_ends_at, row.comped),
+    plan: effectivePlan(row.plan, row.planExpiresAt),
+    planExpiresAt: row.planExpiresAt?.toISOString() ?? null,
+    trialEndsAt: row.trialEndsAt?.toISOString() ?? null,
+    membership: resolveMembership(row.plan, row.planExpiresAt, row.trialEndsAt, row.comped),
     comped: row.comped,
-    hasSubscription: row.stripe_subscription_id !== null,
+    hasSubscription: row.stripeSubscriptionId !== null,
     priceUsd: MONTHLY_PRICE_USD,
     annualPriceUsd: ANNUAL_PRICE_USD,
     redemptions: redemptions.map((r) => ({
       code: r.code,
-      discountPercent: r.discount_percent,
-      grantDays: r.grant_days,
-      redeemedAt: r.created_at,
+      discountPercent: r.discountPercent,
+      grantDays: r.grantDays,
+      redeemedAt: r.redeemedAt.toISOString(),
     })),
   };
   return c.json(status);
@@ -71,31 +75,37 @@ billingRoutes.get('/', async (c) => {
 /** Active promotions for the dashboard banner — every signed-in user sees
  * these, so only the marketing-safe fields leave the server. */
 billingRoutes.get('/promotions', async (c) => {
-  const rows = await query<{
-    code: string;
-    description: string;
-    discount_percent: number;
-    grant_days: number | null;
-    ends_at: string | null;
-  }>(
-    `SELECT code, description, discount_percent, grant_days, ends_at
-       FROM promotions
-      WHERE active AND starts_at <= now() AND (ends_at IS NULL OR ends_at > now())
-      ORDER BY created_at DESC
-      LIMIT 3`,
-  );
+  const now = new Date();
+  const rows = await db
+    .select({
+      code: promotions.code,
+      description: promotions.description,
+      discountPercent: promotions.discountPercent,
+      grantDays: promotions.grantDays,
+      endsAt: promotions.endsAt,
+    })
+    .from(promotions)
+    .where(
+      and(
+        eq(promotions.active, true),
+        lte(promotions.startsAt, now),
+        or(isNull(promotions.endsAt), gt(promotions.endsAt, now)),
+      ),
+    )
+    .orderBy(desc(promotions.createdAt))
+    .limit(3);
   return c.json({
-    promotions: rows.map((p) => ({
-      code: p.code,
-      description: p.description,
-      discountPercent: p.discount_percent,
-      grantDays: p.grant_days,
-      endsAt: p.ends_at,
-    })),
+    promotions: rows.map((p) => ({ ...p, endsAt: p.endsAt?.toISOString() ?? null })),
   });
 });
 
 const redeemSchema = z.object({ code: z.string().min(3).max(30) });
+
+type RedeemOutcome =
+  | { kind: 'invalid' }
+  | { kind: 'exhausted' }
+  | { kind: 'already' }
+  | { kind: 'ok'; promoId: string; grantDays: number | null; discountPercent: number };
 
 /** Redeem a promo code. Tight rate limit: codes are guessable strings, and
  * this endpoint must not be usable to enumerate them. */
@@ -107,91 +117,79 @@ billingRoutes.post(
     const user = c.get('user')!;
     const code = c.req.valid('json').code.trim().toUpperCase();
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    const outcome = await db.transaction(async (tx): Promise<RedeemOutcome> => {
       // FOR UPDATE serializes concurrent redemptions of the same code so a
       // max_redemptions cap cannot be overshot by racing requests.
-      const promoRes = await client.query<{
-        id: string;
-        discount_percent: number;
-        grant_days: number | null;
-        max_redemptions: number | null;
-        active: boolean;
-        starts_at: string;
-        ends_at: string | null;
-      }>(
-        `SELECT id, discount_percent, grant_days, max_redemptions, active, starts_at, ends_at
-           FROM promotions WHERE code = $1 FOR UPDATE`,
-        [code],
-      );
-      const promo = promoRes.rows[0];
+      const [promo] = await tx
+        .select()
+        .from(promotions)
+        .where(eq(promotions.code, code))
+        .for('update');
       const now = new Date();
       const usable =
         promo &&
         promo.active &&
-        new Date(promo.starts_at) <= now &&
-        (promo.ends_at === null || new Date(promo.ends_at) > now);
-      if (!usable) {
-        await client.query('ROLLBACK');
-        // One message for unknown, inactive and out-of-window codes — the
-        // response must not confirm which codes exist.
-        return c.json({ error: 'Invalid or expired code' }, 400);
+        promo.startsAt <= now &&
+        (promo.endsAt === null || promo.endsAt > now);
+      if (!usable) return { kind: 'invalid' };
+
+      if (promo.maxRedemptions !== null) {
+        const [count] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(promoRedemptions)
+          .where(eq(promoRedemptions.promotionId, promo.id));
+        if ((count?.n ?? 0) >= promo.maxRedemptions) return { kind: 'exhausted' };
       }
 
-      if (promo.max_redemptions !== null) {
-        const countRes = await client.query<{ n: number }>(
-          'SELECT count(*)::int AS n FROM promo_redemptions WHERE promotion_id = $1',
-          [promo.id],
-        );
-        if ((countRes.rows[0]?.n ?? 0) >= promo.max_redemptions) {
-          await client.query('ROLLBACK');
-          return c.json({ error: 'This code has been fully redeemed' }, 409);
-        }
-      }
+      const inserted = await tx
+        .insert(promoRedemptions)
+        .values({ promotionId: promo.id, userId: user.id })
+        .onConflictDoNothing()
+        .returning({ id: promoRedemptions.id });
+      if (inserted.length === 0) return { kind: 'already' };
 
-      const inserted = await client.query(
-        `INSERT INTO promo_redemptions (promotion_id, user_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id`,
-        [promo.id, user.id],
-      );
-      if (inserted.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return c.json({ error: 'You have already redeemed this code' }, 409);
-      }
-
-      if (promo.grant_days !== null) {
+      if (promo.grantDays !== null) {
         // Grant codes extend pro from now or from the current expiry,
         // whichever is later. An indefinite pro plan (NULL expiry) is never
         // shortened by attaching an expiry to it.
-        await client.query(
-          `UPDATE users
-              SET plan = 'pro',
-                  plan_expires_at = GREATEST(coalesce(plan_expires_at, now()), now())
-                                    + make_interval(days => $2)
-            WHERE id = $1 AND NOT (plan = 'pro' AND plan_expires_at IS NULL)`,
-          [user.id, promo.grant_days],
-        );
+        await tx
+          .update(users)
+          .set({
+            plan: 'pro',
+            planExpiresAt: sql`GREATEST(coalesce(${users.planExpiresAt}, now()), now())
+                               + make_interval(days => ${promo.grantDays})`,
+          })
+          .where(and(eq(users.id, user.id), not(lifetimePro())));
       }
+      return {
+        kind: 'ok',
+        promoId: promo.id,
+        grantDays: promo.grantDays,
+        discountPercent: promo.discountPercent,
+      };
+    });
 
-      await client.query('COMMIT');
-      await logAudit(user.id, 'redeem_promo', 'promotion', promo.id, {
-        code,
-        grantDays: promo.grant_days,
-        discountPercent: promo.discount_percent,
-      });
-      return c.json({
-        ok: true,
-        granted: promo.grant_days !== null,
-        grantDays: promo.grant_days,
-        discountPercent: promo.discount_percent,
-      });
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
-      throw err;
-    } finally {
-      client.release();
+    // One message for unknown, inactive and out-of-window codes — the
+    // response must not confirm which codes exist.
+    if (outcome.kind === 'invalid') return c.json({ error: 'Invalid or expired code' }, 400);
+    if (outcome.kind === 'exhausted') {
+      return c.json({ error: 'This code has been fully redeemed' }, 409);
     }
+    if (outcome.kind === 'already') {
+      return c.json({ error: 'You have already redeemed this code' }, 409);
+    }
+
+    await logAudit(user.id, 'redeem_promo', 'promotion', outcome.promoId, {
+      code,
+      grantDays: outcome.grantDays,
+      discountPercent: outcome.discountPercent,
+    });
+    return c.json({
+      ok: true,
+      granted: outcome.grantDays !== null,
+      grantDays: outcome.grantDays,
+      discountPercent: outcome.discountPercent,
+    });
   },
 );
 
@@ -212,25 +210,24 @@ billingRoutes.post(
       return c.json({ error: 'Annual billing isn’t available yet — choose monthly' }, 501);
     }
     const user = c.get('user')!;
-    const [row] = await query<{
-      email: string;
-      plan: 'free' | 'pro';
-      plan_expires_at: string | null;
-      comped: boolean;
-      stripe_customer_id: string | null;
-      stripe_subscription_id: string | null;
-    }>(
-      `SELECT email, plan, plan_expires_at, comped, stripe_customer_id, stripe_subscription_id
-         FROM users WHERE id = $1`,
-      [user.id],
-    );
+    const [row] = await db
+      .select({
+        email: users.email,
+        plan: users.plan,
+        planExpiresAt: users.planExpiresAt,
+        comped: users.comped,
+        stripeCustomerId: users.stripeCustomerId,
+        stripeSubscriptionId: users.stripeSubscriptionId,
+      })
+      .from(users)
+      .where(eq(users.id, user.id));
     if (!row) return c.json({ error: 'User not found' }, 404);
     // Comped and lifetime accounts must never be charged; an existing
     // subscription is managed through the portal, not doubled up.
-    if (row.comped || (row.plan === 'pro' && row.plan_expires_at === null)) {
+    if (row.comped || (row.plan === 'pro' && row.planExpiresAt === null)) {
       return c.json({ error: 'You already have full access — no subscription needed' }, 409);
     }
-    if (row.stripe_subscription_id) {
+    if (row.stripeSubscriptionId) {
       return c.json(
         { error: 'You already have a subscription — manage it from Settings → Membership' },
         409,
@@ -239,27 +236,26 @@ billingRoutes.post(
 
     // One Stripe customer per user, created on first checkout. The WHERE guard
     // keeps a concurrent double-click from attaching two customers.
-    let customerId = row.stripe_customer_id;
+    let customerId = row.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe().customers.create({
         email: row.email,
         metadata: { userId: user.id },
       });
       customerId = customer.id;
-      await query('UPDATE users SET stripe_customer_id = $2 WHERE id = $1 AND stripe_customer_id IS NULL', [
-        user.id,
-        customerId,
-      ]);
+      await db
+        .update(users)
+        .set({ stripeCustomerId: customerId })
+        .where(and(eq(users.id, user.id), isNull(users.stripeCustomerId)));
     }
 
     // Discount-only promo codes apply to the first invoice (grant-day codes
     // were consumed at redemption). Best percentage wins if they stacked.
-    const [discount] = await query<{ percent: number | null }>(
-      `SELECT max(p.discount_percent)::int AS percent
-         FROM promo_redemptions r JOIN promotions p ON p.id = r.promotion_id
-        WHERE r.user_id = $1 AND p.discount_percent > 0`,
-      [user.id],
-    );
+    const [discount] = await db
+      .select({ percent: sql<number | null>`max(${promotions.discountPercent})::int` })
+      .from(promoRedemptions)
+      .innerJoin(promotions, eq(promotions.id, promoRedemptions.promotionId))
+      .where(and(eq(promoRedemptions.userId, user.id), gte(promotions.discountPercent, 1)));
     let discounts: { coupon: string }[] | undefined;
     if (discount?.percent) {
       const coupon = await stripe().coupons.create({
@@ -304,15 +300,15 @@ billingRoutes.post(
       return c.json({ error: 'Billing management is not available yet' }, 501);
     }
     const user = c.get('user')!;
-    const [row] = await query<{ stripe_customer_id: string | null }>(
-      'SELECT stripe_customer_id FROM users WHERE id = $1',
-      [user.id],
-    );
-    if (!row?.stripe_customer_id) {
+    const [row] = await db
+      .select({ stripeCustomerId: users.stripeCustomerId })
+      .from(users)
+      .where(eq(users.id, user.id));
+    if (!row?.stripeCustomerId) {
       return c.json({ error: 'No billing account yet — subscribe first' }, 404);
     }
     const session = await stripe().billingPortal.sessions.create({
-      customer: row.stripe_customer_id,
+      customer: row.stripeCustomerId,
       return_url: `${env.publicUrl}/settings`,
     });
     return c.json({ url: session.url });

@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type Stripe from 'stripe';
-import { query } from '../db/pool';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/db';
+import { stripeEvents } from '../db/schema';
 import { env } from '../lib/env';
 import { stripe, stripeConfigured, syncStripeMembership } from '../lib/stripe';
 
@@ -39,10 +41,11 @@ stripeRoutes.post('/webhook', async (c) => {
 
   // Stripe retries deliveries until it sees a 2xx; the events table makes each
   // event apply exactly once even when a retry crosses a slow first attempt.
-  const fresh = await query<{ id: string }>(
-    'INSERT INTO stripe_events (id, type) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id',
-    [event.id, event.type],
-  );
+  const fresh = await db
+    .insert(stripeEvents)
+    .values({ id: event.id, type: event.type })
+    .onConflictDoNothing()
+    .returning({ id: stripeEvents.id });
   if (fresh.length === 0) return c.json({ received: true });
 
   const object = event.data.object as { customer?: string | { id: string } | null };
@@ -53,7 +56,7 @@ stripeRoutes.post('/webhook', async (c) => {
   } catch (err) {
     // Give the retry a clean slate: drop the idempotency marker so Stripe's
     // redelivery re-runs the sync instead of short-circuiting on it.
-    await query('DELETE FROM stripe_events WHERE id = $1', [event.id]).catch(() => {});
+    await db.delete(stripeEvents).where(eq(stripeEvents.id, event.id)).catch(() => {});
     throw err;
   }
   return c.json({ received: true });
