@@ -245,7 +245,11 @@ syncRoutes.get('/pull', async (c) => {
     `SELECT entity, row_id, payload, deleted, changed_at, device_id, seq::text
        FROM sync_rows
       WHERE user_id = $1 AND seq > $2
-      ORDER BY seq ASC
+      -- Qualified on purpose: the select list casts seq to text under the same
+      -- name, and a bare ORDER BY seq would bind to that OUTPUT column and sort
+      -- lexicographically ("10000" before "9325") — fresh devices then skipped
+      -- every row below the first five-digit sequence number.
+      ORDER BY sync_rows.seq ASC
       LIMIT ${PULL_PAGE_SIZE}`,
     [user.id, since],
   );

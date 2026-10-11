@@ -159,6 +159,24 @@ describe('sync push/pull', () => {
     expect(tooMany.status).toBe(413);
   });
 
+  it('pages in numeric sequence order across a digit boundary', async () => {
+    // seq is bigint but travels as text; the pull used to ORDER BY the text
+    // output column, so '10000' sorted before '9999' and a fresh device
+    // skipped every row below the first five-digit sequence number.
+    const [{ last }] = (await pool.query<{ last: string }>("SELECT last_value::text AS last FROM sync_rows_seq")).rows;
+    const base = Math.max(Number(last), 9_990);
+    await pool.query("SELECT setval('sync_rows_seq', $1)", [base]);
+    const ids = Array.from({ length: 20 }, (_, i) => `order-${i}`);
+    const res = await push(
+      'd-order',
+      ids.map((id, i) => upsert('foods', id, { name: `Food ${i}` })),
+    );
+    expect(res.status).toBe(200);
+    const page = await pull('d-other');
+    const got = page.changes.map((c) => c.rowId).filter((id) => id.startsWith('order-'));
+    expect(got).toEqual(ids);
+  });
+
   it('erases the server copy on request', async () => {
     const res = await req('/v1/sync/data', { method: 'DELETE' });
     expect(res.status).toBe(200);
