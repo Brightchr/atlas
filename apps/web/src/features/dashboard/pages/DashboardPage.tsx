@@ -41,10 +41,9 @@ import {
   saveCardOrder,
   type DashboardCardId,
 } from '../layout';
+import { localDayOfWeek, localIsoDate } from '@/lib/dates';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = (): string => localIsoDate();
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -74,7 +73,7 @@ export function DashboardPage() {
         listGoals().catch(() => []),
         getSessionDates(2).catch((): string[] => []),
       ]);
-      const trainedToday = sessionDates.includes(new Date().toISOString().slice(0, 10));
+      const trainedToday = sessionDates.includes(localIsoDate());
       return buildSuggestions({ catalog, recentSets, goals, trainedToday });
     },
   });
@@ -102,7 +101,7 @@ export function DashboardPage() {
   const targets = targetsQuery.data ?? null;
   const trainedDays = weekSessions.data?.length ?? 0;
   const daysTarget = profile.data?.daysPerWeek ?? null;
-  const todayDow = (new Date().getDay() + 6) % 7;
+  const todayDow = localDayOfWeek();
   const plannedMealsToday = (mealPlanQuery.data ?? []).filter((m) => m.dayOfWeek === todayDow);
   const toBuy = (shoppingQuery.data ?? []).filter((i) => i.status === 'needed').length;
 

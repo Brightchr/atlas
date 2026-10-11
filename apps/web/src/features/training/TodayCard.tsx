@@ -3,9 +3,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowRight, BedDouble, Play, TimerReset } from 'lucide-react';
 import { getActivePlanId, listPlans } from '@/features/plans/repository';
 import { getOpenSession, listWorkouts, startSession } from '@/features/workouts/repository';
+import { localDayOfWeek } from '@/lib/dates';
 
 /** Today as a 0 = Monday … 6 = Sunday index. */
-const todayIndex = () => (new Date().getDay() + 6) % 7;
+const todayIndex = () => localDayOfWeek();
 
 /** The one card that makes the plan drive the app: it resolves today's
  * workout and starts it in a single tap (no detour through the workout

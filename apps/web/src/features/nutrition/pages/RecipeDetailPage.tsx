@@ -26,6 +26,7 @@ import {
   removeIngredient,
   setRecipeInstructions,
 } from '../recipes';
+import { localIsoDate } from '@/lib/dates';
 
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -80,7 +81,7 @@ export function RecipeDetailPage() {
   const logMutation = useMutation({
     mutationFn: () =>
       logRecipeToDiary(recipe!, {
-        date: new Date().toISOString().slice(0, 10),
+        date: localIsoDate(),
         meal,
         servings: Number(servings) || 1,
       }),

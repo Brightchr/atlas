@@ -1,4 +1,5 @@
 import type { BodyWeightLog, Goal, GoalProgress } from '@arcadia/shared';
+import { localIsoDateDaysAgo } from '@/lib/dates';
 
 /** Pure progress calculations — no I/O, fully unit-testable. All inputs are
  * plain data; callers fetch them from repositories. */
@@ -15,9 +16,7 @@ interface ProgressInputs {
   formatWeight?: (kg: number) => string;
 }
 
-function isoDaysAgo(days: number): string {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
+const isoDaysAgo = (days: number): string => localIsoDateDaysAgo(days);
 
 /** Consecutive training days ending today or yesterday (a streak survives
  * until a full rest day passes). */

@@ -1,6 +1,7 @@
 import type { BodyWeightLog, Goal, GoalType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import type { DailyTargets, Profile } from './targets';
+import { localIsoDate } from '@/lib/dates';
 
 /** Generic key/value settings helpers (settings table, JSON values). */
 async function getSetting<T>(key: string): Promise<T | null> {
@@ -120,7 +121,7 @@ export async function archiveGoal(id: string): Promise<void> {
  * phones converges on one row instead of colliding on UNIQUE(date). */
 export async function logBodyWeight(weightKg: number): Promise<void> {
   const db = await getDb();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localIsoDate();
   await db.run(
     `INSERT INTO body_weight_logs (id, date, weight_kg, logged_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(date) DO UPDATE SET weight_kg = excluded.weight_kg, logged_at = excluded.logged_at`,
@@ -142,18 +143,19 @@ export async function getWeightHistory(limit = 60): Promise<BodyWeightLog[]> {
   }));
 }
 
-/** Distinct local dates with a workout session, most recent first. */
+/** Distinct local dates with a workout session, most recent first.
+ * started_at is a UTC timestamp, so the calendar day is derived here rather
+ * than by slicing the string (which would be the UTC day). */
 export async function getSessionDates(sinceDays = 60): Promise<string[]> {
   const db = await getDb();
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
   const rows = (
     await db.query(
-      `SELECT DISTINCT substr(started_at, 1, 10) AS d FROM workout_sessions
-        WHERE started_at >= ? ORDER BY d DESC`,
+      'SELECT started_at FROM workout_sessions WHERE started_at >= ? ORDER BY started_at DESC',
       [since],
     )
-  ).values as { d: string }[];
-  return rows.map((r) => r.d);
+  ).values as { started_at: string }[];
+  return [...new Set(rows.map((r) => localIsoDate(new Date(r.started_at))))];
 }
 
 /** Recently performed exercises (for suggestion recency/variety). */

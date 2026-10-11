@@ -6,6 +6,7 @@ import { readTrainingProfile } from '@/features/training/profile';
 import { getDb, onPersist } from '@/lib/db';
 import { apiFetch } from '@/lib/api';
 import { fetchAllExercises } from '@/lib/exercise-db/client';
+import { localIsoDateDaysAgo } from '@/lib/dates';
 
 /** The stats snapshot pipeline: computed from the local database and
  * published to the server so friends (and only the people the user granted)
@@ -38,7 +39,7 @@ async function computeSnapshot(): Promise<FriendStats> {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const sessionDates = await getSessionDates(60);
-  const workouts = sessionDates.filter((d) => d >= weekAgo.slice(0, 10)).length;
+  const workouts = sessionDates.filter((d) => d >= localIsoDateDaysAgo(7)).length;
 
   const volumeRows = (
     await db.query(

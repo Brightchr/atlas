@@ -38,6 +38,7 @@ import { MEAL_PLAN_TEMPLATES, templateArtNames } from '../mealPlanCatalog';
 import { saveCurrentWeekAsPlan } from '../savedMealPlans';
 import { listRecipes, type RecipeDetails } from '../recipes';
 import { getFoodsByIds, scaleMacros } from '../repository';
+import { localDayOfWeek, localIsoDate } from '@/lib/dates';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -50,7 +51,7 @@ const MEAL_META: Record<MealType, { Icon: typeof Sunrise; tint: string }> = {
 };
 
 /** Today as a 0 = Monday … 6 = Sunday index (JS Date has 0 = Sunday). */
-const todayIndex = () => (new Date().getDay() + 6) % 7;
+const todayIndex = () => localDayOfWeek();
 
 function itemMacros(
   item: MealPlanItem,
@@ -299,7 +300,7 @@ export function MealPlanPage() {
   });
   const logDay = view === 'week' ? todayIndex() : day;
   const logDayMutation = useMutation({
-    mutationFn: () => logPlanDayToDiary(logDay, new Date().toISOString().slice(0, 10)),
+    mutationFn: () => logPlanDayToDiary(logDay, localIsoDate()),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['diary'] });
       void queryClient.invalidateQueries({ queryKey: ['goals'] });
