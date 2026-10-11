@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Apple,
   Dumbbell,
@@ -18,7 +17,6 @@ import { useStopImpersonation } from '@/features/admin/api';
 import { TrialBanner } from '@/features/billing/components/TrialBanner';
 import { VerifyEmailBanner } from '@/features/auth/components/VerifyEmailBanner';
 import { useCurrentUser, useSession } from '@/features/auth/api';
-import { seedDemoLocalData } from '@/features/demo/seedLocalData';
 import { FriendsRail } from '@/features/social/components/FriendsRail';
 import { startStatsPublisher } from '@/features/social/stats';
 import { startSync } from '@/lib/sync/engine';
@@ -100,7 +98,6 @@ export function AppLayout() {
   const { data: user } = useCurrentUser();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const items: NavItem[] = user?.role === 'admin'
     ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
     : navItems;
@@ -137,17 +134,6 @@ export function AppLayout() {
       navigate('/welcome', { replace: true });
     }
   }, [sync.firstSyncDone, profile.isSuccess, profile.isFetching, profile.data, pathname, navigate]);
-
-  // The demo account arrives "fully loaded": whenever demo is signed in and the
-  // device DB is empty, seed it in the background (idempotent, self-healing).
-  useEffect(() => {
-    if (user?.username !== 'demo') return;
-    void seedDemoLocalData()
-      .then((seeded) => {
-        if (seeded) return queryClient.invalidateQueries();
-      })
-      .catch((err: unknown) => console.warn('Demo data seeding skipped:', err));
-  }, [user?.username, queryClient]);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
