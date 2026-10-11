@@ -24,6 +24,10 @@ import {
   weightTrend,
 } from '../stats';
 
+/** Axis labels for big totals: 105000 → "105k", so six digits fit the gutter. */
+const compactNumber = (v: number): string =>
+  Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : String(v);
+
 const KG_TO_LB = 2.2046226218;
 
 function Panel({ title, Icon, children }: { title: string; Icon: typeof Award; children: React.ReactNode }) {
@@ -96,7 +100,7 @@ export function ProgressPage() {
               <BarChart data={weeklyData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid stroke={chartStyle.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" stroke={chartStyle.axis} fontSize={11} tickLine={false} />
-                <YAxis stroke={chartStyle.axis} fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke={chartStyle.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={compactNumber} />
                 <Tooltip
                   formatter={(value) => [`${Number(value).toLocaleString()} ${unitLabel}`, 'Volume']}
                   labelFormatter={(l) => `Week of ${String(l)}`}
