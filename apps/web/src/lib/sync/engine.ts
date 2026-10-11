@@ -259,7 +259,7 @@ async function applyPage(changes: Change[]): Promise<number> {
         } catch (err) {
           // A single bad row (e.g. FK to something this device lacks) must not
           // wedge the whole sync — skip it; the cursor moves on regardless.
-          console.warn('sync: skipped one change:', err);
+          console.warn(`sync: skipped one change (${stmts[0]?.statement.split(' ')[2] ?? '?'}):`, err);
         }
       }
     } finally {
@@ -387,40 +387,47 @@ export async function syncNow(): Promise<void> {
     queued = true;
     return;
   }
-  if (!navigator.onLine || !currentUserId) {
-    // Can't sync at all — don't leave firstSyncDone consumers waiting forever.
-    setState({ firstSyncDone: true });
-    return;
-  }
-  if (!(await isSyncEnabled())) {
-    setState({ status: 'off', firstSyncDone: true });
-    return;
-  }
-
-  // Never mix accounts: this device's data belongs to whoever synced first.
-  const boundAccount = await getMeta('accountId');
-  if (boundAccount && boundAccount !== currentUserId) {
-    setState({ status: 'off', accountMismatch: true, firstSyncDone: true });
-    return;
-  }
-
+  // Claim the run BEFORE the first await. The pre-flight checks below yield
+  // to the event loop, and two triggers landing close together (the session
+  // kick-off plus a persist-debounced one) used to both get past the guard:
+  // two pull loops on one database, each minting its own device id and
+  // interleaving page transactions — a rollback in one dropped parent rows
+  // the other had just applied, so children failed their foreign keys.
   running = true;
-  setState({ status: 'syncing', error: null });
   try {
-    await refreshSyncedSet();
-    const deviceId = await getDeviceId();
-    const applied = await pullAll(deviceId);
-    await pushAll(deviceId);
-    if (!boundAccount) await setMeta('accountId', currentUserId);
-    const at = new Date().toISOString();
-    await setMeta('lastSyncAt', at);
-    failStreak = 0;
-    clearTimeout(retryTimer);
-    setState({ status: 'idle', lastSyncAt: at });
-    if (applied > 0) await queryClient.invalidateQueries();
-  } catch (err) {
-    setState({ status: 'error', error: err instanceof Error ? err.message : String(err) });
-    scheduleRetry();
+    if (!navigator.onLine || !currentUserId) {
+      // Can't sync at all — don't leave firstSyncDone consumers waiting forever.
+      return;
+    }
+    if (!(await isSyncEnabled())) {
+      setState({ status: 'off' });
+      return;
+    }
+
+    // Never mix accounts: this device's data belongs to whoever synced first.
+    const boundAccount = await getMeta('accountId');
+    if (boundAccount && boundAccount !== currentUserId) {
+      setState({ status: 'off', accountMismatch: true });
+      return;
+    }
+
+    setState({ status: 'syncing', error: null });
+    try {
+      await refreshSyncedSet();
+      const deviceId = await getDeviceId();
+      const applied = await pullAll(deviceId);
+      await pushAll(deviceId);
+      if (!boundAccount) await setMeta('accountId', currentUserId);
+      const at = new Date().toISOString();
+      await setMeta('lastSyncAt', at);
+      failStreak = 0;
+      clearTimeout(retryTimer);
+      setState({ status: 'idle', lastSyncAt: at });
+      if (applied > 0) await queryClient.invalidateQueries();
+    } catch (err) {
+      setState({ status: 'error', error: err instanceof Error ? err.message : String(err) });
+      scheduleRetry();
+    }
   } finally {
     setState({ firstSyncDone: true });
     running = false;
