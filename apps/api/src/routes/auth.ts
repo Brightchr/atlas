@@ -178,7 +178,12 @@ authRoutes.post('/login', authLimiter, zValidator('json', loginSchema), async (c
       role: user.role,
       plan: effectivePlan(user.plan, user.plan_expires_at),
       trialEndsAt: user.trial_ends_at,
-      membership: resolveMembership(user.plan, user.plan_expires_at, user.trial_ends_at, user.comped),
+      membership: resolveMembership(
+        user.plan,
+        user.plan_expires_at,
+        user.trial_ends_at,
+        user.comped,
+      ),
       emailVerified: user.email_verified,
       hasPassword: user.password_hash !== null,
       createdAt: user.created_at,
@@ -304,9 +309,7 @@ authRoutes.post(
     // session isn't enough — re-prove it: password, or for Google-only
     // accounts (nothing to verify against) an explicit typed phrase.
     if (row.password_hash !== null) {
-      const valid = body.password
-        ? await verifyPassword(row.password_hash, body.password)
-        : false;
+      const valid = body.password ? await verifyPassword(row.password_hash, body.password) : false;
       if (!valid) return c.json({ error: 'Incorrect password' }, 403);
     } else if (body.confirm !== 'DELETE') {
       return c.json({ error: 'Type DELETE to confirm' }, 400);
@@ -355,7 +358,10 @@ interface GoogleUserRow {
 /** Email local part → available username: sanitized, padded to the minimum
  * length, numeric suffix on collision. */
 async function availableUsername(email: string): Promise<string> {
-  let base = email.split('@')[0]!.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24);
+  let base = email
+    .split('@')[0]!
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .slice(0, 24);
   if (base.length < 3) base = `athlete_${base}`;
   for (let i = 0; i < 6; i++) {
     const candidate = i === 0 ? base : `${base}${Math.floor(Math.random() * 10_000)}`;
@@ -412,7 +418,9 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
       [identity.sub, identity.email],
     );
   }
+  let created = false;
   if (rows.length === 0) {
+    created = true;
     const username = await availableUsername(identity.email);
     try {
       rows = await query<GoogleUserRow>(
@@ -448,7 +456,9 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
 
   const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
-  return c.redirect(`${env.publicUrl}/`);
+  // Brand-new accounts start at the intro wizard (skippable); returning users
+  // land on the dashboard.
+  return c.redirect(`${env.publicUrl}/${created ? 'welcome' : ''}`);
 });
 
 authRoutes.post('/logout', async (c) => {

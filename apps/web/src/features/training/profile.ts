@@ -18,7 +18,11 @@ export interface TrainingProfile {
 
 export const GOAL_OPTIONS: { id: TrainingGoal; label: string; hint: string }[] = [
   { id: 'build_muscle', label: 'Build muscle', hint: 'Hypertrophy: more volume, moderate reps' },
-  { id: 'lose_weight', label: 'Lose weight', hint: 'Burn energy: circuits, cardio, full-body work' },
+  {
+    id: 'lose_weight',
+    label: 'Lose weight',
+    hint: 'Burn energy: circuits, cardio, full-body work',
+  },
   { id: 'get_stronger', label: 'Get stronger', hint: 'Strength: heavy compound lifts, low reps' },
   { id: 'general', label: 'Stay fit', hint: 'Balanced training for health and energy' },
 ];
@@ -84,5 +88,69 @@ export function useSaveTrainingProfile() {
   return useMutation({
     mutationFn: writeTrainingProfile,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings', KEY] }),
+  });
+}
+
+/* ----------------------------- Onboarding ------------------------------ */
+
+/** What skippers train with until they say otherwise. Recommendations and
+ * weekly targets read this instead of rendering holes. */
+export const DEFAULT_TRAINING_PROFILE: TrainingProfile = {
+  goal: 'general',
+  level: 'beginner',
+  daysPerWeek: 3,
+};
+
+/** Profile for display/recommendation: the real one, or the default. */
+export function useEffectiveTrainingProfile(): { profile: TrainingProfile; isSet: boolean } {
+  const query = useTrainingProfile();
+  return { profile: query.data ?? DEFAULT_TRAINING_PROFILE, isSet: Boolean(query.data) };
+}
+
+export type OnboardingStatus = 'completed' | 'skipped';
+export interface OnboardingState {
+  status: OnboardingStatus;
+  at: string;
+}
+
+const ONBOARDING_KEY = 'onboarding';
+
+/** Whether the intro wizard was finished or skipped. Lives in the synced
+ * settings table (row id = key), so a wiped device gets it back on the first
+ * pull and the wizard shows at most once per account. null = never seen. */
+export async function readOnboardingState(): Promise<OnboardingState | null> {
+  const db = await getDb();
+  const rows = (await db.query('SELECT value FROM settings WHERE key = ?', [ONBOARDING_KEY]))
+    .values as { value: string }[];
+  if (!rows[0]) return null;
+  try {
+    const parsed = JSON.parse(rows[0].value) as Partial<OnboardingState>;
+    if (parsed.status !== 'completed' && parsed.status !== 'skipped') return null;
+    return { status: parsed.status, at: parsed.at ?? '' };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeOnboardingState(status: OnboardingStatus): Promise<void> {
+  const db = await getDb();
+  const value = JSON.stringify({ status, at: new Date().toISOString() } satisfies OnboardingState);
+  await db.run(
+    'INSERT INTO settings (id, key, value) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [ONBOARDING_KEY, ONBOARDING_KEY, value],
+  );
+  await persist();
+}
+
+/** null = never completed or skipped; undefined = still loading. */
+export function useOnboardingState() {
+  return useQuery({ queryKey: ['settings', ONBOARDING_KEY], queryFn: readOnboardingState });
+}
+
+export function useSetOnboardingState() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: writeOnboardingState,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings', ONBOARDING_KEY] }),
   });
 }
