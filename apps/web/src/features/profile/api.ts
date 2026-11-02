@@ -1,3 +1,4 @@
+import type { SharedSessionSummary } from '@arcadia/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 
@@ -81,6 +82,8 @@ export interface PublicProfile {
   }[];
   activity: { kind: 'plan' | 'review'; title: string; detail: string; at: string }[];
   goals: SharedGoal[];
+  /** Shared workouts this viewer may see (public, or friends-only for friends). */
+  recentWorkouts: SharedSessionSummary[];
 }
 
 export function useMyProfile() {

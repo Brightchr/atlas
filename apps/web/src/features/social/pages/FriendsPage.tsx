@@ -1,16 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Check,
-  ChevronRight,
-  Plus,
-  Scale,
-  UserPlus,
-  Users,
-  UsersRound,
-  X,
-} from 'lucide-react';
+import { Check, ChevronRight, Plus, Scale, UserPlus, Users, UsersRound, X } from 'lucide-react';
 import type { FriendEntry } from '@arcadia/shared';
 import {
   useAcceptRequest,
@@ -28,6 +19,8 @@ import {
 import { isWeightSharingEnabled, setWeightSharingEnabled } from '../stats';
 import { AvatarIcon } from '@/features/profile/avatars';
 import { StatChips } from '../components/StatChips';
+import { SharedWorkoutCard } from '../components/SharedWorkoutCard';
+import { useWorkoutFeed } from '../sessions';
 
 function FriendCard({ entry }: { entry: FriendEntry }) {
   const setSharing = useSetFriendSharing();
@@ -38,10 +31,18 @@ function FriendCard({ entry }: { entry: FriendEntry }) {
   return (
     <li className="rounded-2xl border border-line bg-surface p-3.5 shadow-sm">
       <div className="flex items-start gap-3">
-        <AvatarIcon name={entry.user.username} icon={entry.user.avatarIcon} tone={entry.user.avatarTone} online={entry.online} />
+        <AvatarIcon
+          name={entry.user.username}
+          icon={entry.user.avatarIcon}
+          tone={entry.user.avatarTone}
+          online={entry.online}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <Link to={`/users/${entry.user.username}`} className="truncate text-sm font-semibold hover:underline">
+            <Link
+              to={`/users/${entry.user.username}`}
+              className="truncate text-sm font-semibold hover:underline"
+            >
               {name}
             </Link>
             {entry.user.displayName && (
@@ -69,7 +70,11 @@ function FriendCard({ entry }: { entry: FriendEntry }) {
             >
               Remove
             </button>
-            <button type="button" onClick={() => setConfirming(false)} className="rounded-lg px-1.5 py-1 text-muted hover:text-ink">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="rounded-lg px-1.5 py-1 text-muted hover:text-ink"
+            >
               Cancel
             </button>
           </span>
@@ -127,6 +132,8 @@ export function FriendsPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['social', 'weight-sharing'] }),
   });
 
+  const feed = useWorkoutFeed();
+  const feedItems = feed.data?.sessions ?? [];
   const data = friendsQuery.data;
   const groups = groupsQuery.data?.groups ?? [];
   const invited = groups.filter((g) => g.membership === 'invited');
@@ -142,7 +149,11 @@ export function FriendsPage() {
       </header>
 
       <div className="relative">
-        <UserPlus size={15} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted" aria-hidden />
+        <UserPlus
+          size={15}
+          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted"
+          aria-hidden
+        />
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -164,6 +175,20 @@ export function FriendsPage() {
           Send
         </button>
       </div>
+
+      {/* Activity: workouts you and your friends chose to share. */}
+      {feedItems.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">
+            Activity
+          </h2>
+          <ul className="space-y-2">
+            {feedItems.slice(0, 20).map((item) => (
+              <SharedWorkoutCard key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      )}
       {sendRequest.isError && <p className="text-xs text-rose-500">{sendRequest.error.message}</p>}
       {sendRequest.data?.accepted && (
         <p className="text-xs text-accent">They'd already added you — you're friends now ✓</p>
@@ -176,8 +201,16 @@ export function FriendsPage() {
           </h2>
           <ul className="space-y-1.5">
             {data!.incoming.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-surface p-3 shadow-sm">
-                <AvatarIcon name={r.user.username} icon={r.user.avatarIcon} tone={r.user.avatarTone} size="sm" />
+              <li
+                key={r.id}
+                className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-surface p-3 shadow-sm"
+              >
+                <AvatarIcon
+                  name={r.user.username}
+                  icon={r.user.avatarIcon}
+                  tone={r.user.avatarTone}
+                  size="sm"
+                />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {r.user.displayName ?? r.user.username}
                 </span>
@@ -211,8 +244,16 @@ export function FriendsPage() {
           </h2>
           <ul className="space-y-1.5">
             {data!.outgoing.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">
-                <AvatarIcon name={r.user.username} icon={r.user.avatarIcon} tone={r.user.avatarTone} size="sm" />
+              <li
+                key={r.id}
+                className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-sm"
+              >
+                <AvatarIcon
+                  name={r.user.username}
+                  icon={r.user.avatarIcon}
+                  tone={r.user.avatarTone}
+                  size="sm"
+                />
                 <span className="min-w-0 flex-1 truncate text-sm text-muted">
                   {r.user.displayName ?? r.user.username} — pending
                 </span>
@@ -233,7 +274,8 @@ export function FriendsPage() {
         <div className="mb-2 flex items-center gap-2">
           <Users size={15} className="text-accent" aria-hidden />
           <h2 className="text-sm font-semibold">
-            Friends {data && <span className="font-normal text-muted">({data.friends.length})</span>}
+            Friends{' '}
+            {data && <span className="font-normal text-muted">({data.friends.length})</span>}
           </h2>
         </div>
         {friendsQuery.isError && (
@@ -243,8 +285,8 @@ export function FriendsPage() {
         )}
         {data?.friends.length === 0 && (
           <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
-            No friends yet — send a request above. Friends can see each other's shared workout
-            stats and plans.
+            No friends yet — send a request above. Friends can see each other's shared workout stats
+            and plans.
           </p>
         )}
         <ul className="grid items-start gap-2.5 md:grid-cols-2">
@@ -321,7 +363,10 @@ export function FriendsPage() {
         )}
 
         {invited.map((g) => (
-          <div key={g.id} className="mb-2 flex flex-wrap items-center gap-2.5 rounded-2xl border border-accent/30 bg-surface p-3 shadow-sm">
+          <div
+            key={g.id}
+            className="mb-2 flex flex-wrap items-center gap-2.5 rounded-2xl border border-accent/30 bg-surface p-3 shadow-sm"
+          >
             <UsersRound size={15} className="shrink-0 text-accent" aria-hidden />
             <span className="min-w-0 flex-1 text-sm">
               <span className="font-semibold">{g.name}</span>
@@ -350,8 +395,8 @@ export function FriendsPage() {
 
         {memberOf.length === 0 && invited.length === 0 && !creatingGroup && (
           <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
-            No groups yet — create one and invite your crew. Everyone in a group sees each
-            other's weekly effort.
+            No groups yet — create one and invite your crew. Everyone in a group sees each other's
+            weekly effort.
           </p>
         )}
         <ul className="grid gap-2.5 sm:grid-cols-2">
