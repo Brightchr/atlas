@@ -77,3 +77,31 @@ export interface GroupDetail extends GroupSummary {
   members: GroupMemberEntry[];
   invited: FriendUser[];
 }
+
+/* --------------------------- Shared workouts ---------------------------- */
+
+/** A finished workout, published as a snapshot. Exercise names are plain
+ * text so readers never need the catalog; totals are recomputed server-side. */
+export interface SharedSessionPayload {
+  exercises: {
+    name: string;
+    sets: { reps: number | null; weightKg: number | null; durationSec: number | null }[];
+  }[];
+  totals: { sets: number; volumeKg: number };
+  notes?: string;
+}
+
+export type SharedSessionVisibility = 'friends' | 'public';
+
+export interface SharedSessionSummary {
+  id: string;
+  localSessionId: string;
+  owner: FriendUser;
+  name: string;
+  performedAt: string;
+  durationSec: number;
+  visibility: SharedSessionVisibility;
+  payload: SharedSessionPayload;
+  createdAt: string;
+  updatedAt: string;
+}

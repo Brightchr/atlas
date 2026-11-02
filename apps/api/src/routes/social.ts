@@ -40,7 +40,7 @@ for (const prefix of ['/friends', '/friends/*', '/groups', '/groups/*', '/stats'
   socialRoutes.use(prefix, rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   username: string;
   display_name: string | null;
@@ -50,7 +50,11 @@ interface UserRow {
 
 /** Avatar + presence-visibility straight from the profile document (same
  * shape normalizeProfile in profile.ts validates on write). */
-function profileBits(raw: unknown): { icon: string | null; tone: string | null; showOnline: boolean } {
+function profileBits(raw: unknown): {
+  icon: string | null;
+  tone: string | null;
+  showOnline: boolean;
+} {
   const doc = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const show = (typeof doc.show === 'object' && doc.show !== null ? doc.show : {}) as Record<
     string,
@@ -63,7 +67,7 @@ function profileBits(raw: unknown): { icon: string | null; tone: string | null; 
   };
 }
 
-const toFriendUser = (r: UserRow): FriendUser => {
+export const toFriendUser = (r: UserRow): FriendUser => {
   const bits = profileBits(r.profile);
   return {
     id: r.id,
@@ -77,9 +81,7 @@ const toFriendUser = (r: UserRow): FriendUser => {
 /** Presence, respecting the owner's show.online switch (null = hidden). */
 function onlineOf(r: UserRow): boolean | null {
   if (!profileBits(r.profile).showOnline) return null;
-  return (
-    r.last_seen_at != null && Date.now() - Date.parse(r.last_seen_at) < ONLINE_WINDOW_MS
-  );
+  return r.last_seen_at != null && Date.now() - Date.parse(r.last_seen_at) < ONLINE_WINDOW_MS;
 }
 
 async function findUserByUsername(username: string): Promise<UserRow | null> {
@@ -167,31 +169,25 @@ socialRoutes.get('/friends', async (c) => {
   );
 
   const response: FriendsResponse = {
-    friends: accepted.map(
-      (r): FriendEntry => ({
-        user: toFriendUser(r),
-        friendedAt: r.responded_at ?? r.created_at,
-        online: onlineOf(r),
-        sharingToThem: myGrants.has(r.id),
-        sharingToMe: grantsToMe.has(r.id) || stats.has(r.id),
-        stats: stats.get(r.id)?.stats ?? null,
-        statsUpdatedAt: stats.get(r.id)?.updatedAt ?? null,
-      }),
-    ),
-    incoming: incoming.map(
-      (r): FriendRequestEntry => ({
-        id: r.friendship_id,
-        user: toFriendUser(r),
-        createdAt: r.created_at,
-      }),
-    ),
-    outgoing: outgoing.map(
-      (r): FriendRequestEntry => ({
-        id: r.friendship_id,
-        user: toFriendUser(r),
-        createdAt: r.created_at,
-      }),
-    ),
+    friends: accepted.map((r): FriendEntry => ({
+      user: toFriendUser(r),
+      friendedAt: r.responded_at ?? r.created_at,
+      online: onlineOf(r),
+      sharingToThem: myGrants.has(r.id),
+      sharingToMe: grantsToMe.has(r.id) || stats.has(r.id),
+      stats: stats.get(r.id)?.stats ?? null,
+      statsUpdatedAt: stats.get(r.id)?.updatedAt ?? null,
+    })),
+    incoming: incoming.map((r): FriendRequestEntry => ({
+      id: r.friendship_id,
+      user: toFriendUser(r),
+      createdAt: r.created_at,
+    })),
+    outgoing: outgoing.map((r): FriendRequestEntry => ({
+      id: r.friendship_id,
+      user: toFriendUser(r),
+      createdAt: r.created_at,
+    })),
   };
   return c.json(response);
 });
@@ -216,10 +212,9 @@ socialRoutes.post('/friends/requests', async (c) => {
     if (found.status === 'accepted') return c.json({ error: 'Already friends' }, 409);
     if (found.requester_id === me.id) return c.json({ error: 'Request already sent' }, 409);
     // They asked first — this "request" is really an acceptance.
-    await query(
-      `UPDATE friendships SET status = 'accepted', responded_at = now() WHERE id = $1`,
-      [found.id],
-    );
+    await query(`UPDATE friendships SET status = 'accepted', responded_at = now() WHERE id = $1`, [
+      found.id,
+    ]);
     await createNotification(
       target.id,
       'friend_accepted',
@@ -396,7 +391,13 @@ socialRoutes.get('/groups/:id', async (c) => {
   if (!mine[0]) return c.json({ error: 'Group not found' }, 404);
 
   const rows = await query<
-    UserRow & { status: string; joined_at: string | null; owner_user_id: string; name: string; owner: string }
+    UserRow & {
+      status: string;
+      joined_at: string | null;
+      owner_user_id: string;
+      name: string;
+      owner: string;
+    }
   >(
     `SELECT u.id, u.username, u.display_name, u.profile, u.last_seen_at, gm.status, gm.joined_at,
             g.owner_user_id, g.name, ou.username AS owner
@@ -415,7 +416,10 @@ socialRoutes.get('/groups/:id', async (c) => {
   // Invited-but-not-joined callers see the roster, not the stats.
   const stats =
     mine[0].status === 'member'
-      ? await visibleStats(me.id, memberRows.map((r) => r.id))
+      ? await visibleStats(
+          me.id,
+          memberRows.map((r) => r.id),
+        )
       : new Map<string, { stats: FriendStats; updatedAt: string }>();
 
   const detail: GroupDetail = {
@@ -426,16 +430,14 @@ socialRoutes.get('/groups/:id', async (c) => {
     membership:
       mine[0].status === 'invited' ? 'invited' : first.owner_user_id === me.id ? 'owner' : 'member',
     sharingStats: mine[0].share_stats,
-    members: memberRows.map(
-      (r): GroupMemberEntry => ({
-        user: toFriendUser(r),
-        role: r.id === first.owner_user_id ? 'owner' : 'member',
-        online: onlineOf(r),
-        stats: stats.get(r.id)?.stats ?? null,
-        statsUpdatedAt: stats.get(r.id)?.updatedAt ?? null,
-        joinedAt: r.joined_at,
-      }),
-    ),
+    members: memberRows.map((r): GroupMemberEntry => ({
+      user: toFriendUser(r),
+      role: r.id === first.owner_user_id ? 'owner' : 'member',
+      online: onlineOf(r),
+      stats: stats.get(r.id)?.stats ?? null,
+      statsUpdatedAt: stats.get(r.id)?.updatedAt ?? null,
+      joinedAt: r.joined_at,
+    })),
     invited: rows.filter((r) => r.status === 'invited').map(toFriendUser),
   };
   return c.json(detail);

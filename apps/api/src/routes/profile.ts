@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { query } from '../db/pool';
+import { recentSharedSessions } from './sessions';
 import { rateLimit } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -19,11 +20,32 @@ const BANNERS = new Set(['indigo', 'tide', 'ember', 'meadow', 'sunset', 'mono'])
 // Keep in step with AVATAR_ICONS / AVATAR_TONES in
 // apps/web/src/features/profile/avatars.tsx — icons render client-side.
 const AVATAR_ICONS = new Set([
-  'dumbbell', 'mountain', 'flame', 'zap', 'heart-pulse', 'trophy', 'target', 'bike',
-  'footprints', 'medal', 'rocket', 'swords', 'shield', 'star', 'waves', 'anchor',
+  'dumbbell',
+  'mountain',
+  'flame',
+  'zap',
+  'heart-pulse',
+  'trophy',
+  'target',
+  'bike',
+  'footprints',
+  'medal',
+  'rocket',
+  'swords',
+  'shield',
+  'star',
+  'waves',
+  'anchor',
 ]);
 const AVATAR_TONES = new Set([
-  'indigo', 'teal', 'orange', 'sky', 'rose', 'emerald', 'amber', 'violet',
+  'indigo',
+  'teal',
+  'orange',
+  'sky',
+  'rose',
+  'emerald',
+  'amber',
+  'violet',
 ]);
 
 /** "Online now" horizon over users.last_seen_at. */
@@ -120,7 +142,8 @@ profileRoutes.patch('/me', async (c) => {
     body.profile !== undefined
       ? normalizeProfile(body.profile)
       : normalizeProfile(current[0]?.profile);
-  if (displayName && displayName.length > 60) return c.json({ error: 'Display name too long' }, 400);
+  if (displayName && displayName.length > 60)
+    return c.json({ error: 'Display name too long' }, 400);
   if (bio.length > 500) return c.json({ error: 'Bio too long (500 characters max)' }, 400);
 
   await query('UPDATE users SET display_name = $1, bio = $2, profile = $3::jsonb WHERE id = $4', [
@@ -239,8 +262,14 @@ profileRoutes.get('/:username', async (c) => {
       )
     : [];
 
+  // Workouts they chose to share: public ones for anyone, friends-only ones
+  // for an accepted friend. Independent of the show.* switches — sharing a
+  // session is its own explicit act.
+  const recentWorkouts = await recentSharedSessions(person.id, c.get('user')?.id ?? null);
+
   return c.json({
     ...base,
+    recentWorkouts,
     stats: stats
       ? {
           rating: stats.avg_rating === null ? null : Math.round(Number(stats.avg_rating) * 10) / 10,
