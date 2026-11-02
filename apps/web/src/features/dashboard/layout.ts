@@ -1,8 +1,8 @@
-/** The dashboard's rearrangeable cards, in default order. The promo banner
- * and the greeting header are deliberately NOT here — the hero slot is ours
- * (promotions/announcements), everything else is the user's to arrange. */
+/** The dashboard's rearrangeable cards, in default order. The workout hero,
+ * the promo strip and the greeting header are deliberately NOT here — the
+ * hero is pinned because starting a workout is the point of the app;
+ * everything else is the user's to arrange. */
 export const DASHBOARD_CARDS = [
-  'today',
   'week',
   'pulse',
   'glance',
@@ -41,5 +41,7 @@ export function resetCardOrder(): void {
 }
 
 export function isDefaultOrder(order: DashboardCardId[]): boolean {
-  return order.length === DASHBOARD_CARDS.length && order.every((id, i) => DASHBOARD_CARDS[i] === id);
+  return (
+    order.length === DASHBOARD_CARDS.length && order.every((id, i) => DASHBOARD_CARDS[i] === id)
+  );
 }

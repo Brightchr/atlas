@@ -24,12 +24,12 @@ import {
 import { listMealPlanItems } from '@/features/nutrition/mealPlan';
 import { getDiaryForDate } from '@/features/nutrition/repository';
 import { listShoppingItems } from '@/features/shopping/repository';
-import { useTrainingProfile } from '@/features/training/profile';
+import { DEFAULT_TRAINING_PROFILE, useTrainingProfile } from '@/features/training/profile';
 import { adherenceStats } from '@/features/training/stats';
 import { StatTile } from '@/components/StatTile';
 import { RingTile } from '@/components/Ring';
 import { WeekStrip } from '@/components/WeekStrip';
-import { TodayCard } from '@/features/training/TodayCard';
+import { WorkoutHero } from '@/features/training/WorkoutHero';
 import { ArrangeableList, type ArrangeableItem } from '../components/ArrangeableList';
 import { PromoBanner } from '../components/PromoBanner';
 import { GoalsCard, VolumeCard, WeightCard } from '../components/ProgressCards';
@@ -53,9 +53,9 @@ function greeting(): string {
 }
 
 const quickActions = [
-  { to: '/train/schedule', label: 'My plans', Icon: CalendarDays },
+  { to: '/train', label: 'Start a workout', Icon: Dumbbell },
+  { to: '/history/log', label: 'Log a past workout', Icon: CalendarDays },
   { to: '/exercises', label: 'Browse exercises', Icon: Search },
-  { to: '/train/library', label: 'Start a workout', Icon: Dumbbell },
   { to: '/eat', label: 'Log a meal', Icon: UtensilsCrossed },
   { to: '/you/goals', label: 'Set a goal', Icon: Target },
 ];
@@ -93,20 +93,24 @@ export function DashboardPage() {
   });
   const mealPlanQuery = useQuery({ queryKey: ['meal-plan'], queryFn: listMealPlanItems });
   const shoppingQuery = useQuery({ queryKey: ['shopping'], queryFn: listShoppingItems });
-  const adherence = useQuery({ queryKey: ['stats', 'adherence'], queryFn: () => adherenceStats(4) });
+  const adherence = useQuery({
+    queryKey: ['stats', 'adherence'],
+    queryFn: () => adherenceStats(4),
+  });
   const thisWeek = adherence.data?.weeks[adherence.data.weeks.length - 1];
   const weekDone = thisWeek?.days.filter((d) => d.status === 'done').length ?? 0;
   const weekMissed = thisWeek?.days.filter((d) => d.status === 'missed').length ?? 0;
 
   const targets = targetsQuery.data ?? null;
   const trainedDays = weekSessions.data?.length ?? 0;
-  const daysTarget = profile.data?.daysPerWeek ?? null;
+  const daysTarget = (profile.data ?? DEFAULT_TRAINING_PROFILE).daysPerWeek;
   const todayDow = localDayOfWeek();
   const plannedMealsToday = (mealPlanQuery.data ?? []).filter((m) => m.dayOfWeek === todayDow);
   const toBuy = (shoppingQuery.data ?? []).filter((i) => i.status === 'needed').length;
 
   // The user's layout: card order persists per device; arrange mode overlays
-  // drag + move controls. The promo banner above stays pinned — it's ours.
+  // drag + move controls. The workout hero above stays pinned — it's the
+  // point of the app; a live promo strip slots in under it.
   const [order, setOrder] = useState<DashboardCardId[]>(loadCardOrder);
   const [arranging, setArranging] = useState(false);
   const move = (from: number, to: number) => {
@@ -120,10 +124,11 @@ export function DashboardPage() {
   };
 
   const cardNodes: Record<DashboardCardId, { label: string; node: React.ReactNode | null }> = {
-    today: { label: 'Today', node: <TodayCard /> },
     week: {
       label: 'This week',
-      node: thisWeek ? <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} /> : null,
+      node: thisWeek ? (
+        <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} />
+      ) : null,
     },
     pulse: { label: 'Weekly pulse', node: <WeeklyPulse /> },
     glance: {
@@ -359,7 +364,9 @@ export function DashboardPage() {
         </div>
       </header>
 
-      {/* Hero slot — promotions and announcements we post; not arrangeable. */}
+      {/* Pinned: the workout you're in / today's / a blank one — one tap. */}
+      <WorkoutHero />
+      {/* Only when a promotion is live, and dismissible. */}
       <PromoBanner />
 
       <ArrangeableList items={items} arranging={arranging} onMove={move} />

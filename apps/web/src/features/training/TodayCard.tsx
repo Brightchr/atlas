@@ -1,26 +1,35 @@
 import { Link, useNavigate } from 'react-router';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, BedDouble, Play, TimerReset } from 'lucide-react';
+import type { TrainingPlan, Workout, WorkoutSession } from '@arcadia/shared';
 import { getActivePlanId, listPlans } from '@/features/plans/repository';
 import { getOpenSession, listWorkouts, startSession } from '@/features/workouts/repository';
 import { localDayOfWeek } from '@/lib/dates';
 
-/** Today as a 0 = Monday … 6 = Sunday index. */
-const todayIndex = () => localDayOfWeek();
+export interface TodaysDay {
+  plan: TrainingPlan;
+  isRestDay: boolean;
+  workout: Workout | undefined;
+}
 
-/** The one card that makes the plan drive the app: it resolves today's
- * workout and starts it in a single tap (no detour through the workout
- * list), and it surfaces an abandoned session wherever the card renders —
- * dashboard and training hub alike. */
-export function TodayCard() {
+/** What the plan says about today, plus any session left open. Shared by the
+ * dashboard hero and the Workout hub so the two never disagree. */
+export function useTodayWorkout(): {
+  openSession: WorkoutSession | null | undefined;
+  todaysDay: TodaysDay | undefined;
+  loaded: boolean;
+  start: (workout: Workout) => void;
+  starting: boolean;
+} {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const plansQuery = useQuery({ queryKey: ['plans'], queryFn: listPlans });
   const activeQuery = useQuery({ queryKey: ['plans', 'active'], queryFn: getActivePlanId });
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
-  const openSession = useQuery({ queryKey: ['session', 'open'], queryFn: getOpenSession });
+  const openSession = useQuery({ queryKey: ['sessions', 'open'], queryFn: getOpenSession });
 
   const workoutsById = new Map((workoutsQuery.data ?? []).map((w) => [w.id, w]));
-  const today = todayIndex();
+  const today = localDayOfWeek();
   // The ACTIVE plan decides the day; without one, any plan that schedules
   // something today still works (the pre-switcher behavior).
   const activeId = activeQuery.data ?? null;
@@ -42,22 +51,39 @@ export function TodayCard() {
 
   const start = useMutation({
     mutationFn: startSession,
-    onSuccess: (sessionId) => navigate(`/workouts/session/${sessionId}`),
+    onSuccess: (sessionId) => {
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      void navigate(`/workouts/session/${sessionId}`);
+    },
   });
 
-  if (openSession.data) {
+  return {
+    openSession: openSession.data,
+    todaysDay,
+    loaded: plansQuery.isSuccess && workoutsQuery.isSuccess && openSession.isSuccess,
+    start: (w) => start.mutate(w),
+    starting: start.isPending,
+  };
+}
+
+/** Today's planned workout, startable in one tap, with an abandoned session
+ * surfaced first wherever the card renders. */
+export function TodayCard() {
+  const { openSession, todaysDay, start, starting } = useTodayWorkout();
+
+  if (openSession) {
     return (
       <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">
             <TimerReset size={16} className="mr-1.5 inline text-amber-600" aria-hidden />
-            Workout in progress: {openSession.data.workoutName}
+            Workout in progress: {openSession.workoutName}
             <span className="ml-2 text-sm font-normal text-muted">
-              {openSession.data.sets.length} sets logged
+              {openSession.sets.length} sets logged
             </span>
           </p>
           <Link
-            to={`/workouts/session/${openSession.data.id}`}
+            to={`/workouts/session/${openSession.id}`}
             className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
           >
             Resume
@@ -89,8 +115,8 @@ export function TodayCard() {
             </p>
             <button
               type="button"
-              disabled={start.isPending}
-              onClick={() => start.mutate(todaysDay.workout!)}
+              disabled={starting}
+              onClick={() => start(todaysDay.workout!)}
               className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <Play size={14} aria-hidden />
