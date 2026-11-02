@@ -23,6 +23,27 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
 
+  if (session.isError) {
+    // The server didn't answer (API down, dev proxy 502). The user may well
+    // be signed in, so neither the landing page nor /signin is right.
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg p-6 text-center">
+        <p className="text-base font-semibold">Can&apos;t reach Atlas</p>
+        <p className="max-w-sm text-sm text-muted">
+          The server didn&apos;t respond. It retries on its own, or try again now.
+        </p>
+        <button
+          type="button"
+          onClick={() => void session.refetch()}
+          disabled={session.isFetching}
+          className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2.5 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {session.isFetching ? 'Checking…' : 'Try again'}
+        </button>
+      </div>
+    );
+  }
+
   if (!session.data) {
     // The bare root is a first visit — signed out, atlas-fitness.org IS the
     // marketing page (rendered in place, no /home redirect in the URL bar).

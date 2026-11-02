@@ -29,7 +29,14 @@ export function useSession() {
     queryKey: ['auth', 'me'],
     queryFn: fetchSession,
     staleTime: 5 * 60 * 1000,
-    retry: false,
+    // A failed check (API down, proxy 502) is NOT "signed out": keep the error
+    // so RequireAuth can show a retry screen instead of the landing page.
+    // retryOnMount off matters: every screen that reads the session would
+    // otherwise refetch the errored query on mount, flipping it back to
+    // pending, which unmounts that screen and refetches again — a tight loop.
+    retry: 2,
+    retryOnMount: false,
+    refetchInterval: (query) => (query.state.status === 'error' ? 10_000 : false),
   });
 }
 
