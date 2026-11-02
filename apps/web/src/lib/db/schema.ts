@@ -34,6 +34,12 @@ export const TRAINING_SYNC_TABLES = [
   'logged_sets',
 ] as const;
 
+/** Per-session exercise snapshots (v12). Their own group, NOT appended to
+ * TRAINING_SYNC_TABLES: that list is baked into the v9/v10 migration
+ * statements, which run before the table exists on a fresh install. The
+ * engine treats this group exactly like the training tables (same opt-out). */
+export const SESSION_SYNC_TABLES = ['session_exercises'] as const;
+
 const NOW_ISO = `strftime('%Y-%m-%dT%H:%M:%fZ','now')`;
 // Triggers record every write into sync_pending (a dirty-set, latest change
 // wins per row) so repositories never have to remember to track changes.
@@ -396,6 +402,31 @@ export const upgradeStatements = [
       `ALTER TABLE training_plans ADD COLUMN based_on_kind TEXT;`,
       `ALTER TABLE training_plans ADD COLUMN based_on_ref TEXT;`,
       `ALTER TABLE training_plans ADD COLUMN based_on_name TEXT;`,
+    ],
+  },
+  {
+    toVersion: 12,
+    statements: [
+      // A session owns its exercise list. Starting a routine snapshots the
+      // template's slots here; an empty workout starts with none and the user
+      // adds as they go. Editing a routine mid-session no longer rewrites the
+      // screen, and extra exercises never leak back into the template. No FK
+      // on session_id: PRAGMA foreign_keys is never enabled and sessions can
+      // outlive the routine they came from (workout_id works the same way).
+      `CREATE TABLE IF NOT EXISTS session_exercises (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        exercise_id INTEGER NOT NULL,
+        exercise_name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        target_sets INTEGER,
+        target_reps INTEGER,
+        target_duration_sec INTEGER,
+        rest_sec INTEGER
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_session_exercises_session ON session_exercises(session_id);`,
+      `ALTER TABLE workout_sessions ADD COLUMN notes TEXT;`,
+      ...SESSION_SYNC_TABLES.flatMap(syncTriggerStatements),
     ],
   },
 ];

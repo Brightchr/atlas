@@ -32,6 +32,7 @@ const ALLOWED_ENTITIES = new Set([
   'training_plan_days',
   'workout_sessions',
   'logged_sets',
+  'session_exercises',
 ]);
 // Storage quota: a generous ceiling for real usage (years of daily logging
 // sits far below it), a hard wall for abuse.
@@ -87,7 +88,9 @@ async function mergeDuplicateShoppingItems(
 
   const groups = new Map<string, { row_id: string; payload: Record<string, unknown> }[]>();
   for (const r of rows) {
-    const name = String(r.payload.name ?? '').trim().toLowerCase();
+    const name = String(r.payload.name ?? '')
+      .trim()
+      .toLowerCase();
     if (!name) continue;
     const list = groups.get(name) ?? [];
     list.push(r);

@@ -111,7 +111,13 @@ describe('sync push/pull', () => {
   it('propagates deletes as tombstones', async () => {
     await push('device-a', [upsert('foods', 'food-del', { name: 'Doomed' })]);
     await push('device-a', [
-      { entity: 'foods', rowId: 'food-del', payload: null, deleted: true, changedAt: new Date().toISOString() },
+      {
+        entity: 'foods',
+        rowId: 'food-del',
+        payload: null,
+        deleted: true,
+        changedAt: new Date().toISOString(),
+      },
     ]);
     const seen = await pull('device-b');
     const row = seen.changes.find((c) => c.rowId === 'food-del');
@@ -148,7 +154,13 @@ describe('sync push/pull', () => {
     expect(nested.status).toBe(400);
 
     const mismatched = await push('device-a', [
-      { entity: 'foods', rowId: 'row-x', payload: { id: 'row-y' }, deleted: false, changedAt: new Date().toISOString() },
+      {
+        entity: 'foods',
+        rowId: 'row-x',
+        payload: { id: 'row-y' },
+        deleted: false,
+        changedAt: new Date().toISOString(),
+      },
     ]);
     expect(mismatched.status).toBe(400);
 
@@ -159,11 +171,43 @@ describe('sync push/pull', () => {
     expect(tooMany.status).toBe(413);
   });
 
+  it('round-trips session_exercises and still rejects unknown entities', async () => {
+    const res = await push('device-a', [
+      upsert('workout_sessions', 'sess-1', {
+        workout_id: null,
+        workout_name: 'Workout',
+        notes: 'pb',
+      }),
+      upsert('session_exercises', 'sess-ex-1', {
+        session_id: 'sess-1',
+        exercise_id: 42,
+        exercise_name: 'Squat',
+        position: 0,
+        target_sets: 3,
+      }),
+    ]);
+    expect(res.status).toBe(200);
+    const seen = await pull('device-b');
+    const ex = seen.changes.find(
+      (c) => c.entity === 'session_exercises' && c.rowId === 'sess-ex-1',
+    );
+    expect(ex?.payload).toMatchObject({
+      session_id: 'sess-1',
+      exercise_name: 'Squat',
+      position: 0,
+    });
+
+    const unknown = await push('device-a', [upsert('shared_sessions', 'nope', { name: 'x' })]);
+    expect(unknown.status).toBe(400);
+  });
+
   it('pages in numeric sequence order across a digit boundary', async () => {
     // seq is bigint but travels as text; the pull used to ORDER BY the text
     // output column, so '10000' sorted before '9999' and a fresh device
     // skipped every row below the first five-digit sequence number.
-    const [{ last }] = (await pool.query<{ last: string }>("SELECT last_value::text AS last FROM sync_rows_seq")).rows;
+    const [{ last }] = (
+      await pool.query<{ last: string }>('SELECT last_value::text AS last FROM sync_rows_seq')
+    ).rows;
     const base = Math.max(Number(last), 9_990);
     await pool.query("SELECT setval('sync_rows_seq', $1)", [base]);
     const ids = Array.from({ length: 20 }, (_, i) => `order-${i}`);
