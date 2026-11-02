@@ -38,6 +38,8 @@ import { CatalogPlanPage } from '@/features/training/pages/CatalogPlanPage';
 import { ProgressPage } from '@/features/training/pages/ProgressPage';
 import { SchedulePage } from '@/features/training/pages/SchedulePage';
 import { SessionDetailPage } from '@/features/training/pages/SessionDetailPage';
+import { HistoryPage } from '@/features/training/pages/HistoryPage';
+import { LogPastWorkoutPage } from '@/features/training/pages/LogPastWorkoutPage';
 import { WelcomePage } from '@/features/training/pages/WelcomePage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
 import { PublicProfilePage } from '@/features/profile/pages/PublicProfilePage';
@@ -48,8 +50,14 @@ function GroupRedirect() {
   return <Navigate to={`/groups/${id}`} replace />;
 }
 
-/** The 4-tab shell: Home (/), Train, Eat, You. Every screen lives inside one
- * of the three section layouts (or the dashboard), so section chrome
+/** History moved out of You into its own tab. */
+function HistoryRedirect() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  return <Navigate to={`/history/${sessionId}`} replace />;
+}
+
+/** The 5-tab shell: Home (/), Workout, History, Eat, You. Every screen lives
+ * inside a section layout (or the dashboard / history), so section chrome
  * persists through every drill-down. Old paths redirect so bookmarks,
  * notifications, and muscle memory keep working. */
 export const router = createBrowserRouter([
@@ -116,14 +124,17 @@ export const router = createBrowserRouter([
         children: [
           { path: '/you', element: <ProgressPage /> },
           { path: '/you/goals', element: <GoalsPage /> },
-          { path: '/you/history/:sessionId', element: <SessionDetailPage /> },
+          // Friends is a You pill: your people sit next to your progress.
+          { path: '/friends', element: <FriendsPage /> },
+          { path: '/groups/:id', element: <GroupPage /> },
         ],
       },
 
-      // Friends is a social surface, not personal data — it lives outside the
-      // You section, reached from the friends rail and the avatar menu.
-      { path: '/friends', element: <FriendsPage /> },
-      { path: '/groups/:id', element: <GroupPage /> },
+      // History: its own tab. The live session editor stays under Train so
+      // the Workout tab lights while you're logging.
+      { path: '/history', element: <HistoryPage /> },
+      { path: '/history/log', element: <LogPastWorkoutPage /> },
+      { path: '/history/:sessionId', element: <SessionDetailPage /> },
 
       // Account pages live under the top-bar avatar menu, outside any section.
       { path: '/profile', element: <ProfilePage /> },
@@ -145,6 +156,7 @@ export const router = createBrowserRouter([
       { path: '/you/settings', element: <Navigate to="/settings" replace /> },
       { path: '/you/friends', element: <Navigate to="/friends" replace /> },
       { path: '/you/groups/:id', element: <GroupRedirect /> },
+      { path: '/you/history/:sessionId', element: <HistoryRedirect /> },
     ],
   },
 ]);

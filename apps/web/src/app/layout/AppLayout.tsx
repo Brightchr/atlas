@@ -3,12 +3,12 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import {
   Apple,
   Dumbbell,
+  History,
   House,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
   UserRound,
-  UsersRound,
   VenetianMask,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
@@ -21,11 +21,12 @@ import { FriendsRail } from '@/features/social/components/FriendsRail';
 import { startStatsPublisher } from '@/features/social/stats';
 import { startSync } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
-import { useTrainingProfile } from '@/features/training/profile';
+import { useOnboardingState, useTrainingProfile } from '@/features/training/profile';
 
-// The 4-tab shell: Home, Train, Eat, You — each tab is a complete world and
-// drill-down happens inside it. `match` lists extra path prefixes (detail
-// and legacy routes) that keep the tab lit.
+// The 5-tab shell: Home, Workout, History, Eat, You — the shape every
+// workout app converges on, so starting or reviewing a workout is one tap
+// from anywhere. `match` lists extra path prefixes (detail and legacy
+// routes) that keep the tab lit.
 interface NavItem {
   to: string;
   label: string;
@@ -38,22 +39,27 @@ const navItems: NavItem[] = [
   { to: '/', label: 'Home', Icon: House, end: true },
   {
     to: '/train',
-    label: 'Train',
+    label: 'Workout',
     Icon: Dumbbell,
     match: ['/workouts', '/exercises', '/plans', '/training'],
   },
+  { to: '/history', label: 'History', Icon: History },
   { to: '/eat', label: 'Eat', Icon: Apple, match: ['/nutrition', '/shopping'] },
   // Profile and Settings are account pages under the top-bar avatar menu,
-  // so they deliberately don't light this tab.
-  { to: '/you', label: 'You', Icon: UserRound, match: ['/goals'] },
+  // so they deliberately don't light this tab. Friends lives in You.
+  { to: '/you', label: 'You', Icon: UserRound, match: ['/goals', '/friends', '/groups'] },
 ];
 
-// Mobile has no friends rail, so friends earn a tab of their own there.
-// Desktop reaches friends via the rail and the avatar menu instead.
-const mobileNavItems: NavItem[] = [
-  ...navItems,
-  { to: '/friends', label: 'Friends', Icon: UsersRound, match: ['/groups'] },
-];
+/** Shown while a fresh device waits for its first pull to decide whether the
+ * intro wizard is still owed. Brief — bounded by the sync pass. */
+function SettingUpSplash() {
+  return (
+    <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 p-6 text-center">
+      <img src="/favicon/android-chrome-192x192.png" alt="" className="h-12 w-12 animate-pulse" />
+      <p className="text-sm text-muted">Setting things up…</p>
+    </div>
+  );
+}
 
 function isItemActive(item: NavItem, pathname: string): boolean {
   if (item.end) return pathname === item.to;
@@ -98,9 +104,10 @@ export function AppLayout() {
   const { data: user } = useCurrentUser();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const items: NavItem[] = user?.role === 'admin'
-    ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
-    : navItems;
+  const items: NavItem[] =
+    user?.role === 'admin'
+      ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
+      : navItems;
 
   // Sync runs for the whole signed-in session: pull/push on start, then on
   // reconnect, tab focus, after writes (debounced), and on a slow interval.
@@ -116,24 +123,31 @@ export function AppLayout() {
     return startStatsPublisher();
   }, [user?.id]);
 
-  // New-user onboarding: until a training profile exists, everything funnels
-  // to the goal picker — it's the lens the rest of the app filters through.
-  // Wait for the first sync pass first: a device that lost (or never had)
-  // local data usually gets its profile back from the server, and asking the
-  // onboarding questions again would be wrong twice — annoying AND a lie.
+  // New-user onboarding: the intro wizard shows once per account — until a
+  // training profile exists OR the user has finished/skipped it. Both live
+  // in the synced settings table, so we wait for the first sync pass: a
+  // device that lost (or never had) local data usually gets them back from
+  // the server, and asking the questions again would be wrong twice —
+  // annoying AND a lie. Until that pass settles, an undecided device shows a
+  // splash instead of flashing the dashboard under the wizard.
   const profile = useTrainingProfile();
+  const onboarding = useOnboardingState();
   const sync = useSyncState();
+  const settled =
+    profile.isSuccess && !profile.isFetching && onboarding.isSuccess && !onboarding.isFetching;
+  const undecided = settled && profile.data === null && onboarding.data === null;
+  const onWelcome = pathname === '/welcome';
   useEffect(() => {
-    if (
-      sync.firstSyncDone &&
-      profile.isSuccess &&
-      !profile.isFetching &&
-      profile.data === null &&
-      pathname !== '/welcome'
-    ) {
+    if (sync.firstSyncDone && undecided && !onWelcome) {
       navigate('/welcome', { replace: true });
     }
-  }, [sync.firstSyncDone, profile.isSuccess, profile.isFetching, profile.data, pathname, navigate]);
+  }, [sync.firstSyncDone, undecided, onWelcome, navigate]);
+  // Keyed on data, not fetch state: background refetches must never flash
+  // the splash over a working screen. Once the first pass is done it's gone.
+  // A broken local database shows the app's own error state, not a splash.
+  const noEvidence = profile.data == null && onboarding.data == null;
+  const settingUp =
+    !onWelcome && !sync.firstSyncDone && noEvidence && !profile.isError && !onboarding.isError;
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -153,66 +167,64 @@ export function AppLayout() {
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar — desktop only */}
-      <aside
-        className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 md:flex ${
-          collapsed ? 'w-[76px]' : 'w-64'
-        }`}
-      >
-        <div
-          className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'px-5'}`}
+        <aside
+          className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 md:flex ${
+            collapsed ? 'w-[76px]' : 'w-64'
+          }`}
         >
-          {collapsed ? (
-            <img
-              src="/favicon/android-chrome-192x192.png"
-              alt="Arcadia Atlas"
-              className="h-9 w-9 shrink-0"
-            />
-          ) : (
-            <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-10 w-auto" />
-          )}
-        </div>
+          <div className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'px-5'}`}>
+            {collapsed ? (
+              <img
+                src="/favicon/android-chrome-192x192.png"
+                alt="Arcadia Atlas"
+                className="h-9 w-9 shrink-0"
+              />
+            ) : (
+              <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-10 w-auto" />
+            )}
+          </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-3">
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={collapsed ? item.label : undefined}
-              className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors ${
+          <nav className="flex flex-1 flex-col gap-1 px-3">
+            {items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                title={collapsed ? item.label : undefined}
+                className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                  collapsed ? 'justify-center px-0' : 'px-3.5'
+                } ${
+                  isItemActive(item, pathname)
+                    ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
+                    : 'text-muted hover:bg-elev hover:text-ink'
+                }`}
+              >
+                <item.Icon size={18} strokeWidth={1.8} className="shrink-0" aria-hidden />
+                {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className={`border-t border-line py-3 ${collapsed ? 'px-3' : 'px-3'}`}>
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className={`flex w-full items-center gap-3 rounded-xl py-2 text-sm font-medium text-muted transition-colors hover:bg-elev hover:text-ink ${
                 collapsed ? 'justify-center px-0' : 'px-3.5'
-              } ${
-                isItemActive(item, pathname)
-                  ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                  : 'text-muted hover:bg-elev hover:text-ink'
               }`}
             >
-              <item.Icon size={18} strokeWidth={1.8} className="shrink-0" aria-hidden />
-              {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className={`border-t border-line py-3 ${collapsed ? 'px-3' : 'px-3'}`}>
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`flex w-full items-center gap-3 rounded-xl py-2 text-sm font-medium text-muted transition-colors hover:bg-elev hover:text-ink ${
-              collapsed ? 'justify-center px-0' : 'px-3.5'
-            }`}
-          >
-            {collapsed ? (
-              <PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden />
-            ) : (
-              <>
-                <PanelLeftClose size={18} strokeWidth={1.8} aria-hidden />
-                <span>Collapse</span>
-              </>
-            )}
-          </button>
-        </div>
-      </aside>
+              {collapsed ? (
+                <PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden />
+              ) : (
+                <>
+                  <PanelLeftClose size={18} strokeWidth={1.8} aria-hidden />
+                  <span>Collapse</span>
+                </>
+              )}
+            </button>
+          </div>
+        </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar />
@@ -220,7 +232,7 @@ export function AppLayout() {
               whole app a sideways scroll on phones — wide content scrolls
               inside its own overflow-x-auto container instead. */}
           <main className="flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-6">
-            <Outlet />
+            {settingUp ? <SettingUpSplash /> : <Outlet />}
           </main>
         </div>
 
@@ -233,7 +245,7 @@ export function AppLayout() {
         aria-label="Primary"
         className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-between rounded-2xl border border-line bg-surface/80 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-xl md:hidden"
       >
-        {mobileNavItems.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

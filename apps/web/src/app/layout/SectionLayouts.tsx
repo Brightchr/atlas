@@ -1,21 +1,20 @@
-import { Outlet, useLocation } from 'react-router';
+import { Link, Outlet, useLocation } from 'react-router';
 import {
-  CalendarDays,
-  ClipboardList,
-  Compass,
+  ChevronLeft,
   NotebookPen,
-  Play,
   Salad,
   ShoppingCart,
   Soup,
   Target,
   TrendingUp,
+  UsersRound,
 } from 'lucide-react';
 import { SegmentedTabs, type SegmentTab } from '@/components/SegmentedTabs';
 
-/** The three section layouts of the 4-tab shell. Each owns its pill bar and
- * animates its content in with the shared spring, so switching segments and
- * drilling into detail pages feels like moving within one surface. */
+/** The section layouts of the 5-tab shell. Eat and You own a pill bar; the
+ * Workout section is one hub page with drill-downs, so it gets a back link
+ * instead. All animate content in with the shared spring, so moving within
+ * a section feels like moving within one surface. */
 
 function Section({ tabs }: { tabs: SegmentTab[] }) {
   const { pathname } = useLocation();
@@ -31,25 +30,30 @@ function Section({ tabs }: { tabs: SegmentTab[] }) {
   );
 }
 
-const trainTabs: SegmentTab[] = [
-  { to: '/train', label: 'Today', Icon: Play, end: true },
-  {
-    to: '/train/schedule',
-    label: 'Plans',
-    Icon: CalendarDays,
-    match: ['/plans'],
-  },
-  {
-    to: '/train/library',
-    label: 'Library',
-    Icon: ClipboardList,
-    match: ['/workouts', '/exercises'],
-  },
-  { to: '/train/explore', label: 'Explore', Icon: Compass },
-];
-
+/** No pills: the hub at /train is the whole section, everything else is a
+ * drill-down with one back link (rendered here, once). The live session
+ * page gets none — Finish, Save and Discard are its exits. */
 export function TrainLayout() {
-  return <Section tabs={trainTabs} />;
+  const { pathname } = useLocation();
+  const showBack = pathname !== '/train' && !pathname.startsWith('/workouts/session/');
+  return (
+    <div>
+      {showBack && (
+        <div className="mx-auto max-w-5xl px-4 pt-4 md:px-6">
+          <Link
+            to="/train"
+            className="inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-ink"
+          >
+            <ChevronLeft size={16} aria-hidden />
+            Workout
+          </Link>
+        </div>
+      )}
+      <div key={pathname} className="page-enter">
+        <Outlet />
+      </div>
+    </div>
+  );
 }
 
 const eatTabs: SegmentTab[] = [
@@ -64,17 +68,11 @@ export function EatLayout() {
 }
 
 // Profile and Settings live under the top-bar avatar menu, not here — this
-// section is your data (progress and goals), the avatar is your account.
-// Friends is social, not personal: it lives at /friends (rail + avatar menu).
+// section is you: your progress, your goals, your people.
 const youTabs: SegmentTab[] = [
-  {
-    to: '/you',
-    label: 'Progress',
-    Icon: TrendingUp,
-    end: true,
-    match: ['/you/history'],
-  },
+  { to: '/you', label: 'Progress', Icon: TrendingUp, end: true },
   { to: '/you/goals', label: 'Goals', Icon: Target },
+  { to: '/friends', label: 'Friends', Icon: UsersRound, match: ['/groups'] },
 ];
 
 export function YouLayout() {
