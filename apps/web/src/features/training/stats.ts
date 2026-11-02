@@ -16,6 +16,7 @@ import {
 
 export interface SessionSummary {
   id: string;
+  workoutId: string | null;
   workoutName: string;
   startedAt: string;
   finishedAt: string | null;
@@ -23,13 +24,37 @@ export interface SessionSummary {
   /** Sum of weight × reps across the session, in kg. */
   volumeKg: number;
   durationMin: number | null;
+  /** First few exercise names, in session order, for list rows. */
+  exerciseNames: string[];
+  exerciseCount: number;
 }
 
-export async function listSessionHistory(limit = 50): Promise<SessionSummary[]> {
+interface SessionSummaryRow {
+  id: string;
+  workout_id: string | null;
+  workout_name: string;
+  started_at: string;
+  finished_at: string | null;
+  set_count: number;
+  volume_kg: number;
+}
+
+export async function countFinishedSessions(): Promise<number> {
+  const db = await getDb();
+  const rows = (
+    await db.query('SELECT COUNT(*) AS n FROM workout_sessions WHERE finished_at IS NOT NULL')
+  ).values as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+/** Finished sessions, newest first, with per-row totals and exercise names
+ * (from the session's own exercise list, or — for sessions logged before
+ * v12 — from what was logged). */
+export async function listSessionHistory(limit = 50, offset = 0): Promise<SessionSummary[]> {
   const db = await getDb();
   const rows = (
     await db.query(
-      `SELECT s.id, s.workout_name, s.started_at, s.finished_at,
+      `SELECT s.id, s.workout_id, s.workout_name, s.started_at, s.finished_at,
               COUNT(l.id) AS set_count,
               COALESCE(SUM(COALESCE(l.weight_kg, 0) * COALESCE(l.reps, 0)), 0) AS volume_kg
          FROM workout_sessions s
@@ -37,28 +62,55 @@ export async function listSessionHistory(limit = 50): Promise<SessionSummary[]> 
         WHERE s.finished_at IS NOT NULL
         GROUP BY s.id
         ORDER BY s.started_at DESC
-        LIMIT ?`,
-      [limit],
+        LIMIT ? OFFSET ?`,
+      [limit, offset],
     )
-  ).values as {
-    id: string;
-    workout_name: string;
-    started_at: string;
-    finished_at: string | null;
-    set_count: number;
-    volume_kg: number;
-  }[];
-  return rows.map((r) => ({
-    id: r.id,
-    workoutName: r.workout_name,
-    startedAt: r.started_at,
-    finishedAt: r.finished_at,
-    setCount: r.set_count,
-    volumeKg: Math.round(r.volume_kg),
-    durationMin: r.finished_at
-      ? Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60_000))
-      : null,
-  }));
+  ).values as SessionSummaryRow[];
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const names = new Map<string, string[]>();
+  const planned = (
+    await db.query(
+      `SELECT session_id, exercise_name FROM session_exercises
+        WHERE session_id IN (${placeholders}) ORDER BY session_id, position`,
+      ids,
+    )
+  ).values as { session_id: string; exercise_name: string }[];
+  for (const e of planned)
+    names.set(e.session_id, [...(names.get(e.session_id) ?? []), e.exercise_name]);
+  const missing = ids.filter((id) => !names.has(id));
+  if (missing.length > 0) {
+    const logged = (
+      await db.query(
+        `SELECT session_id, exercise_name, MIN(completed_at) AS first_at FROM logged_sets
+          WHERE session_id IN (${missing.map(() => '?').join(', ')})
+          GROUP BY session_id, exercise_name ORDER BY session_id, first_at`,
+        missing,
+      )
+    ).values as { session_id: string; exercise_name: string }[];
+    for (const e of logged)
+      names.set(e.session_id, [...(names.get(e.session_id) ?? []), e.exercise_name]);
+  }
+
+  return rows.map((r) => {
+    const list = names.get(r.id) ?? [];
+    return {
+      id: r.id,
+      workoutId: r.workout_id,
+      workoutName: r.workout_name,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      setCount: r.set_count,
+      volumeKg: r.volume_kg,
+      durationMin: r.finished_at
+        ? Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60_000))
+        : null,
+      exerciseNames: list.slice(0, 3),
+      exerciseCount: list.length,
+    };
+  });
 }
 
 export interface WeekPoint {
@@ -431,9 +483,8 @@ export async function weightProgress(): Promise<WeightProgress | null> {
   const targetKg = goalRows[0]?.target;
   if (!targetKg) return null;
 
-  const logs = (
-    await db.query('SELECT date, weight_kg FROM body_weight_logs ORDER BY date ASC')
-  ).values as { date: string; weight_kg: number }[];
+  const logs = (await db.query('SELECT date, weight_kg FROM body_weight_logs ORDER BY date ASC'))
+    .values as { date: string; weight_kg: number }[];
   if (logs.length < 2) return null;
 
   const startKg = logs[0]!.weight_kg;
@@ -460,8 +511,7 @@ export async function weightProgress(): Promise<WeightProgress | null> {
       (Date.parse(logs[logs.length - 1]!.date) - Date.parse(olderDate)) / (7 * 86_400_000),
     );
     const perWeek = (currentKg - olderAvg) / weeksApart;
-    towardGoalPerWeekKg =
-      Math.round((Math.sign(targetKg - startKg) || 1) * perWeek * 100) / 100;
+    towardGoalPerWeekKg = Math.round((Math.sign(targetKg - startKg) || 1) * perWeek * 100) / 100;
   }
 
   const milestonesTotal = 8;

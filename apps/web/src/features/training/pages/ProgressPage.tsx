@@ -1,6 +1,13 @@
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Award, CalendarCheck, Dumbbell, TrendingUp, UtensilsCrossed } from 'lucide-react';
+import {
+  Award,
+  CalendarCheck,
+  ChevronRight,
+  Dumbbell,
+  TrendingUp,
+  UtensilsCrossed,
+} from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -30,7 +37,15 @@ const compactNumber = (v: number): string =>
 
 const KG_TO_LB = 2.2046226218;
 
-function Panel({ title, Icon, children }: { title: string; Icon: typeof Award; children: React.ReactNode }) {
+function Panel({
+  title,
+  Icon,
+  children,
+}: {
+  title: string;
+  Icon: typeof Award;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
@@ -58,7 +73,10 @@ export function ProgressPage() {
   const muscles = useQuery({ queryKey: ['stats', 'muscles'], queryFn: muscleSetsThisWeek });
   const lifts = useQuery({ queryKey: ['stats', 'lifts'], queryFn: () => topLifts(5) });
   const weight = useQuery({ queryKey: ['stats', 'weight'], queryFn: () => weightTrend(90) });
-  const history = useQuery({ queryKey: ['stats', 'history'], queryFn: () => listSessionHistory(30) });
+  const history = useQuery({
+    queryKey: ['stats', 'history'],
+    queryFn: () => listSessionHistory(3),
+  });
   const eating = useQuery({
     queryKey: ['stats', 'nutrition-discipline'],
     queryFn: async () => nutritionDiscipline(14, (await getSavedTargets())?.kcal ?? null),
@@ -100,9 +118,18 @@ export function ProgressPage() {
               <BarChart data={weeklyData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid stroke={chartStyle.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" stroke={chartStyle.axis} fontSize={11} tickLine={false} />
-                <YAxis stroke={chartStyle.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={compactNumber} />
+                <YAxis
+                  stroke={chartStyle.axis}
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={compactNumber}
+                />
                 <Tooltip
-                  formatter={(value) => [`${Number(value).toLocaleString()} ${unitLabel}`, 'Volume']}
+                  formatter={(value) => [
+                    `${Number(value).toLocaleString()} ${unitLabel}`,
+                    'Volume',
+                  ]}
                   labelFormatter={(l) => `Week of ${String(l)}`}
                 />
                 <Bar dataKey="volume" fill={chartStyle.accent} radius={[6, 6, 0, 0]} />
@@ -204,9 +231,7 @@ export function ProgressPage() {
             {eating.data.targetKcal !== null && (
               <span
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold tabular-nums ${
-                  eating.data.daysOverTarget > 3
-                    ? 'bg-rose-500/15 text-rose-500'
-                    : 'bg-elev'
+                  eating.data.daysOverTarget > 3 ? 'bg-rose-500/15 text-rose-500' : 'bg-elev'
                 }`}
               >
                 {eating.data.daysOverTarget} day{eating.data.daysOverTarget === 1 ? '' : 's'} over
@@ -218,7 +243,8 @@ export function ProgressPage() {
                 eating.data.unplannedTotal > 4 ? 'bg-amber-500/15 text-amber-600' : 'bg-elev'
               }`}
             >
-              {eating.data.unplannedTotal} unplanned extra{eating.data.unplannedTotal === 1 ? '' : 's'}
+              {eating.data.unplannedTotal} unplanned extra
+              {eating.data.unplannedTotal === 1 ? '' : 's'}
             </span>
             <span className="rounded-full bg-elev px-3 py-1.5 text-xs font-semibold tabular-nums">
               {eating.data.avgMeals} meals · {eating.data.avgSnacks} snacks / day
@@ -273,10 +299,7 @@ export function ProgressPage() {
                 {(history.data ?? []).map((s) => (
                   <tr key={s.id}>
                     <td className="py-2 font-medium">
-                      <Link
-                        to={`/you/history/${s.id}`}
-                        className="hover:text-accent hover:underline"
-                      >
+                      <Link to={`/history/${s.id}`} className="hover:text-accent hover:underline">
                         {s.workoutName}
                       </Link>
                     </td>
@@ -297,6 +320,13 @@ export function ProgressPage() {
                 ))}
               </tbody>
             </table>
+            <Link
+              to="/history"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+            >
+              See all history
+              <ChevronRight size={14} aria-hidden />
+            </Link>
           </div>
         )}
       </Panel>
