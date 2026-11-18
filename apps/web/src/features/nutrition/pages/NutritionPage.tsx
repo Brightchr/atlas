@@ -40,10 +40,9 @@ import {
   logFood,
   searchLocalFoods,
 } from '../repository';
+import { localDayOfWeek, localIsoDate } from '@/lib/dates';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = (): string => localIsoDate();
 
 const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -419,7 +418,7 @@ export function NutritionPage() {
     searchRef.current?.focus();
     searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
-  const todayDow = (new Date().getDay() + 6) % 7;
+  const todayDow = localDayOfWeek();
   const searching = term.trim().length >= 2;
   const queryClient = useQueryClient();
 

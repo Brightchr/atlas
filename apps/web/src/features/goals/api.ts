@@ -12,6 +12,7 @@ import {
   listGoals,
   logBodyWeight,
 } from './repository';
+import { localIsoDate } from '@/lib/dates';
 
 /** Sets per primary muscle over the last 7 days — needs the catalog to map
  * exercise ids to muscles. */
@@ -39,7 +40,7 @@ export function useGoalProgress(catalog: Exercise[] | undefined) {
   return useQuery({
     queryKey: ['goals', 'progress', catalog ? 'with-catalog' : 'no-catalog', units],
     queryFn: async (): Promise<GoalProgress[]> => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localIsoDate();
       const [goals, sessionDates, weightHistory, diary, recentSets] = await Promise.all([
         listGoals(),
         getSessionDates(60),

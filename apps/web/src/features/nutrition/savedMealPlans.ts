@@ -4,6 +4,7 @@ import { setActiveMealPlan } from './activeMealPlan';
 import { catalogRecipe } from './recipeCatalog';
 import { getFoodsByIds } from './repository';
 import { importRecipeFromCatalog, listRecipes } from './recipes';
+import { localIsoDate } from '@/lib/dates';
 
 /** User-saved meal plans: snapshots of a whole week, kept as JSON in the
  * synced settings table so they follow the user across devices. Saving never
@@ -84,7 +85,7 @@ export async function saveCurrentWeekAsPlan(name: string): Promise<SavedMealPlan
   const plan: SavedMealPlan = {
     id: match?.id ?? newId(),
     name: name.trim(),
-    savedAt: new Date().toISOString().slice(0, 10),
+    savedAt: localIsoDate(),
     kcalPerDay,
     items: rows.map((r) => ({
       dayOfWeek: r.day_of_week,
@@ -146,6 +147,6 @@ export async function applySavedMealPlan(id: string): Promise<void> {
   await setActiveMealPlan({
     kind: 'custom',
     name: plan.name,
-    appliedAt: new Date().toISOString().slice(0, 10),
+    appliedAt: localIsoDate(),
   });
 }

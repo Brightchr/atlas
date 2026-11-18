@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
@@ -442,8 +442,14 @@ export function ExplorePage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  // `?browse=plans` opens straight on a shelf, so the Workout hub can link
+  // to the plan catalogue rather than the tile grid.
+  const [params] = useSearchParams();
   const [query, setQuery] = useState('');
-  const [browse, setBrowse] = useState<BrowseKey | null>(null);
+  const [browse, setBrowse] = useState<BrowseKey | null>(() => {
+    const wanted = params.get('browse');
+    return BROWSE_TILES.some((t) => t.key === wanted) ? (wanted as BrowseKey) : null;
+  });
   const [goal, setGoal] = useState<TrainingGoal | 'any'>('any');
   const [level, setLevel] = useState<TrainingLevel | 'any'>('any');
 

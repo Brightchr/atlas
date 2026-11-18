@@ -27,9 +27,9 @@ export default defineConfig({
     exclude: ['jeep-sqlite'],
   },
   server: {
-    // 5174: this machine's WSL relay tends to squat on 5173. PORT lets a
-    // second checkout (git worktree) run its own dev server alongside.
-    port: Number(process.env.PORT ?? 5174),
+    // Vite's usual 5173. PORT lets a second checkout (git worktree) run its
+    // own dev server alongside; the API's CORS_ORIGINS lists 5173 and 5174.
+    port: Number(process.env.PORT ?? 5173),
     // Same-origin API in dev: the browser calls /v1/* on this server, which
     // forwards to the API. 127.0.0.1 (not localhost) dodges IPv6 resolution
     // quirks where another process squats on ::1.

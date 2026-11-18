@@ -531,6 +531,33 @@ const migrations: { id: string; sql: string }[] = [
       ALTER TABLE users ADD COLUMN deleted_at timestamptz;
     `,
   },
+  {
+    id: '024_shared_sessions',
+    sql: `
+      -- A finished workout the user chose to share: a self-contained snapshot
+      -- (exercises + sets), never re-read from device data. Friends-only or
+      -- public; one row per device session, re-sharing updates in place.
+      CREATE TABLE shared_sessions (
+        id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        local_session_id text NOT NULL,
+        name             text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+        performed_at     timestamptz NOT NULL,
+        duration_sec     integer NOT NULL CHECK (duration_sec BETWEEN 0 AND 86400),
+        visibility       text NOT NULL CHECK (visibility IN ('friends', 'public')),
+        payload          jsonb NOT NULL CHECK (pg_column_size(payload) <= 16384),
+        created_at       timestamptz NOT NULL DEFAULT now(),
+        updated_at       timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (owner_user_id, local_session_id)
+      );
+      CREATE INDEX shared_sessions_owner_perf_idx ON shared_sessions(owner_user_id, performed_at DESC);
+
+      -- Shared workouts become reportable.
+      ALTER TABLE reports DROP CONSTRAINT reports_target_type_check;
+      ALTER TABLE reports ADD CONSTRAINT reports_target_type_check
+        CHECK (target_type IN ('user', 'plan', 'review', 'recipe', 'session', 'other'));
+    `,
+  },
 ];
 
 /** A constant app-wide lock key — any number, stable forever. */

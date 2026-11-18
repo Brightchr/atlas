@@ -34,17 +34,19 @@ export function WorkoutsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
       <header>
-        <h1 className="text-2xl font-bold">Workouts</h1>
-        <p className="text-sm text-muted">Your workout templates, stored on this device.</p>
+        <h1 className="text-2xl font-bold">Routines</h1>
+        <p className="text-sm text-muted">
+          Reusable workouts you start again and again. Starting one copies its exercises into the
+          session, so you can add or drop exercises on the day without changing the routine.
+        </p>
       </header>
-
 
       <div className="flex gap-2">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-          placeholder="New workout name…"
+          placeholder="New routine name…"
           className="flex-1 rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
         <button
@@ -73,7 +75,9 @@ export function WorkoutsPage() {
         <p className="text-rose-500">Local database unavailable — workouts cannot be loaded.</p>
       )}
       {workoutsQuery.data?.length === 0 && (
-        <p className="text-muted">No workouts yet. Create one above to get started.</p>
+        <p className="text-muted">
+          No routines yet. Create one above, or finish an empty workout and save it as one.
+        </p>
       )}
       <ul className="grid gap-2 md:grid-cols-2">
         {workoutsQuery.data?.map((workout) => (

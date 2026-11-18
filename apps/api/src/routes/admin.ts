@@ -21,7 +21,13 @@ import { invalidateIpBlockCache } from '../lib/ip-block';
 import { clientIp, rateLimit } from '../lib/rate-limit';
 import { createSession, deleteSession } from '../lib/session';
 import { sharedRecipeIngredientSchema } from './recipes';
-import { requireAuth, requireRole, SESSION_COOKIE, extractToken, type AppEnv } from '../middleware/auth';
+import {
+  requireAuth,
+  requireRole,
+  SESSION_COOKIE,
+  extractToken,
+  type AppEnv,
+} from '../middleware/auth';
 
 function setSessionCookie(c: Context, token: string, expiresAt: Date) {
   setCookie(c, SESSION_COOKIE, token, {
@@ -265,7 +271,12 @@ const ipBlockSchema = z.object({
   ip: z.union([z.ipv4(), z.ipv6()]),
   reason: z.string().trim().max(300).default(''),
   /** Hours until the block lifts itself; omitted = permanent. */
-  expiresInHours: z.number().int().min(1).max(24 * 365).optional(),
+  expiresInHours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 365)
+    .optional(),
 });
 
 adminRoutes.post('/ip-blocks', zValidator('json', ipBlockSchema), async (c) => {
@@ -405,7 +416,12 @@ adminRoutes.post('/users/:id/impersonate', async (c) => {
   await logAudit(admin.id, 'impersonate', 'user', target.id, { username: target.username });
   // Masquerade tokens are bearer credentials for someone ELSE's account —
   // they live one hour, not the standard thirty days.
-  const { token, expiresAt } = await createSession(target.id, admin.id, 60 * 60 * 1000, clientIp(c));
+  const { token, expiresAt } = await createSession(
+    target.id,
+    admin.id,
+    60 * 60 * 1000,
+    clientIp(c),
+  );
   setSessionCookie(c, token, expiresAt);
   return c.json({ user: toAuthUser(target), token });
 });
@@ -534,7 +550,10 @@ adminRoutes.post(
     const admin = c.get('user')!;
     const { recipes } = c.req.valid('json');
     for (const r of recipes) {
-      const slug = `seed-${r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 58)}`;
+      const slug = `seed-${r.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .slice(0, 58)}`;
       const totalKcal = r.ingredients.reduce(
         (sum, i) => sum + (i.food.per100g.kcal * i.grams) / 100,
         0,
@@ -587,7 +606,8 @@ adminRoutes.get('/reports', async (c) => {
              resolver.username AS "resolvedBy",
              -- Best-effort display label; reports on deleted targets keep the raw id.
              CASE WHEN r.target_type = 'user' THEN target_user.username
-                  WHEN r.target_type = 'recipe' THEN target_recipe.name END AS "targetLabel"
+                  WHEN r.target_type = 'recipe' THEN target_recipe.name
+                  WHEN r.target_type = 'session' THEN target_session.name END AS "targetLabel"
         FROM reports r
         LEFT JOIN users reporter ON reporter.id = r.reporter_user_id
         LEFT JOIN users resolver ON resolver.id = r.resolved_by
@@ -595,6 +615,8 @@ adminRoutes.get('/reports', async (c) => {
                ON r.target_type = 'user' AND target_user.id::text = r.target_id
         LEFT JOIN shared_recipes target_recipe
                ON r.target_type = 'recipe' AND target_recipe.id::text = r.target_id
+        LEFT JOIN shared_sessions target_session
+               ON r.target_type = 'session' AND target_session.id::text = r.target_id
        WHERE ${status} = 'all' OR r.status = ${status}
        ORDER BY r.created_at DESC
        LIMIT 200`)

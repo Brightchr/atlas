@@ -1,0 +1,289 @@
+{
+  "key": "365-run-readiness-part-1",
+  "name": "365-Day Run Readiness · Part 1: Foundation (Weeks 1–32)",
+  "description": "365 days. One rule: show up.\n\nThis isn't a 12-week transformation or a bodybuilding split. It's a year-long challenge built on one promise: do something active every day for 365 days and let the plan decide how much. Some days that's a full-body session. Some days it's a 15-minute walk. Every day counts.\n\nWhy a year? Twelve weeks changes your body. A year changes your life. The first months make movement a habit, the middle months make it feel normal, and by the end you're someone who trains, walks and runs because that's who you are now.\n\nWho it's for: anyone starting from scratch, carrying extra weight, or coming back after years away. Every session is low impact and joint-friendly, with effort capped so you finish feeling better than you started.\n\nPart 1 is the foundation (Weeks 1–32): three short full-body sessions, two easy cardio days, one day of brisk intervals and relaxed weekends. It starts gentle (2 sets, 25 minutes of cardio) and raises the bar every four weeks, with a lighter recovery week each month so you never burn out. Edit the sets, reps and minutes in your copy as you grow into it.\n\nWhat you'll have by Week 32: a real strength base, a comfortable 60-minute brisk walk, better balance and mobility, and the one thing no quick fix gives you: 224 days in a row of keeping a promise to yourself.\n\nThen Part 2 teaches you to run.",
+  "difficulty": "beginner",
+  "goal": "general",
+  "diet": "balanced",
+  "days": [
+    {
+      "dayOfWeek": 0,
+      "isRestDay": false,
+      "workout": {
+        "name": "Full body A + easy cardio",
+        "exercises": [
+          {
+            "name": "Chair Squat",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Incline Push-Up",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Seated Cable Rows",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Dumbbell Step Ups",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Standing Calf Raises",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Pallof Press",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 1,
+      "isRestDay": false,
+      "workout": {
+        "name": "Easy steady cardio + mobility",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 25
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          },
+          {
+            "name": "Cat Stretch",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 6
+          },
+          {
+            "name": "Calf Stretch Hands Against Wall",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 2,
+      "isRestDay": false,
+      "workout": {
+        "name": "Full body B + easy cardio",
+        "exercises": [
+          {
+            "name": "Split Squats",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "V-Bar Pulldown",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Seated Leg Curl",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Standing Cable Chest Press",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Monster Walk",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Superman",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 3,
+      "isRestDay": false,
+      "workout": {
+        "name": "Cardio intervals + easy core",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 25
+          },
+          {
+            "name": "Pallof Press",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Superman",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 6
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 4,
+      "isRestDay": false,
+      "workout": {
+        "name": "Full body C + balance + easy cardio",
+        "exercises": [
+          {
+            "name": "Stiff-Legged Dumbbell Deadlift",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Incline Push-Up",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "One-Arm Dumbbell Row",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Dumbbell Step Ups",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Plank",
+            "sets": 2,
+            "restSec": 60,
+            "seconds": 30
+          },
+          {
+            "name": "Dead Bug",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Monster Walk",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 10
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 10
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 5,
+      "isRestDay": false,
+      "workout": {
+        "name": "Comfortable outdoor activity",
+        "exercises": [
+          {
+            "name": "Trail Running/Walking",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 20
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 6,
+      "isRestDay": false,
+      "workout": {
+        "name": "Very easy walk + mobility",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 15
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          },
+          {
+            "name": "Cat Stretch",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 6
+          },
+          {
+            "name": "Calf Stretch Hands Against Wall",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    }
+  ]
+}

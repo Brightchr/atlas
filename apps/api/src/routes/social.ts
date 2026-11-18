@@ -42,7 +42,7 @@ for (const prefix of ['/friends', '/friends/*', '/groups', '/groups/*', '/stats'
   socialRoutes.use(prefix, rateLimit({ windowMs: 60 * 1000, max: 120, by: 'user' }));
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   username: string;
   displayName: string | null;
@@ -52,7 +52,11 @@ interface UserRow {
 
 /** Avatar + presence-visibility straight from the profile document (same
  * shape normalizeProfile in profile.ts validates on write). */
-function profileBits(raw: unknown): { icon: string | null; tone: string | null; showOnline: boolean } {
+function profileBits(raw: unknown): {
+  icon: string | null;
+  tone: string | null;
+  showOnline: boolean;
+} {
   const doc = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const show = (typeof doc.show === 'object' && doc.show !== null ? doc.show : {}) as Record<
     string,
@@ -65,7 +69,7 @@ function profileBits(raw: unknown): { icon: string | null; tone: string | null; 
   };
 }
 
-const toFriendUser = (r: UserRow): FriendUser => {
+export const toFriendUser = (r: UserRow): FriendUser => {
   const bits = profileBits(r.profile);
   return {
     id: r.id,

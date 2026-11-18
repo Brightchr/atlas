@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Dumbbell, Play, Plus, Search, X } from 'lucide-react';
+import { ArrowLeft, Dumbbell, Play, Plus, X } from 'lucide-react';
 import type { Exercise, WorkoutExercise } from '@arcadia/shared';
-import { filterExercises } from '@/lib/exercise-db/client';
 import { useExerciseCatalog } from '@/features/exercises/api';
+import { ExercisePicker } from '../components/ExercisePicker';
 import {
   addExerciseToWorkout,
   getWorkout,
@@ -12,79 +12,6 @@ import {
   startSession,
   updateWorkoutExercise,
 } from '../repository';
-
-/** Inline catalog search for adding an exercise to this workout. */
-function ExercisePicker({ onPick, onClose }: { onPick: (e: Exercise) => void; onClose: () => void }) {
-  const [term, setTerm] = useState('');
-  const [lastAdded, setLastAdded] = useState<string | null>(null);
-  const catalog = useExerciseCatalog();
-  const matches = term.trim().length >= 2 ? filterExercises(catalog.data ?? [], term).slice(0, 8) : [];
-
-  // Picking clears the search and keeps the picker open, so adding five
-  // exercises is one flow — the Hevy pattern — with an "Added ✓" flash as
-  // feedback instead of a silent list mutation somewhere above.
-  const pick = (exercise: Exercise) => {
-    onPick(exercise);
-    setLastAdded(exercise.name);
-    setTerm('');
-  };
-
-  return (
-    <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            size={15}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
-            aria-hidden
-          />
-          <input
-            type="search"
-            autoFocus
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            placeholder={lastAdded ? `Added ${lastAdded} ✓ — search for the next one…` : 'Search the exercise catalog…'}
-            className="w-full rounded-xl border border-line bg-surface py-2 pr-3 pl-9 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
-        >
-          <X size={15} aria-hidden />
-        </button>
-      </div>
-      <ul className="space-y-1">
-        {matches.map((exercise) => (
-          <li key={exercise.id}>
-            <button
-              type="button"
-              onClick={() => pick(exercise)}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-elev"
-            >
-              {exercise.imageUrls[0] ? (
-                <img src={exercise.imageUrls[0]} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain" />
-              ) : (
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-elev text-muted">
-                  <Dumbbell size={15} aria-hidden />
-                </span>
-              )}
-              <span className="min-w-0 flex-1 truncate">{exercise.name}</span>
-              <span className="shrink-0 text-xs text-muted">
-                {exercise.primaryMuscles[0]?.commonName}
-              </span>
-            </button>
-          </li>
-        ))}
-        {term.trim().length >= 2 && matches.length === 0 && (
-          <li className="px-1 text-xs text-muted">No exercises match.</li>
-        )}
-      </ul>
-    </div>
-  );
-}
 
 /** One editable exercise slot: targets save on change. */
 function ExerciseRow({
@@ -107,7 +34,12 @@ function ExerciseRow({
       <div className="flex items-center gap-3">
         <Link to={`/exercises/${exercise.exerciseId}`} className="shrink-0">
           {imageUrl ? (
-            <img src={imageUrl} alt="" loading="lazy" className="h-12 w-12 rounded-xl bg-white object-contain" />
+            <img
+              src={imageUrl}
+              alt=""
+              loading="lazy"
+              className="h-12 w-12 rounded-xl bg-white object-contain"
+            />
           ) : (
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-elev text-muted">
               <Dumbbell size={18} aria-hidden />
@@ -249,7 +181,7 @@ export function WorkoutDetailPage() {
         className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
       >
         <ArrowLeft size={15} aria-hidden />
-        Workouts
+        Routines
       </Link>
 
       <header className="flex flex-wrap items-center justify-between gap-3">

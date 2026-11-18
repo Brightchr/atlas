@@ -1,6 +1,14 @@
 import type { Exercise } from '@arcadia/shared';
 import { getDb } from '@/lib/db';
 import { fetchAllExercises } from '@/lib/exercise-db/client';
+import {
+  addDays,
+  localDayOfWeek,
+  localIsoDate,
+  localIsoDateDaysAgo,
+  mondayOf as mondayOfKey,
+  parseLocalDate,
+} from '@/lib/dates';
 
 /** Progress analytics over the local session log. Everything is computed
  * from logged_sets/workout_sessions/body_weight_logs — the data the app has
@@ -8,6 +16,7 @@ import { fetchAllExercises } from '@/lib/exercise-db/client';
 
 export interface SessionSummary {
   id: string;
+  workoutId: string | null;
   workoutName: string;
   startedAt: string;
   finishedAt: string | null;
@@ -15,13 +24,37 @@ export interface SessionSummary {
   /** Sum of weight × reps across the session, in kg. */
   volumeKg: number;
   durationMin: number | null;
+  /** First few exercise names, in session order, for list rows. */
+  exerciseNames: string[];
+  exerciseCount: number;
 }
 
-export async function listSessionHistory(limit = 50): Promise<SessionSummary[]> {
+interface SessionSummaryRow {
+  id: string;
+  workout_id: string | null;
+  workout_name: string;
+  started_at: string;
+  finished_at: string | null;
+  set_count: number;
+  volume_kg: number;
+}
+
+export async function countFinishedSessions(): Promise<number> {
+  const db = await getDb();
+  const rows = (
+    await db.query('SELECT COUNT(*) AS n FROM workout_sessions WHERE finished_at IS NOT NULL')
+  ).values as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+/** Finished sessions, newest first, with per-row totals and exercise names
+ * (from the session's own exercise list, or — for sessions logged before
+ * v12 — from what was logged). */
+export async function listSessionHistory(limit = 50, offset = 0): Promise<SessionSummary[]> {
   const db = await getDb();
   const rows = (
     await db.query(
-      `SELECT s.id, s.workout_name, s.started_at, s.finished_at,
+      `SELECT s.id, s.workout_id, s.workout_name, s.started_at, s.finished_at,
               COUNT(l.id) AS set_count,
               COALESCE(SUM(COALESCE(l.weight_kg, 0) * COALESCE(l.reps, 0)), 0) AS volume_kg
          FROM workout_sessions s
@@ -29,28 +62,55 @@ export async function listSessionHistory(limit = 50): Promise<SessionSummary[]> 
         WHERE s.finished_at IS NOT NULL
         GROUP BY s.id
         ORDER BY s.started_at DESC
-        LIMIT ?`,
-      [limit],
+        LIMIT ? OFFSET ?`,
+      [limit, offset],
     )
-  ).values as {
-    id: string;
-    workout_name: string;
-    started_at: string;
-    finished_at: string | null;
-    set_count: number;
-    volume_kg: number;
-  }[];
-  return rows.map((r) => ({
-    id: r.id,
-    workoutName: r.workout_name,
-    startedAt: r.started_at,
-    finishedAt: r.finished_at,
-    setCount: r.set_count,
-    volumeKg: Math.round(r.volume_kg),
-    durationMin: r.finished_at
-      ? Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60_000))
-      : null,
-  }));
+  ).values as SessionSummaryRow[];
+  if (rows.length === 0) return [];
+
+  const ids = rows.map((r) => r.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const names = new Map<string, string[]>();
+  const planned = (
+    await db.query(
+      `SELECT session_id, exercise_name FROM session_exercises
+        WHERE session_id IN (${placeholders}) ORDER BY session_id, position`,
+      ids,
+    )
+  ).values as { session_id: string; exercise_name: string }[];
+  for (const e of planned)
+    names.set(e.session_id, [...(names.get(e.session_id) ?? []), e.exercise_name]);
+  const missing = ids.filter((id) => !names.has(id));
+  if (missing.length > 0) {
+    const logged = (
+      await db.query(
+        `SELECT session_id, exercise_name, MIN(completed_at) AS first_at FROM logged_sets
+          WHERE session_id IN (${missing.map(() => '?').join(', ')})
+          GROUP BY session_id, exercise_name ORDER BY session_id, first_at`,
+        missing,
+      )
+    ).values as { session_id: string; exercise_name: string }[];
+    for (const e of logged)
+      names.set(e.session_id, [...(names.get(e.session_id) ?? []), e.exercise_name]);
+  }
+
+  return rows.map((r) => {
+    const list = names.get(r.id) ?? [];
+    return {
+      id: r.id,
+      workoutId: r.workout_id,
+      workoutName: r.workout_name,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      setCount: r.set_count,
+      volumeKg: r.volume_kg,
+      durationMin: r.finished_at
+        ? Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60_000))
+        : null,
+      exerciseNames: list.slice(0, 3),
+      exerciseCount: list.length,
+    };
+  });
 }
 
 export interface WeekPoint {
@@ -62,19 +122,16 @@ export interface WeekPoint {
   sets: number;
 }
 
+/** Monday key of the local week containing a timestamp or a date key. */
 function mondayOf(dateIso: string): string {
-  const d = new Date(dateIso.slice(0, 10));
-  const shift = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - shift);
-  return d.toISOString().slice(0, 10);
+  const day = dateIso.length > 10 ? localIsoDate(new Date(dateIso)) : dateIso;
+  return mondayOfKey(day);
 }
 
 /** Last N calendar weeks of training, empty weeks included so gaps show. */
 export async function weeklyTrainingStats(weeks = 8): Promise<WeekPoint[]> {
   const db = await getDb();
-  const sinceMonday = mondayOf(
-    new Date(Date.now() - (weeks - 1) * 7 * 86_400_000).toISOString(),
-  );
+  const sinceMonday = mondayOf(localIsoDateDaysAgo((weeks - 1) * 7));
   const sessions = (
     await db.query(
       `SELECT s.id, s.started_at,
@@ -84,16 +141,16 @@ export async function weeklyTrainingStats(weeks = 8): Promise<WeekPoint[]> {
          LEFT JOIN logged_sets l ON l.session_id = s.id
         WHERE s.finished_at IS NOT NULL AND s.started_at >= ?
         GROUP BY s.id`,
-      [sinceMonday],
+      [parseLocalDate(sinceMonday).toISOString()],
     )
   ).values as { id: string; started_at: string; set_count: number; volume_kg: number }[];
 
   const byWeek = new Map<string, WeekPoint>();
   for (let i = 0; i < weeks; i++) {
-    const monday = mondayOf(new Date(Date.parse(sinceMonday) + i * 7 * 86_400_000).toISOString());
+    const monday = addDays(sinceMonday, i * 7);
     byWeek.set(monday, {
       week: monday,
-      label: new Date(monday).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      label: parseLocalDate(monday).toLocaleDateString([], { month: 'short', day: 'numeric' }),
       sessions: 0,
       volumeKg: 0,
       sets: 0,
@@ -219,36 +276,34 @@ export async function adherenceStats(weeksBack = 4): Promise<AdherenceStats> {
   ).values as { day_of_week: number }[];
   const plannedDows = new Set(planned.map((p) => p.day_of_week));
 
-  const sinceMondayIso = mondayOf(
-    new Date(Date.now() - (weeksBack - 1) * 7 * 86_400_000).toISOString(),
-  );
+  const sinceMondayIso = mondayOf(localIsoDateDaysAgo((weeksBack - 1) * 7));
   const sessions = (
     await db.query(
-      `SELECT DISTINCT substr(started_at, 1, 10) AS date FROM workout_sessions
+      `SELECT started_at FROM workout_sessions
         WHERE finished_at IS NOT NULL AND started_at >= ?`,
-      [sinceMondayIso],
+      [parseLocalDate(sinceMondayIso).toISOString()],
     )
-  ).values as { date: string }[];
-  const trained = new Set(sessions.map((s) => s.date));
+  ).values as { started_at: string }[];
+  const trained = new Set(sessions.map((s) => localIsoDate(new Date(s.started_at))));
 
   // Only judge days after training actually began — a plan adopted yesterday
   // must not paint the previous month red.
   const firstEver = (
     await db.query(
-      'SELECT MIN(substr(started_at, 1, 10)) AS first FROM workout_sessions WHERE finished_at IS NOT NULL',
+      'SELECT MIN(started_at) AS first FROM workout_sessions WHERE finished_at IS NOT NULL',
     )
   ).values as { first: string | null }[];
-  const judgeFrom = firstEver[0]?.first ?? '9999-12-31';
+  const judgeFrom = firstEver[0]?.first ? localIsoDate(new Date(firstEver[0].first)) : '9999-12-31';
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = localIsoDate();
   const weeks: AdherenceStats['weeks'] = [];
   let done = 0;
   let missed = 0;
   for (let w = 0; w < weeksBack; w++) {
-    const monday = new Date(Date.parse(sinceMondayIso) + w * 7 * 86_400_000);
+    const monday = addDays(sinceMondayIso, w * 7);
     const days: AdherenceDay[] = [];
     for (let d = 0; d < 7; d++) {
-      const date = new Date(monday.getTime() + d * 86_400_000).toISOString().slice(0, 10);
+      const date = addDays(monday, d);
       let status: DayStatus;
       if (trained.has(date)) status = 'done';
       else if (date === todayIso) status = 'today';
@@ -259,15 +314,14 @@ export async function adherenceStats(weeksBack = 4): Promise<AdherenceStats> {
       if (status === 'missed') missed += 1;
       days.push({ date, status });
     }
-    weeks.push({ monday: monday.toISOString().slice(0, 10), days });
+    weeks.push({ monday, days });
   }
 
   // Streak: walk back from today over planned days only.
   let streak = 0;
   for (let i = 0; i < weeksBack * 7; i++) {
-    const date = new Date(Date.parse(todayIso) - i * 86_400_000);
-    const iso = date.toISOString().slice(0, 10);
-    const dow = (date.getUTCDay() + 6) % 7;
+    const iso = addDays(todayIso, -i);
+    const dow = localDayOfWeek(parseLocalDate(iso));
     if (trained.has(iso)) streak += 1;
     else if (plannedDows.has(dow) && iso !== todayIso) break;
   }
@@ -429,9 +483,8 @@ export async function weightProgress(): Promise<WeightProgress | null> {
   const targetKg = goalRows[0]?.target;
   if (!targetKg) return null;
 
-  const logs = (
-    await db.query('SELECT date, weight_kg FROM body_weight_logs ORDER BY date ASC')
-  ).values as { date: string; weight_kg: number }[];
+  const logs = (await db.query('SELECT date, weight_kg FROM body_weight_logs ORDER BY date ASC'))
+    .values as { date: string; weight_kg: number }[];
   if (logs.length < 2) return null;
 
   const startKg = logs[0]!.weight_kg;
@@ -448,7 +501,7 @@ export async function weightProgress(): Promise<WeightProgress | null> {
 
   // Smoothed weekly rate: current average vs the average ~28 days back.
   let towardGoalPerWeekKg: number | null = null;
-  const cutoff = new Date(Date.now() - 28 * 86_400_000).toISOString().slice(0, 10);
+  const cutoff = localIsoDateDaysAgo(28);
   const older = logs.filter((l) => l.date <= cutoff).slice(-7);
   if (older.length > 0) {
     const olderAvg = older.reduce((s, l) => s + l.weight_kg, 0) / older.length;
@@ -458,8 +511,7 @@ export async function weightProgress(): Promise<WeightProgress | null> {
       (Date.parse(logs[logs.length - 1]!.date) - Date.parse(olderDate)) / (7 * 86_400_000),
     );
     const perWeek = (currentKg - olderAvg) / weeksApart;
-    towardGoalPerWeekKg =
-      Math.round((Math.sign(targetKg - startKg) || 1) * perWeek * 100) / 100;
+    towardGoalPerWeekKg = Math.round((Math.sign(targetKg - startKg) || 1) * perWeek * 100) / 100;
   }
 
   const milestonesTotal = 8;
@@ -489,7 +541,7 @@ export async function weightTrend(limit = 90): Promise<WeightPoint[]> {
   ).values as { date: string; weight_kg: number }[];
   return rows.reverse().map((r) => ({
     date: r.date,
-    label: new Date(r.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+    label: parseLocalDate(r.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
     weightKg: r.weight_kg,
   }));
 }

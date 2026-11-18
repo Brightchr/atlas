@@ -1,4 +1,5 @@
 import type { Exercise, Goal } from '@arcadia/shared';
+import { localIsoDate } from '@/lib/dates';
 
 /** The suggestion engine: recommends exercises from what the user is chasing
  * (muscle-focus goals) and what they are neglecting (muscles untrained or
@@ -37,7 +38,7 @@ export function buildSuggestions(options: {
   for (const set of recentSets) {
     doneExerciseIds.add(set.exerciseId);
     const exercise = byId.get(set.exerciseId);
-    const date = set.completedAt.slice(0, 10);
+    const date = localIsoDate(new Date(set.completedAt));
     for (const muscle of exercise?.primaryMuscles ?? []) {
       if ((lastTrained.get(muscle.id) ?? '') < date) lastTrained.set(muscle.id, date);
     }

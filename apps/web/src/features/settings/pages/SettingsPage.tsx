@@ -12,11 +12,7 @@ import {
   syncNow,
 } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
-import {
-  useSaveTrainingSetup,
-  useTrainingSetup,
-  type TrainingLocation,
-} from '@/lib/trainingSetup';
+import { useSaveTrainingSetup, useTrainingSetup, type TrainingLocation } from '@/lib/trainingSetup';
 import { useSetUnits, useUnits, type UnitSystem } from '@/lib/units';
 import { BillingSection } from '@/features/billing/components/BillingSection';
 import { DangerZoneSection } from '../components/DangerZoneSection';
@@ -123,8 +119,8 @@ function SyncSection() {
               <p className="text-sm font-semibold">Sync training data</p>
               <p className="text-xs text-muted">
                 On by default — workout plans, workouts and logged sessions follow you across
-                devices, private to your account. Turn it off to keep training on this device
-                only; individual plans can also be pinned per-plan from the Plans page.
+                devices, private to your account. Turn it off to keep training on this device only;
+                individual plans can also be pinned per-plan from the Plans page.
               </p>
             </div>
             <button
@@ -147,8 +143,8 @@ function SyncSection() {
           </div>
           {!trainingOn && (
             <p className="mt-2 text-xs text-amber-600">
-              Training sync is off — new workouts, plans and sessions stay on this device.
-              What's already backed up stays on the server.
+              Training sync is off — new workouts, plans and sessions stay on this device. What's
+              already backed up stays on the server.
             </p>
           )}
         </div>
@@ -159,8 +155,8 @@ function SyncSection() {
           <div className="flex items-start gap-2">
             <TriangleAlert size={16} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
             <p className="text-xs">
-              Your diet, recipes, meal plan and shopping list will exist only on this device. If
-              you lose it, they're gone — and your other devices will stop getting updates.
+              Your diet, recipes, meal plan and shopping list will exist only on this device. If you
+              lose it, they're gone — and your other devices will stop getting updates.
             </p>
           </div>
           <div className="mt-2.5 flex flex-wrap gap-2">
@@ -194,8 +190,8 @@ function SyncSection() {
       {sync.accountMismatch && (
         <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
           <p>
-            The data on this device was synced by a different account, so syncing is paused to
-            keep accounts separate.
+            The data on this device was synced by a different account, so syncing is paused to keep
+            accounts separate.
           </p>
           <button
             type="button"
@@ -211,7 +207,8 @@ function SyncSection() {
         <div className="mt-3 flex items-center justify-between text-xs text-muted">
           <span aria-live="polite">
             {sync.status === 'syncing' && 'Syncing…'}
-            {sync.status === 'error' && `Sync problem: ${sync.error ?? 'unknown error'} — will retry`}
+            {sync.status === 'error' &&
+              `Sync problem: ${sync.error ?? 'unknown error'} — will retry`}
             {sync.status !== 'syncing' &&
               sync.status !== 'error' &&
               (lastSynced ? `Last synced ${lastSynced}` : 'Waiting for first sync')}
@@ -372,7 +369,11 @@ export function SettingsPage() {
       <DangerZoneSection />
 
       <p className="text-xs text-muted/70">
-        Theme lives in the top bar. Training goals and password live under{' '}
+        Theme lives in the top bar.{' '}
+        <Link to="/welcome" className="text-accent hover:underline">
+          Training profile
+        </Link>{' '}
+        (goal, level, days per week) and password live under{' '}
         <Link to="/profile" className="text-accent hover:underline">
           your profile
         </Link>

@@ -7,6 +7,7 @@ import { catalogRecipe, type CatalogRecipe } from './recipeCatalog';
 import { mealAffinity } from './recipeTags';
 import { getFoodsByIds, logFood } from './repository';
 import { importRecipeFromCatalog, listRecipes } from './recipes';
+import { localDayOfWeek, localIsoDate } from '@/lib/dates';
 
 /** The weekly meal plan: one implicit plan, slots keyed by day (0 = Monday)
  * and meal. Entries are plain foods (grams) or recipes (servings). The plan
@@ -181,7 +182,7 @@ export async function applyMealPlanTemplate(template: MealPlanTemplate): Promise
     kind: 'template',
     key: template.key,
     name: template.name,
-    appliedAt: new Date().toISOString().slice(0, 10),
+    appliedAt: localIsoDate(),
   });
 }
 
@@ -221,7 +222,7 @@ export async function buildWeekFromCatalogSelections(entries: CatalogRecipe[]): 
     await setActiveMealPlan({
       kind: 'custom',
       name: 'Custom plan',
-      appliedAt: new Date().toISOString().slice(0, 10),
+      appliedAt: localIsoDate(),
     });
   }
   return mealsChanged;
@@ -257,7 +258,7 @@ export async function addPlanRangeToShoppingList(days: number): Promise<number> 
   const items = await listMealPlanItems();
   const recipes = await listRecipes();
 
-  const todayDow = (new Date().getDay() + 6) % 7;
+  const todayDow = localDayOfWeek();
   const occurrences = new Array<number>(7).fill(0);
   for (let i = 0; i < Math.min(90, Math.max(1, days)); i++) {
     occurrences[(todayDow + i) % 7] += 1;

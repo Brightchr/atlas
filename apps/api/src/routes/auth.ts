@@ -347,7 +347,10 @@ const googleUserColumns = {
 /** Email local part → available username: sanitized, padded to the minimum
  * length, numeric suffix on collision. */
 async function availableUsername(email: string): Promise<string> {
-  let base = email.split('@')[0]!.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24);
+  let base = email
+    .split('@')[0]!
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .slice(0, 24);
   if (base.length < 3) base = `athlete_${base}`;
   for (let i = 0; i < 6; i++) {
     const candidate = i === 0 ? base : `${base}${Math.floor(Math.random() * 10_000)}`;
@@ -403,7 +406,9 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
       .where(and(eq(users.email, identity.email), isNull(users.googleId)))
       .returning(googleUserColumns);
   }
+  let created = false;
   if (rows.length === 0) {
+    created = true;
     const username = await availableUsername(identity.email);
     try {
       rows = await db
@@ -444,7 +449,9 @@ authRoutes.get('/google/callback', authLimiter, async (c) => {
 
   const { token, expiresAt } = await createSession(user.id, undefined, undefined, clientIp(c));
   setSessionCookie(c, token, expiresAt);
-  return c.redirect(`${env.publicUrl}/`);
+  // Brand-new accounts start at the intro wizard (skippable); returning users
+  // land on the dashboard.
+  return c.redirect(`${env.publicUrl}/${created ? 'welcome' : ''}`);
 });
 
 authRoutes.post('/logout', async (c) => {

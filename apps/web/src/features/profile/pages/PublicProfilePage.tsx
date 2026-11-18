@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router';
-import { CalendarDays, MessageSquare, Star, TrendingUp } from 'lucide-react';
+import { CalendarDays, Dumbbell, MessageSquare, Star, TrendingUp } from 'lucide-react';
+import { SharedWorkoutCard } from '@/features/social/components/SharedWorkoutCard';
 import { bannerCss, usePublicProfile } from '../api';
 import { AvatarIcon } from '../avatars';
 import { useCurrentUser } from '@/features/auth/api';
@@ -64,7 +65,9 @@ export function PublicProfilePage() {
             <p className="text-sm text-muted">
               @{p.username} · member since{' '}
               {new Date(p.memberSince).toLocaleDateString([], { month: 'long', year: 'numeric' })}
-              {p.online === true && <span className="ml-1.5 font-medium text-emerald-500">· online</span>}
+              {p.online === true && (
+                <span className="ml-1.5 font-medium text-emerald-500">· online</span>
+              )}
             </p>
             {p.bio && <p className="mt-2 text-sm">{p.bio}</p>}
           </div>
@@ -119,6 +122,21 @@ export function PublicProfilePage() {
         </section>
       )}
 
+      {/* Shared workouts */}
+      {(p.recentWorkouts ?? []).length > 0 && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <Dumbbell size={15} className="text-accent" aria-hidden />
+            Recent workouts
+          </h2>
+          <ul className="space-y-2">
+            {p.recentWorkouts.map((w) => (
+              <SharedWorkoutCard key={w.id} item={w} showOwner={false} />
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Published plans */}
       {p.plans.length > 0 && (
         <section className="space-y-2">
@@ -137,7 +155,8 @@ export function PublicProfilePage() {
                       {GOAL_LABELS[plan.goal as keyof typeof GOAL_LABELS] ?? plan.goal}
                     </span>
                     <span className="rounded-full bg-elev px-1.5 py-0.5 text-[10px] font-semibold text-muted">
-                      {LEVEL_LABELS[plan.difficulty as keyof typeof LEVEL_LABELS] ?? plan.difficulty}
+                      {LEVEL_LABELS[plan.difficulty as keyof typeof LEVEL_LABELS] ??
+                        plan.difficulty}
                     </span>
                     {plan.diet && (
                       <span className="rounded-full bg-elev px-1.5 py-0.5 text-[10px] font-semibold text-muted">
@@ -204,9 +223,7 @@ export function PublicProfilePage() {
             <ul className="space-y-2">
               {p.activity.map((a, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-xs">
-                  <span className="w-16 shrink-0 text-muted tabular-nums">
-                    {formatDate(a.at)}
-                  </span>
+                  <span className="w-16 shrink-0 text-muted tabular-nums">{formatDate(a.at)}</span>
                   <span className="min-w-0 flex-1">
                     {a.kind === 'plan' ? (
                       <>
@@ -225,11 +242,16 @@ export function PublicProfilePage() {
         )}
       </div>
 
-      {p.plans.length === 0 && p.reviews.length === 0 && p.activity.length === 0 && p.goals.length === 0 && (
-        <p className="rounded-2xl border border-line bg-surface p-6 text-center text-sm text-muted">
-          {p.displayName ?? p.username} keeps their page private, or hasn't published anything yet.
-        </p>
-      )}
+      {p.plans.length === 0 &&
+        p.reviews.length === 0 &&
+        p.activity.length === 0 &&
+        p.goals.length === 0 &&
+        (p.recentWorkouts ?? []).length === 0 && (
+          <p className="rounded-2xl border border-line bg-surface p-6 text-center text-sm text-muted">
+            {p.displayName ?? p.username} keeps their page private, or hasn't published anything
+            yet.
+          </p>
+        )}
     </div>
   );
 }

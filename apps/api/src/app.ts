@@ -17,6 +17,7 @@ import { planRoutes } from './routes/plans';
 import { profileRoutes } from './routes/profile';
 import { recipeRoutes } from './routes/recipes';
 import { reportRoutes } from './routes/reports';
+import { sessionRoutes } from './routes/sessions';
 import { socialRoutes } from './routes/social';
 import { stripeRoutes } from './routes/stripe';
 import { syncRoutes } from './routes/sync';
@@ -78,6 +79,7 @@ app.route('/v1/billing', billingRoutes);
 app.route('/v1/stripe', stripeRoutes);
 app.route('/v1/reports', reportRoutes);
 app.route('/v1/recipes', recipeRoutes);
+app.route('/v1/sessions', sessionRoutes);
 // The social group's requireAuth is scoped to its own prefixes (friends,
 // groups, stats), so mount order is a style choice here, not load-bearing.
 app.route('/v1', socialRoutes);

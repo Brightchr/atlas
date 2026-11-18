@@ -3,6 +3,7 @@ import { apiFetch } from '@/lib/api';
 import { getDb, newId, onPersist, persist } from '@/lib/db';
 import {
   EXTRA_SYNC_TABLES,
+  SESSION_SYNC_TABLES,
   SYNCED_TABLES,
   TRAINING_SYNC_TABLES,
   seedPendingStatements,
@@ -32,7 +33,7 @@ let SYNCED = new Set<string>(BASE_TABLES);
 
 async function refreshSyncedSet(): Promise<void> {
   SYNCED = (await isTrainingSyncEnabled())
-    ? new Set<string>([...BASE_TABLES, ...TRAINING_SYNC_TABLES])
+    ? new Set<string>([...BASE_TABLES, ...TRAINING_SYNC_TABLES, ...SESSION_SYNC_TABLES])
     : new Set<string>(BASE_TABLES);
 }
 
@@ -113,8 +114,9 @@ export async function isTrainingSyncEnabled(): Promise<boolean> {
  * to them are not applied. */
 async function localOnlyPlanIds(): Promise<Set<string>> {
   const db = await getDb();
-  const rows = (await db.query('SELECT id FROM training_plans WHERE local_only = 1'))
-    .values as { id: string }[];
+  const rows = (await db.query('SELECT id FROM training_plans WHERE local_only = 1')).values as {
+    id: string;
+  }[];
   return new Set(rows.map((r) => r.id));
 }
 
@@ -227,9 +229,8 @@ async function applyPage(changes: Change[]): Promise<number> {
   if (changes.length === 0) return 0;
   const db = await getDb();
 
-  const pendingRows = (
-    await db.query('SELECT entity, row_id, changed_at FROM sync_pending')
-  ).values as PendingRow[];
+  const pendingRows = (await db.query('SELECT entity, row_id, changed_at FROM sync_pending'))
+    .values as PendingRow[];
   const pendingAt = new Map(pendingRows.map((p) => [`${p.entity}:${p.row_id}`, p.changed_at]));
   const localOnly = await localOnlyPlanIds();
 
@@ -259,7 +260,10 @@ async function applyPage(changes: Change[]): Promise<number> {
         } catch (err) {
           // A single bad row (e.g. FK to something this device lacks) must not
           // wedge the whole sync — skip it; the cursor moves on regardless.
-          console.warn('sync: skipped one change:', err);
+          console.warn(
+            `sync: skipped one change (${stmts[0]?.statement.split(' ')[2] ?? '?'}):`,
+            err,
+          );
         }
       }
     } finally {
@@ -317,9 +321,8 @@ async function pushAll(deviceId: string): Promise<void> {
       const ids = rows.filter((r) => r.op === 'upsert').map((r) => r.row_id);
       if (ids.length === 0) continue;
       const placeholders = ids.map(() => '?').join(',');
-      const found = (
-        await db.query(`SELECT * FROM ${entity} WHERE id IN (${placeholders})`, ids)
-      ).values as Record<string, unknown>[];
+      const found = (await db.query(`SELECT * FROM ${entity} WHERE id IN (${placeholders})`, ids))
+        .values as Record<string, unknown>[];
       for (const row of found) payloads.set(`${entity}:${String(row.id)}`, row);
     }
 
@@ -354,10 +357,11 @@ async function pushAll(deviceId: string): Promise<void> {
     // Clear exactly what was sent; a row re-edited mid-push keeps its newer
     // pending entry (changed_at no longer matches).
     for (const p of pending) {
-      await db.run(
-        'DELETE FROM sync_pending WHERE entity = ? AND row_id = ? AND changed_at = ?',
-        [p.entity, p.row_id, p.changed_at],
-      );
+      await db.run('DELETE FROM sync_pending WHERE entity = ? AND row_id = ? AND changed_at = ?', [
+        p.entity,
+        p.row_id,
+        p.changed_at,
+      ]);
     }
     await persist();
     if (pending.length < PUSH_BATCH) return;
@@ -387,40 +391,47 @@ export async function syncNow(): Promise<void> {
     queued = true;
     return;
   }
-  if (!navigator.onLine || !currentUserId) {
-    // Can't sync at all — don't leave firstSyncDone consumers waiting forever.
-    setState({ firstSyncDone: true });
-    return;
-  }
-  if (!(await isSyncEnabled())) {
-    setState({ status: 'off', firstSyncDone: true });
-    return;
-  }
-
-  // Never mix accounts: this device's data belongs to whoever synced first.
-  const boundAccount = await getMeta('accountId');
-  if (boundAccount && boundAccount !== currentUserId) {
-    setState({ status: 'off', accountMismatch: true, firstSyncDone: true });
-    return;
-  }
-
+  // Claim the run BEFORE the first await. The pre-flight checks below yield
+  // to the event loop, and two triggers landing close together (the session
+  // kick-off plus a persist-debounced one) used to both get past the guard:
+  // two pull loops on one database, each minting its own device id and
+  // interleaving page transactions — a rollback in one dropped parent rows
+  // the other had just applied, so children failed their foreign keys.
   running = true;
-  setState({ status: 'syncing', error: null });
   try {
-    await refreshSyncedSet();
-    const deviceId = await getDeviceId();
-    const applied = await pullAll(deviceId);
-    await pushAll(deviceId);
-    if (!boundAccount) await setMeta('accountId', currentUserId);
-    const at = new Date().toISOString();
-    await setMeta('lastSyncAt', at);
-    failStreak = 0;
-    clearTimeout(retryTimer);
-    setState({ status: 'idle', lastSyncAt: at });
-    if (applied > 0) await queryClient.invalidateQueries();
-  } catch (err) {
-    setState({ status: 'error', error: err instanceof Error ? err.message : String(err) });
-    scheduleRetry();
+    if (!navigator.onLine || !currentUserId) {
+      // Can't sync at all — don't leave firstSyncDone consumers waiting forever.
+      return;
+    }
+    if (!(await isSyncEnabled())) {
+      setState({ status: 'off' });
+      return;
+    }
+
+    // Never mix accounts: this device's data belongs to whoever synced first.
+    const boundAccount = await getMeta('accountId');
+    if (boundAccount && boundAccount !== currentUserId) {
+      setState({ status: 'off', accountMismatch: true });
+      return;
+    }
+
+    setState({ status: 'syncing', error: null });
+    try {
+      await refreshSyncedSet();
+      const deviceId = await getDeviceId();
+      const applied = await pullAll(deviceId);
+      await pushAll(deviceId);
+      if (!boundAccount) await setMeta('accountId', currentUserId);
+      const at = new Date().toISOString();
+      await setMeta('lastSyncAt', at);
+      failStreak = 0;
+      clearTimeout(retryTimer);
+      setState({ status: 'idle', lastSyncAt: at });
+      if (applied > 0) await queryClient.invalidateQueries();
+    } catch (err) {
+      setState({ status: 'error', error: err instanceof Error ? err.message : String(err) });
+      scheduleRetry();
+    }
   } finally {
     setState({ firstSyncDone: true });
     running = false;
@@ -435,7 +446,7 @@ export async function syncNow(): Promise<void> {
  * tables plus training when its opt-in is on. */
 async function activeSeedStatements(): Promise<string[]> {
   const tables = (await isTrainingSyncEnabled())
-    ? [...BASE_TABLES, ...TRAINING_SYNC_TABLES]
+    ? [...BASE_TABLES, ...TRAINING_SYNC_TABLES, ...SESSION_SYNC_TABLES]
     : [...BASE_TABLES];
   return seedPendingStatements(tables);
 }
@@ -485,7 +496,8 @@ export async function setTrainingSyncEnabled(enabled: boolean): Promise<void> {
   if (enabled) {
     await setMeta('cursor', '0');
     const db = await getDb();
-    for (const sql of seedPendingStatements([...TRAINING_SYNC_TABLES])) await db.execute(sql);
+    for (const sql of seedPendingStatements([...TRAINING_SYNC_TABLES, ...SESSION_SYNC_TABLES]))
+      await db.execute(sql);
     await persist();
     void syncNow();
   }
@@ -511,10 +523,13 @@ export function startSync(userId: string): () => void {
   document.addEventListener('visibilitychange', onVisible);
   const interval = setInterval(() => void syncNow(), PERIODIC_MS);
 
+  // A new signed-in session starts undecided: sign-out/sign-in in the same
+  // tab must wait for THIS account's first pull, not inherit the last one's.
+  setState({ firstSyncDone: false, accountMismatch: false, error: null });
   void isSyncEnabled().then(async (enabled) => {
     if (!enabled) {
-      const mismatch = (await getMeta('accountId')) !== null &&
-        (await getMeta('accountId')) !== userId;
+      const mismatch =
+        (await getMeta('accountId')) !== null && (await getMeta('accountId')) !== userId;
       setState({ status: 'off', accountMismatch: mismatch, firstSyncDone: true });
       return;
     }
@@ -524,6 +539,7 @@ export function startSync(userId: string): () => void {
 
   return () => {
     currentUserId = null;
+    setState({ firstSyncDone: false, accountMismatch: false });
     clearTimeout(debounce);
     offPersist();
     window.removeEventListener('online', onOnline);

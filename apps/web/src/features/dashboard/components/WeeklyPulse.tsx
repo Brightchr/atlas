@@ -10,7 +10,7 @@ import {
   getWeightHistory,
   logBodyWeight,
 } from '@/features/goals/repository';
-import { useTrainingProfile } from '@/features/training/profile';
+import { DEFAULT_TRAINING_PROFILE, useTrainingProfile } from '@/features/training/profile';
 import { displayWeight, formatWeight, parseWeight, useUnits, weightUnit } from '@/lib/units';
 import { weeklyPulse, type PulseMessage } from '../pulse';
 
@@ -53,7 +53,7 @@ export function WeeklyPulse() {
 
   const messages = weeklyPulse({
     sessionDatesThisWeek: weekSessions.data ?? [],
-    daysTarget: trainingProfile.data?.daysPerWeek ?? null,
+    daysTarget: (trainingProfile.data ?? DEFAULT_TRAINING_PROFILE).daysPerWeek,
     weightHistory: weightHistory.data ?? [],
     weeklyRateKg: planProfile.data?.weeklyRateKg ?? null,
     goalProgress: progress.data ?? [],
@@ -79,7 +79,9 @@ export function WeeklyPulse() {
           const { Icon, tint } = TONE_META[message.tone];
           return (
             <li key={message.text} className="flex items-start gap-2.5">
-              <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tint}`}>
+              <span
+                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tint}`}
+              >
                 <Icon size={14} strokeWidth={1.8} aria-hidden />
               </span>
               <p className="text-sm leading-relaxed">{message.text}</p>

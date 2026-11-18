@@ -6,28 +6,42 @@ import { upsertTargetGoal } from '@/features/goals/repository';
 import {
   GOAL_OPTIONS,
   LEVEL_OPTIONS,
+  useOnboardingState,
   useSaveTrainingProfile,
+  useSetOnboardingState,
   useTrainingProfile,
   type TrainingGoal,
   type TrainingLevel,
+  type TrainingProfile,
 } from '../profile';
 
 const DAY_CHOICES = [2, 3, 4, 5, 6];
 
 /** Onboarding: pick a goal, a level, and a weekly commitment. Everything the
  * app recommends — plans, workouts, catalog defaults — filters through this.
- * Also reachable later from Settings to change course. */
+ * Skippable: the app runs on sensible defaults until it's set. Also
+ * reachable later from Profile and Settings to change course. */
 export function WelcomePage() {
   const existing = useTrainingProfile();
+  const onboarding = useOnboardingState();
+  // The form seeds its state from the saved profile once, so it must not
+  // mount before that query has settled (it used to open blank for editors).
+  if (!existing.isSuccess || !onboarding.isSuccess) return null;
+  return <WelcomeForm existing={existing.data} />;
+}
+
+function WelcomeForm({ existing }: { existing: TrainingProfile | null }) {
   const save = useSaveTrainingProfile();
+  const setOnboarding = useSetOnboardingState();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [goal, setGoal] = useState<TrainingGoal | null>(existing.data?.goal ?? null);
-  const [level, setLevel] = useState<TrainingLevel | null>(existing.data?.level ?? null);
-  const [daysPerWeek, setDaysPerWeek] = useState<number>(existing.data?.daysPerWeek ?? 3);
+  const [goal, setGoal] = useState<TrainingGoal | null>(existing?.goal ?? null);
+  const [level, setLevel] = useState<TrainingLevel | null>(existing?.level ?? null);
+  const [daysPerWeek, setDaysPerWeek] = useState<number>(existing?.daysPerWeek ?? 3);
 
   const ready = goal !== null && level !== null;
+  const editing = existing !== null;
 
   const finish = () => {
     if (!goal || !level) return;
@@ -41,11 +55,18 @@ export function WelcomePage() {
           await upsertTargetGoal('workout_frequency', 'Train weekly', daysPerWeek).catch(
             () => undefined,
           );
+          await setOnboarding.mutateAsync('completed').catch(() => undefined);
           void queryClient.invalidateQueries({ queryKey: ['goals'] });
-          void navigate(existing.data ? '/settings' : '/', { replace: true });
+          void navigate(editing ? '/profile' : '/', { replace: true });
         },
       },
     );
+  };
+
+  const skip = () => {
+    setOnboarding.mutate('skipped', {
+      onSettled: () => void navigate('/', { replace: true }),
+    });
   };
 
   return (
@@ -56,7 +77,10 @@ export function WelcomePage() {
           <h1 className="text-2xl font-bold">What are you training for?</h1>
           <p className="mt-1 text-sm text-muted">
             Your answers shape everything: recommended plans, suggested workouts, and what you see
-            first. Change them any time in Settings.
+            first.{' '}
+            {editing
+              ? 'Change them any time.'
+              : 'You can skip this and set it up later in Settings.'}
           </p>
         </div>
       </header>
@@ -71,7 +95,9 @@ export function WelcomePage() {
               aria-pressed={goal === id}
               onClick={() => setGoal(id)}
               className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                goal === id ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
+                goal === id
+                  ? 'border-accent/40 bg-accent-soft'
+                  : 'border-line bg-surface hover:bg-elev'
               }`}
             >
               <span>
@@ -94,7 +120,9 @@ export function WelcomePage() {
               aria-pressed={level === id}
               onClick={() => setLevel(id)}
               className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                level === id ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
+                level === id
+                  ? 'border-accent/40 bg-accent-soft'
+                  : 'border-line bg-surface hover:bg-elev'
               }`}
             >
               <span>
@@ -128,14 +156,24 @@ export function WelcomePage() {
         </div>
       </section>
 
-      <button
-        type="button"
-        disabled={!ready || save.isPending}
-        onClick={finish}
-        className="w-full rounded-xl bg-linear-to-r from-accent to-accent-2 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {existing.data ? 'Save changes' : "Let's train"}
-      </button>
+      <div className="space-y-2">
+        <button
+          type="button"
+          disabled={!ready || save.isPending}
+          onClick={finish}
+          className="w-full rounded-xl bg-linear-to-r from-accent to-accent-2 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {editing ? 'Save changes' : "Let's train"}
+        </button>
+        <button
+          type="button"
+          disabled={setOnboarding.isPending}
+          onClick={editing ? () => void navigate('/profile') : skip}
+          className="w-full rounded-xl border border-line bg-surface py-2.5 text-sm font-semibold text-muted shadow-sm transition-colors hover:bg-elev hover:text-ink"
+        >
+          {editing ? 'Cancel' : 'Skip for now'}
+        </button>
+      </div>
     </div>
   );
 }

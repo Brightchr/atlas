@@ -1,6 +1,7 @@
 import type { MealType } from '@arcadia/shared';
 import { getDb } from '@/lib/db';
 import { plannedKcalByMeal } from './mealPlan';
+import { addDays, localDayOfWeek, localIsoDateDaysAgo, parseLocalDate } from '@/lib/dates';
 
 /** Plan-vs-reality nutrition over time — the rolled-up view of the diary's
  * per-meal badges: how often eating followed the plan, how often extras
@@ -34,7 +35,7 @@ export async function nutritionDiscipline(
   targetKcal: number | null = null,
 ): Promise<NutritionDiscipline> {
   const db = await getDb();
-  const since = new Date(Date.now() - (daysBack - 1) * 86_400_000).toISOString().slice(0, 10);
+  const since = localIsoDateDaysAgo(daysBack - 1);
   const rows = (
     await db.query(
       `SELECT date, meal, SUM(kcal) AS kcal, COUNT(*) AS entries
@@ -57,9 +58,9 @@ export async function nutritionDiscipline(
 
   const days: NutritionDay[] = [];
   for (let i = 0; i < daysBack; i++) {
-    const d = new Date(Date.parse(since) + i * 86_400_000);
-    const date = d.toISOString().slice(0, 10);
-    const dow = (d.getUTCDay() + 6) % 7;
+    const date = addDays(since, i);
+    const d = parseLocalDate(date);
+    const dow = localDayOfWeek(d);
     const planned = plannedByDow[dow] ?? {};
     const hasPlan = Object.keys(planned).length > 0;
     const meals = byDate.get(date) ?? [];
@@ -71,7 +72,7 @@ export async function nutritionDiscipline(
       : 0;
     days.push({
       date,
-      label: d.toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+      label: d.toLocaleDateString([], { month: 'short', day: 'numeric' }),
       kcal,
       mealsEaten: (['breakfast', 'lunch', 'dinner'] as MealType[]).filter((meal) =>
         meals.some((m) => m.meal === meal),

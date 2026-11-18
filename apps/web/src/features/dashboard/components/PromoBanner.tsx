@@ -1,73 +1,68 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowRight, TicketPercent } from 'lucide-react';
+import { ArrowRight, TicketPercent, X } from 'lucide-react';
 import { useActivePromotions } from '@/features/billing/api';
 import { formatDate } from '@/lib/dates';
 
-/** The dashboard hero slot, reserved for things WE post: when a promotion is
- * live it takes over the banner; otherwise the evergreen brand card shows.
- * This slot is deliberately not draggable — it's ours, not the user's. */
+const DISMISS_KEY = 'arcadia-promo-dismissed';
+
+function readDismissed(): string | null {
+  try {
+    return localStorage.getItem(DISMISS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** A slim strip for a live promotion — only when one exists, and only until
+ * the user closes it (per code, per device: a new promo shows again). The
+ * dashboard's hero belongs to the workout; this sits below it. */
 export function PromoBanner() {
   const promotions = useActivePromotions();
   const promo = promotions.data?.promotions[0];
+  const [dismissed, setDismissed] = useState<string | null>(readDismissed);
+
+  if (!promo || dismissed === promo.code) return null;
+
+  const dismiss = () => {
+    setDismissed(promo.code);
+    try {
+      localStorage.setItem(DISMISS_KEY, promo.code);
+    } catch {
+      /* private mode: dismissal lasts for this view only */
+    }
+  };
 
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-linear-to-br from-accent to-accent-2 p-6 text-accent-ink shadow-lg md:p-8">
-      <div
-        aria-hidden
-        className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-accent-ink/10 blur-2xl"
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-24 right-24 h-48 w-48 rounded-full border border-accent-ink/15"
-      />
-      {promo ? (
-        <>
-          <p className="flex items-center gap-1.5 text-xs font-semibold tracking-widest uppercase opacity-80">
-            <TicketPercent size={14} aria-hidden />
-            Limited offer
-          </p>
-          <h2 className="mt-2 max-w-md text-2xl font-bold md:text-3xl">
-            {promo.grantDays
-              ? `${promo.grantDays} days of full access — free`
-              : `${promo.discountPercent}% off your subscription`}
-          </h2>
-          <p className="mt-1.5 max-w-sm text-sm opacity-85">
-            {promo.description || 'Use the code below on the upgrade page.'}
-            {promo.endsAt && ` Ends ${formatDate(promo.endsAt)}.`}
-          </p>
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <span className="rounded-xl border border-accent-ink/25 bg-accent-ink/10 px-3.5 py-2 font-mono text-sm font-bold tracking-wider backdrop-blur-sm">
-              {promo.code}
-            </span>
-            <Link
-              to="/upgrade"
-              className="inline-flex items-center gap-2 rounded-xl border border-accent-ink/20 bg-accent-ink/10 px-4 py-2.5 text-sm font-semibold backdrop-blur-sm transition-colors hover:bg-accent-ink/20"
-            >
-              Redeem now
-              <ArrowRight size={15} aria-hidden />
-            </Link>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-xs font-semibold tracking-widest uppercase opacity-80">
-            Arcadia Atlas
-          </p>
-          <h2 className="mt-2 max-w-md text-2xl font-bold md:text-3xl">
-            Stay on top of your health
-          </h2>
-          <p className="mt-1.5 max-w-sm text-sm opacity-85">
-            Workouts, meals and progress — tracked in one place, on every device.
-          </p>
-          <Link
-            to="/train/library"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl border border-accent-ink/20 bg-accent-ink/10 px-4 py-2.5 text-sm font-semibold backdrop-blur-sm transition-colors hover:bg-accent-ink/20"
-          >
-            Start training
-            <ArrowRight size={15} aria-hidden />
-          </Link>
-        </>
-      )}
+    <section className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm shadow-sm">
+      <TicketPercent size={16} className="shrink-0 text-accent" aria-hidden />
+      <p className="min-w-0 flex-1 truncate">
+        <span className="font-semibold">
+          {promo.grantDays
+            ? `${promo.grantDays} days of full access — free`
+            : `${promo.discountPercent}% off your subscription`}
+        </span>
+        <span className="text-muted">
+          {' '}
+          with code <span className="font-mono font-semibold text-ink">{promo.code}</span>
+          {promo.endsAt && ` · ends ${formatDate(promo.endsAt)}`}
+        </span>
+      </p>
+      <Link
+        to="/upgrade"
+        className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-accent hover:underline"
+      >
+        Redeem
+        <ArrowRight size={13} aria-hidden />
+      </Link>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Dismiss promotion"
+        className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
+      >
+        <X size={14} aria-hidden />
+      </button>
     </section>
   );
 }

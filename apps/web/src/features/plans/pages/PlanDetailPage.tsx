@@ -170,11 +170,11 @@ export function PlanDetailPage() {
         </div>
         {p.mine && (
           <p className="mt-2 text-xs text-muted">
-            This is your listing. To change it, edit your copy in My Plans and publish again —
-            it updates in place. Unpublishing removes it for everyone; your own copy stays.
+            This is your listing. To change it, edit your copy in My Plans and publish again — it
+            updates in place. Unpublishing removes it for everyone; your own copy stays.
           </p>
         )}
-        {p.description && <p className="mt-3 text-sm">{p.description}</p>}
+        {p.description && <p className="mt-3 text-sm whitespace-pre-line">{p.description}</p>}
       </header>
 
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
@@ -189,7 +189,10 @@ export function PlanDetailPage() {
               <div key={label} className="rounded-xl bg-elev px-1 py-2">
                 <p className="text-[10px] font-bold tracking-wide text-muted uppercase">{label}</p>
                 {day?.workout ? (
-                  <p className="mt-1 text-[11px] leading-tight font-medium" title={day.workout.name}>
+                  <p
+                    className="mt-1 text-[11px] leading-tight font-medium"
+                    title={day.workout.name}
+                  >
                     {day.workout.name}
                   </p>
                 ) : day?.isRestDay ? (
@@ -214,8 +217,14 @@ export function PlanDetailPage() {
               <p className="text-sm font-semibold">{w.name}</p>
               <ul className="mt-1 space-y-0.5">
                 {w.exercises.map((e) => (
-                  <li key={`${w.name}-${e.position}`} className="flex items-baseline justify-between gap-2 text-xs">
-                    <Link to={`/exercises/${e.exerciseId}`} className="truncate text-accent hover:underline">
+                  <li
+                    key={`${w.name}-${e.position}`}
+                    className="flex items-baseline justify-between gap-2 text-xs"
+                  >
+                    <Link
+                      to={`/exercises/${e.exerciseId}`}
+                      className="truncate text-accent hover:underline"
+                    >
                       {e.exerciseName}
                     </Link>
                     <span className="shrink-0 tabular-nums text-muted">
@@ -262,10 +271,7 @@ export function PlanDetailPage() {
                 ? `${DIET_STAPLES[p.diet].length} staples on your list ✓`
                 : 'Add staples to shopping list'}
             </button>
-            <Link
-              to="/eat/meal-plan"
-              className="text-xs font-medium text-accent hover:underline"
-            >
+            <Link to="/eat/meal-plan" className="text-xs font-medium text-accent hover:underline">
               Build the meal plan →
             </Link>
           </div>

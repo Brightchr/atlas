@@ -273,7 +273,7 @@ export const reports = pgTable(
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     reporterUserId: uuid('reporter_user_id').references(() => users.id, { onDelete: 'set null' }),
     targetType: text('target_type', {
-      enum: ['user', 'plan', 'review', 'recipe', 'other'],
+      enum: ['user', 'plan', 'review', 'recipe', 'session', 'other'],
     }).notNull(),
     targetId: text('target_id').notNull(),
     reason: text('reason', {
@@ -329,6 +329,31 @@ export const sharedRecipes = pgTable(
       t.ownerUserId,
       t.localRecipeId,
     ),
+  ],
+);
+
+export const sharedSessions = pgTable(
+  'shared_sessions',
+  {
+    id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+    ownerUserId: uuid('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    localSessionId: text('local_session_id').notNull(),
+    name: text('name').notNull(),
+    performedAt: timestamptz('performed_at').notNull(),
+    durationSec: integer('duration_sec').notNull(),
+    visibility: text('visibility', { enum: ['friends', 'public'] }).notNull(),
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('shared_sessions_owner_user_id_local_session_id_key').on(
+      t.ownerUserId,
+      t.localSessionId,
+    ),
+    index('shared_sessions_owner_perf_idx').on(t.ownerUserId, t.performedAt.desc()),
   ],
 );
 

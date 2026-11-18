@@ -1,145 +1,134 @@
-# Atlas by Arcadia
+<div align="center">
 
-**Live at [atlas-fitness.org](https://atlas-fitness.org)** · fitness, food, and community in
-one local-first app.
+<img src="apps/web/public/assets/logo/atlas_logo.png" alt="Atlas" width="160" />
 
-Atlas is a subscription fitness platform ($5/month after a 7-day trial): plan and log
-workouts, track calories against a weekly meal plan, and share recipes, plans, and progress
-with friends. Everything personal lives in SQLite **on the device** and syncs through the
-API — the server orders changes but never mines your data.
+# Atlas
 
-**Proprietary — all rights reserved.** This code is not licensed for use, copying, or
-distribution.
+**Your fitness, in one place.**
 
-## What's in the product
+Workouts, food, weight and goals, finally talking to each other.
 
-**Train** — workout plans (curated catalog + community-shared), session logging, weekly
-volume/muscle-balance/top-lift charts, goals with progress tracking, training profile that
-tunes exercise suggestions.
+[**Start your free trial at atlas-fitness.org →**](https://atlas-fitness.org)
 
-**Eat** — calorie diary with per-meal targets, food search backed by four sources merged
-in priority order (our curated food DB → FatSecret Premier → USDA → Open Food Facts), with
-search-as-you-type autocomplete and camera barcode scanning. Recipes are first-class:
-build them from ingredients, publish them to the community browser, rate others', and drop
-any recipe (yours or saved) straight into the weekly meal plan — which in turn drives
-one-tap diary logging and shopping-list generation.
+7 days free · then $10/month or $72/year
 
-**Community** — friends and groups with opt-in stat sharing, presence, public profiles
-with reputation, shared plan/recipe browsing with reviews, and abuse reporting on all of it.
+</div>
 
-**Dashboard** — the home screen is user-arrangeable (drag cards or use move controls;
-layout persists per device), with progress charts, goals, and today-at-a-glance. The hero
-slot is reserved for promotions we post.
+![Atlas](docs/screenshots/landing.png)
 
-**Monetization** — 7-day trial on signup, then $5/month. Promo codes (percent discounts
-and instant free-time grants, with redemption caps), admin-comped accounts that bypass the
-subscription entirely, and a paywall that keeps billing/settings reachable for expired
-accounts. Checkout is a placeholder until Stripe is wired.
+## Why Atlas
 
-**Administration** (`/admin`) — user directory with roles (user/moderator/admin), plan and
-exempt controls, masquerade, bans with optional IP blocking (blocklist enforced before
-auth), the moderation queue for user reports, promo management, curated-food imports (paste
-a JSON array generated from any restaurant's nutrition guide), and a full audit log of
-every sensitive action.
+Most people juggle a workout tracker, a calorie counter, a recipe app and a notes file
+full of goals. None of them know about each other, so none of them can tell you what's
+actually working.
 
-## Stack
+Atlas puts it all in one place. Your training shapes your suggestions, your meal plan
+builds your shopping list, every set you log feeds your progress charts, and your goals
+keep score across all of it.
 
-| Layer | Tech |
-|---|---|
-| Web | React 19 · Vite · Tailwind 4 · TanStack Query · react-router · Capacitor (Android) |
-| Device data | SQLite (sql.js in browser, native on Android), synced via a per-user replica log |
-| API | Hono on Node · Postgres (raw SQL, append-only migrations run at boot) |
-| Auth | Argon2id passwords + Google sign-in (OAuth code flow) · hashed session tokens · httpOnly cookies / Bearer for native |
-| Food data | Curated DB (ours) · FatSecret Platform Premier · USDA FDC · Open Food Facts |
-| Hosting | Railway (atlas-web nginx + atlas-api + Postgres), auto-deploys from `main`; DNS on Cloudflare |
+## Your day, at a glance
 
-## Structure
+Open the app and your workout is right at the top: pick up where you left off, start
+today's planned session, or just start lifting. Below it are your week, your calories and
+protein, your weight trend and your goals. Drag the cards into whatever order suits you.
 
-```
-apps/
-  web/        React + Vite + Capacitor app (the product)
-    src/
-      app/        Router, providers, layout shell
-      features/   One folder per feature: training, nutrition, social, billing, admin, …
-      lib/        Cross-feature infrastructure: exercise catalog, SQLite layer, sync engine
-  api/        Hono API: auth, billing, sync, food search, social, admin, moderation
-packages/
-  shared/     Domain types + membership resolution shared by web and api
-```
+![Dashboard](apps/web/public/marketing/dashboard.png)
 
-Conventions:
+## Workout
 
-- Features never import from each other's internals — shared code lives in `lib/` or `@arcadia/shared`.
-- External DTOs (exercise DB, food APIs) are mapped to domain types at the boundary.
-- Device SQLite schema: `apps/web/src/lib/db/schema.ts` (append a new `toVersion`, never edit one).
-- Postgres schema: `apps/api/src/db/migrations.ts` (append-only, applied transactionally at boot).
-- Membership (`pro` / `trial` / `expired`) is derived in exactly one place:
-  `packages/shared/src/membership.ts`. API gates use `requireActiveMember`; the web paywall
-  reads the same resolution off the session.
+- **Train your way.** Follow a weekly plan, start a saved routine, or start an empty
+  workout and add exercises as you go.
+- **Log sets in seconds** with your targets, rest times and last weights right there.
+- **Adjust on the day.** Swap or skip an exercise without touching your routine, then
+  save the session as a new routine when you finish, or update the old one.
+- **Forgot to log?** Backdate a past workout in a few taps.
+- **A full catalog to explore.** Weekly programs plus strength, cardio, HIIT and mobility
+  workouts, from a gentle comeback week to a nine-week couch-to-5K, and hundreds of
+  exercises with photos and how-to steps.
 
-## Development
+![Live workout](apps/web/public/marketing/train.png)
 
-```bash
-npm install
-docker compose up -d db   # dev Postgres on localhost:55432 (arcadia/arcadia)
-npm run dev               # web app on http://localhost:5174
-npm run dev:api           # API on http://localhost:3000 (runs migrations on boot)
-npm run typecheck         # all workspaces
-npm test -w @arcadia/api  # integration tests (needs the dev Postgres running)
-```
+![Explore workouts](docs/screenshots/explore.png)
 
-The dev servers honor `PORT`, and the web dev server honors `API_PROXY_TARGET`, so two
-checkouts (e.g. git worktrees) can run side by side.
+## History and progress
 
-### API environment
+Every finished workout is saved with its duration, sets and volume. Open one to repeat
+it, edit it or share it. Your progress page turns all of that into strength gains,
+personal records, weekly volume, muscle balance and a body-weight trend.
 
-See `apps/api/.env.example` for the full list: `DATABASE_URL`, `CORS_ORIGINS`,
-`PUBLIC_URL` (OAuth redirects derive from it), `ADMIN_PASSWORD` / `DEMO_PASSWORD` (seeded
-accounts — production only creates them when set), `FATSECRET_CLIENT_ID/SECRET` (food
-search), `FDC_API_KEY` (USDA), `GOOGLE_CLIENT_ID/SECRET` (Google sign-in), and
-`TRUST_CF_PROXY` (set to 1 only when Cloudflare fronts the origin, so rate limits and IP
-bans see real client addresses).
+![Progress](apps/web/public/marketing/progress.png)
 
-## Seeded accounts (dev)
+## Eat
 
-| Account | Email | Password | Notes |
-|---|---|---|---|
-| Demo | demo@arcadia.dev | demo1234 | Signing in seeds the device DB with workouts, meals, shopping list |
-| Admin | admin@arcadia.dev | admin1234 | Full `/admin` dashboard |
+- **A calorie diary that's fast.** Search-as-you-type across millions of foods, or scan a
+  barcode with your camera.
+- **Targets made for you.** Atlas works out daily calories and macros from your profile
+  and goal, or you can set your own numbers.
+- **Ready-made meal plans.** Pick a week built for cutting, maintaining or gaining, and
+  preview every day before you commit.
+- **Recipes with real photos and full macros.** Build your own, save favorites, or browse
+  what the community is cooking.
+- **One tap from plan to plate.** Log a planned day straight to your diary, or turn the
+  week into a shopping list.
 
-Admin masquerade sessions are always marked in the database, surfaced in the UI banner, and
-recorded in the audit log — impersonation is never invisible.
+![Food diary](apps/web/public/marketing/eat.png)
 
-## Security posture
+![Meal plans](docs/screenshots/meal-plans.png)
 
-- Argon2id password hashing; Google-only accounts store no password at all.
-- Sessions are 256-bit random tokens, stored only as SHA-256 hashes, revocable server-side;
-  bans invalidate every session on the next request.
-- Generic auth errors and timing-equalized login (no account enumeration), rate limits on
-  auth/search/redeem endpoints, strict CORS allowlist, body-size caps before parsing,
-  IP blocklist enforced ahead of authentication.
-- Append-only audit log of all admin actions.
+![Recipe](docs/screenshots/recipe.png)
 
-## Android (Capacitor)
+## Better with friends
 
-```bash
-cd apps/web && npx cap add android   # one-time, requires Android Studio
-npm run cap:android                  # build, sync, open Android Studio
-```
+Add friends and start workout groups. Share finished workouts to your feed and profile,
+see what your friends are training, and swap plans and recipes with reviews and ratings. You choose exactly which
+stats each friend can see. Your weight trend shows only its direction, never the number.
 
-## Deployment
+![Friends](apps/web/public/marketing/social.png)
 
-Pushing to `main` on GitHub deploys automatically: the Railway project builds `atlas-api`
-and `atlas-web` from their Dockerfiles (healthcheck on `/health`), and the API applies any
-new migrations at boot. DNS for atlas-fitness.org is delegated to Cloudflare; the domain is
-registered through Railway.
+## Made for your phone
 
-## Data attribution
+Atlas is designed mobile-first, with a bottom tab bar for Home, Workout, History, Eat and
+You. It works just as well in the gym or the kitchen as it does on your desktop.
+
+## Your data stays yours
+
+Your workouts, meals and measurements are stored on your own device first and synced
+securely so they follow you everywhere. We don't sell your data and we don't mine it.
+You can delete your account, and everything in it, at any time.
+
+## Pricing
+
+|                |                                     |
+| -------------- | ----------------------------------- |
+| **Free trial** | 7 days, every feature               |
+| **Monthly**    | $10/month, cancel anytime           |
+| **Yearly**     | $72/year, the equivalent of $6/month |
+
+Checkout is handled securely by Stripe.
+
+## Built with
+
+Atlas is a modern TypeScript app from front to back:
+
+- **React 19**, **Vite** and **Tailwind CSS** for a fast, responsive interface
+- **Capacitor** to bring the same app to Android
+- **SQLite** on the device for instant, offline-friendly data
+- **Hono** on **Node.js** with **PostgreSQL** in the cloud
+- **Stripe** for payments
+- Hosted on **Railway** behind **Cloudflare**
+
+## Credits
 
 - Exercise data and images: [Free Exercise DB](https://github.com/yuhonas/free-exercise-db)
-  (public domain), vendored at `apps/web/src/lib/exercise-db/exercises.json`, images served
-  from the pinned dataset commit via jsDelivr. To update, re-download `dist/exercises.json`
-  and bump `DATA_COMMIT` in `apps/web/src/lib/exercise-db/client.ts` together.
-- Food search: [FatSecret Platform](https://platform.fatsecret.com),
-  [USDA FoodData Central](https://fdc.nal.usda.gov), and
-  [Open Food Facts](https://world.openfoodfacts.org) (ODbL — attribution shown in-app).
+- Food data: [FatSecret Platform](https://platform.fatsecret.com),
+  [USDA FoodData Central](https://fdc.nal.usda.gov) and
+  [Open Food Facts](https://world.openfoodfacts.org)
+
+---
+
+<div align="center">
+
+© Arcadia. All rights reserved. Atlas is proprietary software; this code is not licensed
+for use, copying or distribution.
+
+</div>

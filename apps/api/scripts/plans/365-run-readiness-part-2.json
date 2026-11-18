@@ -1,0 +1,289 @@
+{
+  "key": "365-run-readiness-part-2",
+  "name": "365-Day Run Readiness · Part 2: Run-Walk (Weeks 33–52)",
+  "description": "365 days. One rule: show up. This is the home stretch.\n\nPart 2 (Weeks 33–52) is where the year pays off: you go from brisk walking to running 45 minutes without stopping, one easy interval at a time. No sprints, no race pace. Every run is conversational and every week builds on the last.\n\nStart here when Part 1 is done and you can brisk-walk 60 minutes comfortably. Not there yet? Keep the strength days and swap the runs for 40–60 minutes of low-impact cardio until you are. The challenge is the daily habit, not the milestone.\n\nThe week: run-walk intervals Monday, Wednesday and Friday, two full-body strength days to keep you strong and injury-free, an easy walk, bike or hike on Saturday and a recovery walk on Sunday. Still something every day.\n\nThe run progression (update the jogging sets and seconds in your copy each week):\nWeeks 33–36: 1–2 min run / 2 min walk × 6–8\nWeeks 37–40: 3–5 min run / 2 min walk × 4–6\nWeeks 41–44: 6–10 min run / 2 min walk × 3–4\nWeeks 45–48: 12–20 min runs with short walk breaks\nWeeks 49–52: continuous easy runs, 25 min building to 45 min\nEvery fourth week is a recovery week. Repeat any week that doesn't feel comfortable. 3 miles steady is the target; 5 is a bonus.\n\nDay 365: an easy 15-minute walk, 10 minutes of mobility and a moment to look back at a year of showing up. That's the real finish line.",
+  "difficulty": "beginner",
+  "goal": "general",
+  "diet": "balanced",
+  "days": [
+    {
+      "dayOfWeek": 0,
+      "isRestDay": false,
+      "workout": {
+        "name": "Run-walk intervals",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Jogging, Treadmill",
+            "sets": 8,
+            "restSec": 120,
+            "seconds": 60
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 1,
+      "isRestDay": false,
+      "workout": {
+        "name": "Full body A + core",
+        "exercises": [
+          {
+            "name": "Chair Squat",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Incline Push-Up",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Seated Cable Rows",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Dumbbell Step Ups",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Standing Calf Raises",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Pallof Press",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Plank",
+            "sets": 2,
+            "restSec": 60,
+            "seconds": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 2,
+      "isRestDay": false,
+      "workout": {
+        "name": "Run-walk intervals",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Jogging, Treadmill",
+            "sets": 8,
+            "restSec": 120,
+            "seconds": 60
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 3,
+      "isRestDay": false,
+      "workout": {
+        "name": "Full body B + snowboard balance",
+        "exercises": [
+          {
+            "name": "Split Squats",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "V-Bar Pulldown",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Seated Leg Curl",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Standing Cable Chest Press",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Monster Walk",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 12
+          },
+          {
+            "name": "Superman",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Dumbbell Step Ups",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 6
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 4,
+      "isRestDay": false,
+      "workout": {
+        "name": "Run-walk intervals + balance",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Jogging, Treadmill",
+            "sets": 8,
+            "restSec": 120,
+            "seconds": 60
+          },
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 5
+          },
+          {
+            "name": "Monster Walk",
+            "sets": 2,
+            "restSec": 60,
+            "reps": 8
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 5,
+      "isRestDay": false,
+      "workout": {
+        "name": "Easy enjoyable activity",
+        "exercises": [
+          {
+            "name": "Trail Running/Walking",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 30
+          }
+        ]
+      }
+    },
+    {
+      "dayOfWeek": 6,
+      "isRestDay": false,
+      "workout": {
+        "name": "Recovery walk + mobility",
+        "exercises": [
+          {
+            "name": "Walking, Treadmill",
+            "sets": 1,
+            "restSec": 0,
+            "minutes": 15
+          },
+          {
+            "name": "Ankle Circles",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 8
+          },
+          {
+            "name": "Standing Hip Flexors",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          },
+          {
+            "name": "Cat Stretch",
+            "sets": 1,
+            "restSec": 0,
+            "reps": 6
+          },
+          {
+            "name": "Calf Stretch Hands Against Wall",
+            "sets": 1,
+            "restSec": 0,
+            "seconds": 30
+          }
+        ]
+      }
+    }
+  ]
+}

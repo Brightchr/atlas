@@ -1,6 +1,7 @@
 import type { DiaryEntry, Food, Macros, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import type { FoodSnapshot } from '@/lib/off/client';
+import { localIsoDate } from '@/lib/dates';
 
 export function scaleMacros(per100g: Macros, grams: number): Macros {
   const f = grams / 100;
@@ -195,7 +196,7 @@ export async function duplicateDiaryEntry(id: string): Promise<void> {
      SELECT ?, ?, meal, food_id, food_name, grams, kcal, protein_g, carbs_g, fat_g,
             sugar_g, fiber_g, sodium_g, ?
        FROM diary_entries WHERE id = ?`,
-    [newId(), new Date().toISOString().slice(0, 10), new Date().toISOString(), id],
+    [newId(), localIsoDate(), new Date().toISOString(), id],
   );
   await persist();
 }
