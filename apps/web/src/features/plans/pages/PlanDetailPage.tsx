@@ -66,7 +66,7 @@ export function PlanDetailPage() {
 
   if (plan.isError) {
     return (
-      <div className="mx-auto max-w-3xl p-6 text-center text-sm text-muted">
+      <div className="mx-auto max-w-5xl p-6 text-center text-sm text-muted">
         This plan isn't available — it may be private or deleted.{' '}
         <Link to="/train/schedule" className="text-accent hover:underline">
           Back to plans
@@ -91,7 +91,7 @@ export function PlanDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-6">
+    <div className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
       <header className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

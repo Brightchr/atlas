@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft } from 'lucide-react';
+
 import { Lightbox } from '@/components/Lightbox';
 import { useExercise } from '../api';
 
@@ -51,12 +51,7 @@ export function ExerciseDetailPage() {
   const exercise = query.data;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <BackButton>
-        <ArrowLeft size={15} aria-hidden />
-        Back
-      </BackButton>
-
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header>
         <h1 className="text-2xl font-bold">{exercise.name}</h1>
         {exercise.category && (

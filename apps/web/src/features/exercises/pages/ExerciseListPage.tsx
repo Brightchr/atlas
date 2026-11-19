@@ -64,7 +64,7 @@ export function ExerciseListPage() {
   const resultsQuery = useFilteredExercises(term, filters);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Exercises</h1>
