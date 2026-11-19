@@ -49,10 +49,7 @@ const DIET_SPLITS: Record<DietType, { carbsPct: number; proteinPerKg: number }> 
 
 export function computeTargets(profile: Profile, weightKg: number): DailyTargets {
   const bmr =
-    10 * weightKg +
-    6.25 * profile.heightCm -
-    5 * profile.age +
-    (profile.sex === 'male' ? 5 : -161);
+    10 * weightKg + 6.25 * profile.heightCm - 5 * profile.age + (profile.sex === 'male' ? 5 : -161);
   const tdee = bmr * profile.activity;
   // 1 kg body weight ≈ 7700 kcal; clamp so a cut never goes below BMR.
   const kcal = Math.round(Math.max(bmr, tdee + (profile.weeklyRateKg * 7700) / 7));

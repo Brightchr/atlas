@@ -49,7 +49,10 @@ export function useGoalProgress(catalog: Exercise[] | undefined) {
         getRecentLoggedSets(7),
       ]);
       const totals = diary.reduce(
-        (acc, e) => ({ kcal: acc.kcal + e.macros.kcal, proteinG: acc.proteinG + e.macros.proteinG }),
+        (acc, e) => ({
+          kcal: acc.kcal + e.macros.kcal,
+          proteinG: acc.proteinG + e.macros.proteinG,
+        }),
         { kcal: 0, proteinG: 0 },
       );
       const inputs = {

@@ -1,213 +1,71 @@
 import { useState } from 'react';
-import {
-  BicepsFlexed,
-  CalendarCheck,
-  Drumstick,
-  Flame,
-  Repeat,
-  Scale,
-  X,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import type { GoalType } from '@arcadia/shared';
+import { Plus } from 'lucide-react';
+import { Button, ConfirmSheet, PageHeader, SectionLabel } from '@/components/ui';
 import { useExerciseCatalog } from '@/features/exercises/api';
-import { displayWeight, parseWeight, useUnits, weightUnit } from '@/lib/units';
-import { useArchiveGoal, useCreateGoal, useGoalProgress, useLogWeight } from '../api';
+import { useArchiveGoal, useGoalProgress } from '../api';
+import { AddGoalSheet } from '../components/AddGoalSheet';
+import { GoalList } from '../components/GoalList';
 import { PlanCard } from '../components/PlanCard';
-
-/* Goal templates modeled on what leading fitness apps offer. */
-const templates: {
-  type: GoalType;
-  label: string;
-  hint: string;
-  Icon: LucideIcon;
-  unit: string;
-  defaultTarget: number;
-  needsMuscle?: boolean;
-}[] = [
-  { type: 'weight_target', label: 'Reach a target weight', hint: 'Track body weight toward a goal', Icon: Scale, unit: 'kg', defaultTarget: 75 },
-  { type: 'workout_frequency', label: 'Train weekly', hint: 'Hit a number of workouts each week', Icon: CalendarCheck, unit: 'days/week', defaultTarget: 3 },
-  { type: 'streak', label: 'Build a streak', hint: 'Train several days in a row', Icon: Repeat, unit: 'days', defaultTarget: 7 },
-  { type: 'muscle_focus', label: 'Grow a muscle', hint: 'Prioritize a muscle in suggestions', Icon: BicepsFlexed, unit: 'sets/week', defaultTarget: 10, needsMuscle: true },
-  { type: 'calorie_target', label: 'Daily calorie budget', hint: 'Stay at or under a kcal target', Icon: Flame, unit: 'kcal', defaultTarget: 2000 },
-  { type: 'protein_target', label: 'Daily protein', hint: 'Hit your protein every day', Icon: Drumstick, unit: 'g', defaultTarget: 120 },
-];
+import { WeightLogCard } from '../components/WeightLogCard';
 
 export function GoalsPage() {
   const catalog = useExerciseCatalog();
   const progress = useGoalProgress(catalog.data);
-  const createGoal = useCreateGoal();
   const archiveGoal = useArchiveGoal();
-  const logWeight = useLogWeight();
-  const units = useUnits();
 
-  const [openTemplate, setOpenTemplate] = useState<GoalType | null>(null);
-  const [target, setTarget] = useState('');
-  const [muscleId, setMuscleId] = useState('');
-  const [weight, setWeight] = useState('');
-
-  const muscles = (() => {
-    const map = new Map<number, string>();
-    for (const e of catalog.data ?? []) for (const m of e.primaryMuscles) map.set(m.id, m.commonName);
-    return [...map].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  })();
-
-  const handleCreate = (template: (typeof templates)[number]) => {
-    // Weight targets are typed in the preferred unit but stored in kg.
-    const isWeight = template.type === 'weight_target';
-    const fallback = isWeight ? displayWeight(template.defaultTarget, units) : template.defaultTarget;
-    const typed = Number(target) || fallback;
-    const numericTarget = isWeight ? parseWeight(typed, units) : typed;
-    const muscle = muscles.find((m) => m.id === Number(muscleId));
-    if (template.needsMuscle && !muscle) return;
-    createGoal.mutate({
-      type: template.type,
-      title: template.needsMuscle ? `Grow ${muscle!.name}` : template.label,
-      target: numericTarget,
-      muscleId: muscle?.id,
-      muscleName: muscle?.name,
-    });
-    setOpenTemplate(null);
-    setTarget('');
-    setMuscleId('');
-  };
+  const [adding, setAdding] = useState(false);
+  // The goal waiting on an "Archive?" answer (null = no sheet open).
+  const [archiving, setArchiving] = useState<{ id: string; title: string } | null>(null);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Goals</h1>
-        <p className="text-sm text-muted">
-          Set targets — exercise suggestions adapt to what you're chasing.
-        </p>
-      </header>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <PageHeader
+        title="Goals"
+        actions={
+          <Button variant="secondary" onClick={() => setAdding(true)}>
+            <Plus size={18} aria-hidden />
+            Add goal
+          </Button>
+        }
+      />
 
-      <PlanCard />
-
-      {progress.data?.length === 0 && (
-        <p className="text-muted">No goals yet — pick one below to get started.</p>
-      )}
-
-      <ul className="space-y-2">
-        {progress.data?.map(({ goal, fraction, label }) => (
-          <li key={goal.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold">{goal.title}</p>
-              <button
-                type="button"
-                onClick={() => archiveGoal.mutate(goal.id)}
-                aria-label={`Archive ${goal.title}`}
-                className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
-              >
-                <X size={15} aria-hidden />
-              </button>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-elev">
-              <div
-                className="h-full rounded-full bg-linear-to-r from-accent to-accent-2 transition-[width] duration-500"
-                style={{ width: `${Math.round(fraction * 100)}%` }}
-              />
-            </div>
-            <p className="mt-1.5 text-sm text-muted tabular-nums">{label}</p>
-          </li>
-        ))}
-      </ul>
-
-      {/* Always available — weight is the shared thread between training,
-          nutrition and the dashboard's weekly pulse, goal or no goal. */}
-      {(
-        <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
-          <Scale size={17} className="shrink-0 text-muted" aria-hidden />
-          <input
-            type="number"
-            step="0.1"
-            min="20"
-            max="400"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            placeholder={`Today's weight (${weightUnit(units)})`}
-            className="w-44 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
-          />
-          <button
-            type="button"
-            disabled={!Number(weight)}
-            onClick={() => {
-              logWeight.mutate(parseWeight(Number(weight), units));
-              setWeight('');
-            }}
-            className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            Log weight
-          </button>
+      {/* Phones stack in source order, so the things used most come first:
+          log weight, then goals, then the set-once targets calculator. From
+          `lg` up, tracking sits on the left and setup on the right. */}
+      <div className="grid items-start gap-4 lg:grid-cols-5">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          <WeightLogCard />
+          <section className="space-y-2">
+            <SectionLabel>Your goals</SectionLabel>
+            <GoalList
+              goals={progress.data}
+              onArchive={setArchiving}
+              onAdd={() => setAdding(true)}
+            />
+          </section>
         </div>
-      )}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-bold">Add a goal</h2>
-        {/* items-start keeps siblings at their natural height when one card
-            expands its inline editor — otherwise the whole row stretches. */}
-        <ul className="grid items-start gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {templates.map((template) => (
-            <li key={template.type}>
-              <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenTemplate(openTemplate === template.type ? null : template.type)
-                  }
-                  className="flex w-full items-center gap-3 text-left"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-                    <template.Icon size={17} strokeWidth={1.8} aria-hidden />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">{template.label}</span>
-                    <span className="block text-xs text-muted">{template.hint}</span>
-                  </span>
-                </button>
-                {openTemplate === template.type && (
-                  <div className="mt-3 space-y-2">
-                    {template.needsMuscle && (
-                      <select
-                        value={muscleId}
-                        onChange={(e) => setMuscleId(e.target.value)}
-                        className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
-                      >
-                        <option value="">Pick a muscle…</option>
-                        {muscles.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        value={target}
-                        onChange={(e) => setTarget(e.target.value)}
-                        placeholder={
-                          template.type === 'weight_target'
-                            ? `${displayWeight(template.defaultTarget, units)} ${weightUnit(units)}`
-                            : `${template.defaultTarget} ${template.unit}`
-                        }
-                        className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleCreate(template)}
-                        disabled={template.needsMuscle && !muscleId}
-                        className="shrink-0 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-                      >
-                        Set
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+        <section className="min-w-0 space-y-2 lg:col-span-3">
+          <SectionLabel>Daily targets</SectionLabel>
+          <PlanCard />
+        </section>
+      </div>
+
+      {adding && <AddGoalSheet onClose={() => setAdding(false)} />}
+
+      {archiving && (
+        <ConfirmSheet
+          title="Archive this goal?"
+          body={`"${archiving.title}" will stop being tracked and disappear from Home and this list.`}
+          confirmLabel="Archive goal"
+          pending={archiveGoal.isPending}
+          onConfirm={() => {
+            archiveGoal.mutate(archiving.id);
+            setArchiving(null);
+          }}
+          onClose={() => setArchiving(null)}
+        />
+      )}
     </div>
   );
 }

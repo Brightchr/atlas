@@ -1,19 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardCheck } from 'lucide-react';
-import type { ReactNode } from 'react';
-import {
-  displayHeight,
-  displayWeight,
-  formatWeight,
-  cmToFtIn,
-  ftInToCm,
-  heightUnit,
-  parseHeight,
-  parseWeight,
-  useUnits,
-  weightUnit,
-} from '@/lib/units';
+import { Check, SlidersHorizontal } from 'lucide-react';
+import { Button, Card } from '@/components/ui';
+import { displayWeight, parseWeight, useUnits } from '@/lib/units';
 import {
   getProfile,
   getSavedTargets,
@@ -22,7 +11,9 @@ import {
   saveTargets,
   upsertTargetGoal,
 } from '../repository';
-import { bmi, computeTargets, type DailyTargets, type DietType, type Profile, type Sex } from '../targets';
+import { bmi, computeTargets, type Profile } from '../targets';
+import { CustomTargetsSheet } from './CustomTargetsSheet';
+import { PlanProfileFields } from './PlanProfileFields';
 
 const DEFAULT_PROFILE: Profile = {
   sex: 'male',
@@ -33,28 +24,35 @@ const DEFAULT_PROFILE: Profile = {
   weeklyRateKg: -0.5,
 };
 
-const selectClasses =
-  'w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent';
-
-/** Labeled form field — keeps the profile grid scannable instead of a run of
- * anonymous inputs. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** One headline number of the result (calories and the three macros). */
+function TargetTile({ value, unit, label }: { value: number; unit: string; label: string }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
-      {children}
-    </label>
+    <div className="rounded-xl bg-elev px-3 py-2">
+      <p className="text-lg leading-tight font-bold tabular-nums">
+        {value}
+        <span className="ml-1 text-xs font-medium text-muted">{unit}</span>
+      </p>
+      <p className="text-xs text-muted">{label}</p>
+    </div>
   );
 }
 
 /** Profile → computed daily targets (Mifflin-St Jeor → TDEE → diet split).
  * Applying stores the targets for the Nutrition page and upserts the calorie
- * and protein goals so everything tracks against the same numbers. */
+ * and protein goals so everything tracks against the same numbers.
+ *
+ * Read top to bottom it is: inputs, the resulting targets, then save. */
 export function PlanCard() {
   const queryClient = useQueryClient();
   const units = useUnits();
   const profileQuery = useQuery({ queryKey: ['profile'], queryFn: getProfile });
-  const weightQuery = useQuery({ queryKey: ['weight'], queryFn: () => getWeightHistory(1) });
+  // Keyed under 'goals' so logging a weight on this page (which invalidates
+  // ['goals']) refreshes the weight the calculation falls back to.
+  const weightQuery = useQuery({
+    queryKey: ['goals', 'weight-history', 1],
+    queryFn: () => getWeightHistory(1),
+  });
+  const savedTargetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
 
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
   const [weight, setWeight] = useState('');
@@ -62,17 +60,13 @@ export function PlanCard() {
     if (profileQuery.data) setProfile(profileQuery.data);
   }, [profileQuery.data]);
 
-  // Custom overrides: some people run coach-given or personal numbers — the
-  // formula is a starting point, never a cage.
-  const savedTargetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
   const [customizing, setCustomizing] = useState(false);
-  const [custom, setCustom] = useState({ kcal: '', proteinG: '', carbsG: '', fatG: '' });
+  const [customSaved, setCustomSaved] = useState(false);
 
   // Typed weight is in the preferred unit; stored history is kg.
+  const lastLoggedKg = weightQuery.data?.[0]?.weightKg;
   const latestWeight =
-    (Number(weight) ? parseWeight(Number(weight), units) : 0) ||
-    weightQuery.data?.[0]?.weightKg ||
-    0;
+    (Number(weight) ? parseWeight(Number(weight), units) : 0) || lastLoggedKg || 0;
   const targets = latestWeight > 0 ? computeTargets(profile, latestWeight) : null;
 
   const apply = useMutation({
@@ -93,266 +87,98 @@ export function PlanCard() {
   const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
     setProfile((p) => ({ ...p, [key]: value }));
 
-  const openCustomizer = () => {
-    const base = savedTargetsQuery.data ?? targets;
-    setCustom({
-      kcal: base ? String(base.kcal) : '',
-      proteinG: base ? String(base.proteinG) : '',
-      carbsG: base ? String(base.carbsG) : '',
-      fatG: base ? String(base.fatG) : '',
-    });
-    setCustomizing(true);
-  };
-
-  const customValid =
-    Number(custom.kcal) > 0 &&
-    Number(custom.proteinG) >= 0 &&
-    Number(custom.carbsG) >= 0 &&
-    Number(custom.fatG) >= 0;
-
-  const applyCustom = useMutation({
-    mutationFn: async () => {
-      const kcal = Math.round(Number(custom.kcal));
-      const base = savedTargetsQuery.data ?? targets;
-      const next: DailyTargets = {
-        kcal,
-        proteinG: Math.round(Number(custom.proteinG)),
-        carbsG: Math.round(Number(custom.carbsG)),
-        fatG: Math.round(Number(custom.fatG)),
-        // Micro guidance stays formula-derived from the chosen calories.
-        sugarMaxG: Math.round((kcal * 0.1) / 4),
-        fiberG: Math.round((kcal / 1000) * 14),
-        sodiumMaxG: 2.3,
-        bmr: base?.bmr ?? 0,
-        tdee: base?.tdee ?? 0,
-      };
-      await saveTargets(next);
-      await upsertTargetGoal('calorie_target', 'Daily calorie budget', next.kcal);
-      await upsertTargetGoal('protein_target', 'Daily protein', next.proteinG);
-    },
-    onSuccess: () => {
-      setCustomizing(false);
-      void queryClient.invalidateQueries({ queryKey: ['goals'] });
-      void queryClient.invalidateQueries({ queryKey: ['targets'] });
-    },
-  });
-
   return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-      <div className="mb-3 flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <ClipboardCheck size={17} strokeWidth={1.8} aria-hidden />
-        </span>
-        <div>
-          <p className="text-sm font-semibold">Your plan</p>
-          <p className="text-xs text-muted">
-            We compute recommended daily targets from your profile (Mifflin-St Jeor → activity →
-            diet style) and track everything against them.
-          </p>
-        </div>
-      </div>
+    <Card className="space-y-4 p-4">
+      <p className="text-sm text-muted">
+        Recommended daily targets from your profile (Mifflin-St Jeor, then activity and diet style).
+        Everything you log is tracked against them.
+      </p>
 
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-        <Field label="Sex">
-          <select value={profile.sex} onChange={(e) => set('sex', e.target.value as Sex)} className={selectClasses}>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
-        </Field>
-        <Field label="Age (yrs)">
-          <input
-            type="number"
-            min="13"
-            max="100"
-            value={profile.age}
-            onChange={(e) => set('age', Number(e.target.value))}
-            className={selectClasses}
-          />
-        </Field>
-        {units === 'imperial' ? (
-          <Field label="Height (ft / in)">
-            <div className="flex gap-1.5">
-              <input
-                type="number"
-                min="3"
-                max="8"
-                aria-label="Height feet"
-                value={cmToFtIn(profile.heightCm).feet}
-                onChange={(e) =>
-                  set('heightCm', ftInToCm(Number(e.target.value), cmToFtIn(profile.heightCm).inches))
-                }
-                className={selectClasses}
-              />
-              <input
-                type="number"
-                min="0"
-                max="11"
-                aria-label="Height inches"
-                value={cmToFtIn(profile.heightCm).inches}
-                onChange={(e) =>
-                  set('heightCm', ftInToCm(cmToFtIn(profile.heightCm).feet, Number(e.target.value)))
-                }
-                className={selectClasses}
-              />
-            </div>
-          </Field>
-        ) : (
-          <Field label={`Height (${heightUnit(units)})`}>
-            <input
-              type="number"
-              value={displayHeight(profile.heightCm, units)}
-              onChange={(e) => set('heightCm', parseHeight(Number(e.target.value), units))}
-              className={selectClasses}
-            />
-          </Field>
-        )}
-        <Field label={`Weight (${weightUnit(units)})`}>
-          <input
-            type="number"
-            step="0.1"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            placeholder={
-              weightQuery.data?.[0]
-                ? `${displayWeight(weightQuery.data[0].weightKg, units)}`
-                : 'weight'
-            }
-            className={selectClasses}
-          />
-        </Field>
-        <Field label="Activity">
-          <select value={profile.activity} onChange={(e) => set('activity', Number(e.target.value))} className={selectClasses}>
-            <option value={1.2}>Sedentary</option>
-            <option value={1.375}>Lightly active</option>
-            <option value={1.55}>Moderately active</option>
-            <option value={1.725}>Very active</option>
-          </select>
-        </Field>
-        <Field label="Diet style">
-          <select value={profile.dietType} onChange={(e) => set('dietType', e.target.value as DietType)} className={selectClasses}>
-            <option value="balanced">Balanced</option>
-            <option value="low_carb">Low carb</option>
-            <option value="keto">Keto</option>
-            <option value="high_protein">High protein</option>
-          </select>
-        </Field>
-        <Field label="Weekly goal">
-          <select value={profile.weeklyRateKg} onChange={(e) => set('weeklyRateKg', Number(e.target.value))} className={selectClasses}>
-            <option value={-1}>Lose {formatWeight(1, units)}/week</option>
-            <option value={-0.5}>Lose {formatWeight(0.5, units)}/week</option>
-            <option value={0}>Maintain</option>
-            <option value={0.25}>Gain {formatWeight(0.25, units)}/week</option>
-            <option value={0.5}>Gain {formatWeight(0.5, units)}/week</option>
-          </select>
-        </Field>
-      </div>
+      <PlanProfileFields
+        profile={profile}
+        onChange={set}
+        weight={weight}
+        onWeightChange={setWeight}
+        weightPlaceholder={lastLoggedKg ? String(displayWeight(lastLoggedKg, units)) : 'weight'}
+        units={units}
+      />
 
       {targets ? (
-        <div className="mt-3 space-y-2">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-xl bg-elev p-3 text-sm sm:grid-cols-4">
-            <p><span className="font-semibold tabular-nums">{targets.kcal}</span> <span className="text-muted">kcal/day</span></p>
-            <p><span className="font-semibold tabular-nums">{targets.proteinG} g</span> <span className="text-muted">protein</span></p>
-            <p><span className="font-semibold tabular-nums">{targets.carbsG} g</span> <span className="text-muted">carbs</span></p>
-            <p><span className="font-semibold tabular-nums">{targets.fatG} g</span> <span className="text-muted">fat</span></p>
-            <p><span className="font-semibold tabular-nums">≤{targets.sugarMaxG} g</span> <span className="text-muted">sugar</span></p>
-            <p><span className="font-semibold tabular-nums">{targets.fiberG} g</span> <span className="text-muted">fiber</span></p>
-            <p><span className="font-semibold tabular-nums">≤2300 mg</span> <span className="text-muted">sodium</span></p>
-            <p><span className="font-semibold tabular-nums">{bmi(latestWeight, profile.heightCm)}</span> <span className="text-muted">BMI</span></p>
+        <div className="space-y-2 border-t border-line pt-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <TargetTile value={targets.kcal} unit="kcal" label="Calories / day" />
+            <TargetTile value={targets.proteinG} unit="g" label="Protein" />
+            <TargetTile value={targets.carbsG} unit="g" label="Carbs" />
+            <TargetTile value={targets.fatG} unit="g" label="Fat" />
           </div>
+          {/* Guidance rather than targets you chase, so it is a quiet line. */}
+          <dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {[
+              ['Sugar', `≤${targets.sugarMaxG} g`],
+              ['Fiber', `${targets.fiberG} g`],
+              ['Sodium', '≤2300 mg'],
+              ['BMI', String(bmi(latestWeight, profile.heightCm))],
+            ].map(([label, value]) => (
+              <div key={label} className="flex gap-1.5">
+                <dt className="text-muted">{label}</dt>
+                <dd className="font-semibold tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
           <p className="text-xs text-muted">
             BMR {targets.bmr} kcal · maintenance {targets.tdee} kcal. General guidance, not medical
             advice.
           </p>
-          <button
-            type="button"
-            disabled={apply.isPending}
-            onClick={() => apply.mutate()}
-            className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            Use as my daily targets
-          </button>
-          {apply.isSuccess && <span className="ml-2 text-sm text-accent">Applied ✓</span>}
         </div>
       ) : (
-        <p className="mt-3 text-sm text-muted">Enter your weight to see recommended targets.</p>
+        <p className="border-t border-line pt-4 text-sm text-muted">
+          Enter your weight to see recommended targets.
+        </p>
       )}
 
-      <div className="mt-3 border-t border-line pt-3">
-        {!customizing ? (
-          <button
-            type="button"
-            onClick={openCustomizer}
-            className="text-xs font-medium text-accent hover:underline"
+      <div className="flex flex-wrap items-center gap-2">
+        {targets && (
+          // "soft", not the gradient: Log weight is this screen's one primary.
+          <Button
+            variant="soft"
+            disabled={apply.isPending}
+            onClick={() => {
+              setCustomSaved(false);
+              apply.mutate();
+            }}
           >
-            Prefer your own numbers? Set custom targets
-          </button>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted">
-              Custom daily targets — yours beat the formula. Sugar and fiber guidance re-derive
-              from your calories.
-            </p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Field label="Calories (kcal)">
-                <input
-                  type="number"
-                  min="800"
-                  value={custom.kcal}
-                  onChange={(e) => setCustom((c) => ({ ...c, kcal: e.target.value }))}
-                  className={selectClasses}
-                />
-              </Field>
-              <Field label="Protein (g)">
-                <input
-                  type="number"
-                  min="0"
-                  value={custom.proteinG}
-                  onChange={(e) => setCustom((c) => ({ ...c, proteinG: e.target.value }))}
-                  className={selectClasses}
-                />
-              </Field>
-              <Field label="Carbs (g)">
-                <input
-                  type="number"
-                  min="0"
-                  value={custom.carbsG}
-                  onChange={(e) => setCustom((c) => ({ ...c, carbsG: e.target.value }))}
-                  className={selectClasses}
-                />
-              </Field>
-              <Field label="Fat (g)">
-                <input
-                  type="number"
-                  min="0"
-                  value={custom.fatG}
-                  onChange={(e) => setCustom((c) => ({ ...c, fatG: e.target.value }))}
-                  className={selectClasses}
-                />
-              </Field>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={!customValid || applyCustom.isPending}
-                onClick={() => applyCustom.mutate()}
-                className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                Save custom targets
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomizing(false)}
-                className="rounded-xl px-3 py-2 text-sm text-muted transition-colors hover:text-ink"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+            Use as my daily targets
+          </Button>
         )}
-        {applyCustom.isSuccess && !customizing && (
-          <p className="mt-1.5 text-xs text-accent">Custom targets saved ✓</p>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setCustomSaved(false);
+            setCustomizing(true);
+          }}
+        >
+          <SlidersHorizontal size={16} aria-hidden />
+          Set custom targets
+        </Button>
+        {/* Whichever save happened last; they overwrite each other's numbers. */}
+        {(customSaved || apply.isSuccess) && (
+          <span className="flex items-center gap-1 text-sm text-accent" role="status">
+            <Check size={16} aria-hidden />
+            {customSaved ? 'Custom targets saved' : 'Applied'}
+          </span>
         )}
       </div>
-    </section>
+
+      {customizing && (
+        <CustomTargetsSheet
+          base={savedTargetsQuery.data ?? targets}
+          onClose={() => setCustomizing(false)}
+          onSaved={() => {
+            setCustomizing(false);
+            setCustomSaved(true);
+          }}
+        />
+      )}
+    </Card>
   );
 }

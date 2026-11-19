@@ -102,10 +102,13 @@ export async function upsertTargetGoal(
   if (existing[0]) {
     await db.run('UPDATE goals SET target = ? WHERE id = ?', [target, existing[0].id]);
   } else {
-    await db.run(
-      'INSERT INTO goals (id, type, title, target, created_at) VALUES (?, ?, ?, ?, ?)',
-      [newId(), type, title, target, new Date().toISOString()],
-    );
+    await db.run('INSERT INTO goals (id, type, title, target, created_at) VALUES (?, ?, ?, ?, ?)', [
+      newId(),
+      type,
+      title,
+      target,
+      new Date().toISOString(),
+    ]);
   }
   await persist();
 }
@@ -165,10 +168,9 @@ export async function getRecentLoggedSets(
   const db = await getDb();
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
   const rows = (
-    await db.query(
-      'SELECT exercise_id, completed_at FROM logged_sets WHERE completed_at >= ?',
-      [since],
-    )
+    await db.query('SELECT exercise_id, completed_at FROM logged_sets WHERE completed_at >= ?', [
+      since,
+    ])
   ).values as { exercise_id: number; completed_at: string }[];
   return rows.map((r) => ({ exerciseId: r.exercise_id, completedAt: r.completed_at }));
 }
