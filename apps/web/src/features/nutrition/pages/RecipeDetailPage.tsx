@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Beef,
-  ChevronLeft,
   Droplet,
   Flame,
   Pencil,
@@ -14,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
+import { Button, IconButton, PageHeader } from '@/components/ui';
 import { FoodPicker } from '../components/FoodPicker';
 import { RecipeHero } from '../components/RecipeArt';
 import { ShareRecipeControl } from '../components/ShareRecipeControl';
@@ -94,64 +94,43 @@ export function RecipeDetailPage() {
   if (!recipe) {
     return (
       <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
-        <p className="text-sm text-muted">Recipe not found — it may have been deleted.</p>
-        <Link to="/eat/recipes" className="text-sm font-medium text-accent hover:underline">
-          ← Back to recipes
-        </Link>
+        <PageHeader title="Recipe not found" back="/eat/recipes" />
+        <p className="text-sm text-muted">It may have been deleted.</p>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <div className="flex items-center gap-2">
-        <Link
-          to="/eat/recipes"
-          className="flex items-center gap-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          Recipes
-        </Link>
-      </div>
+      {/* The header title is short on purpose: PageHeader truncates, and the
+          full recipe name gets room to wrap under the picture below. */}
+      <PageHeader title="Recipe" back="/eat/recipes" />
 
       <RecipeHero name={recipe.name} />
 
-      <header className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{recipe.name}</h1>
+          <h2 className="text-2xl font-bold">{recipe.name}</h2>
           <p className="text-sm text-muted">
             Makes {recipe.servings} serving{recipe.servings === 1 ? '' : 's'} ·{' '}
             {recipe.ingredients.length} ingredient{recipe.ingredients.length === 1 ? '' : 's'}
           </p>
         </div>
         {confirmingDelete ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs">
-            <button
-              type="button"
-              onClick={() => deleteMutation.mutate(recipe.id)}
-              className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 font-semibold text-rose-600"
-            >
+          <span className="flex shrink-0 items-center gap-1.5">
+            <Button variant="danger" onClick={() => deleteMutation.mutate(recipe.id)}>
               Delete
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(false)}
-              className="rounded-lg px-2 py-1.5 text-muted hover:text-ink"
-            >
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirmingDelete(false)}>
               Cancel
-            </button>
+            </Button>
           </span>
         ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-            aria-label={`Delete ${recipe.name}`}
-            className="shrink-0 rounded-lg p-2 text-muted transition-colors hover:bg-elev hover:text-ink"
-          >
-            <Trash2 size={16} aria-hidden />
-          </button>
+          <IconButton label={`Delete ${recipe.name}`} onClick={() => setConfirmingDelete(true)}>
+            <Trash2 size={18} aria-hidden />
+          </IconButton>
         )}
-      </header>
+      </div>
 
       <ShareRecipeControl recipe={recipe} />
 
@@ -263,7 +242,7 @@ export function RecipeDetailPage() {
                 type="button"
                 onClick={() => removeMutation.mutate(ingredient.id)}
                 aria-label={`Remove ${ingredient.foodName}`}
-                className="shrink-0 rounded p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+                className="rounded-lg flex h-11 w-11 shrink-0 items-center justify-center text-muted transition-colors hover:bg-elev hover:text-ink"
               >
                 <X size={14} aria-hidden />
               </button>

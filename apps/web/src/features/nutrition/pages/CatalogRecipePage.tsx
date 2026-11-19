@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Beef, BookmarkPlus, ChevronLeft, Droplet, Flame, UtensilsCrossed, Wheat } from 'lucide-react';
+import { Beef, BookmarkPlus, Droplet, Flame, UtensilsCrossed, Wheat } from 'lucide-react';
+import { Button, PageHeader } from '@/components/ui';
 import { catalogPerServing, catalogRecipe } from '../recipeCatalog';
 import { descriptionBlurb, parseRecipeTags } from '../recipeTags';
 import { importRecipeFromCatalog, instructionSteps, listRecipes } from '../recipes';
@@ -41,14 +42,8 @@ export function CatalogRecipePage() {
   if (!entry) {
     return (
       <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
+        <PageHeader title="Recipe not found" back="/eat/recipes" />
         <p className="text-sm text-muted">This recipe isn't in the catalog.</p>
-        <button
-          type="button"
-          onClick={() => void navigate(-1)}
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          ← Back
-        </button>
       </div>
     );
   }
@@ -58,40 +53,29 @@ export function CatalogRecipePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => void navigate(-1)}
-          className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          Back
-        </button>
-        {localCopy ? (
-          <button
-            type="button"
-            onClick={() => void navigate(`/eat/recipes/${localCopy.id}`)}
-            className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
-          >
-            Open in my recipes →
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={save.isPending}
-            onClick={() => save.mutate()}
-            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-3.5 py-1.5 text-xs font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
-          >
-            <BookmarkPlus size={13} aria-hidden />
-            {save.isPending ? 'Saving…' : 'Save to my recipes'}
-          </button>
-        )}
-      </div>
+      {/* Short header title: PageHeader truncates, and the full recipe name
+          wraps freely under the picture below. */}
+      <PageHeader
+        title="Recipe"
+        back="/eat/recipes"
+        actions={
+          localCopy ? (
+            <Button variant="secondary" onClick={() => void navigate(`/eat/recipes/${localCopy.id}`)}>
+              Open in my recipes
+            </Button>
+          ) : (
+            <Button disabled={save.isPending} onClick={() => save.mutate()}>
+              <BookmarkPlus size={16} aria-hidden />
+              {save.isPending ? 'Saving…' : 'Save to my recipes'}
+            </Button>
+          )
+        }
+      />
 
       <RecipeHero name={entry.name} />
 
       <header>
-        <h1 className="text-2xl font-bold">{entry.name}</h1>
+        <h2 className="text-2xl font-bold">{entry.name}</h2>
         <p className="text-sm text-muted">
           Makes {entry.servings} serving{entry.servings === 1 ? '' : 's'} ·{' '}
           {entry.ingredients.length} ingredient{entry.ingredients.length === 1 ? '' : 's'}

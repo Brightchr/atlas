@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, BookmarkPlus, CalendarPlus, Trash2 } from 'lucide-react';
+import { BookmarkPlus, CalendarPlus, Trash2 } from 'lucide-react';
+import { PageHeader } from '@/components/ui';
 import type { MealType, SharedRecipeDetail } from '@arcadia/shared';
 import { formatDate } from '@/lib/dates';
 import { ReportButton } from '@/features/reports/components/ReportButton';
@@ -98,11 +99,9 @@ export function CommunityRecipePage() {
 
   if (detailQuery.isError) {
     return (
-      <div className="mx-auto max-w-2xl p-6 text-center text-sm text-muted">
-        This recipe is gone — it may have been unshared.{' '}
-        <Link to="/eat/recipes" className="text-accent hover:underline">
-          Back to recipes
-        </Link>
+      <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
+        <PageHeader title="Recipe not found" back="/eat/recipes" />
+        <p className="text-sm text-muted">This recipe is gone — it may have been unshared.</p>
       </div>
     );
   }
@@ -114,19 +113,15 @@ export function CommunityRecipePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/eat/recipes"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        All recipes
-      </Link>
+      {/* Short header title: PageHeader truncates; the full name is in the
+          card below where it can wrap. */}
+      <PageHeader title="Community recipe" back="/eat/recipes" />
 
       <header className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <RecipeThumb name={detail.name} className="h-11 w-11 rounded-2xl text-2xl" />
           <div className="min-w-0 grow">
-            <h1 className="text-xl font-bold">{detail.name}</h1>
+            <h2 className="text-xl font-bold">{detail.name}</h2>
             <p className="text-sm text-muted">
               by{' '}
               {detail.author ? (

@@ -106,7 +106,7 @@ export function ShareRecipeControl({ recipe }: { recipe: RecipeDetails }) {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Cancel sharing"
-            className="rounded-xl p-2 text-muted hover:bg-elev hover:text-ink"
+            className="rounded-xl flex h-11 w-11 shrink-0 items-center justify-center text-muted hover:bg-elev hover:text-ink"
           >
             <X size={15} aria-hidden />
           </button>
