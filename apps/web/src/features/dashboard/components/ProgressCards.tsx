@@ -74,7 +74,12 @@ export function VolumeCard() {
   }));
 
   return (
-    <CardFrame title={`Weekly volume (${unitLabel})`} Icon={TrendingUp} to="/you" toLabel="All charts →">
+    <CardFrame
+      title={`Weekly volume (${unitLabel})`}
+      Icon={TrendingUp}
+      to="/progress"
+      toLabel="All charts →"
+    >
       {data.every((w) => w.volume === 0) ? (
         <p className="py-10 text-center text-sm text-muted">
           Finish a workout and your volume chart starts here.
@@ -85,7 +90,13 @@ export function VolumeCard() {
             <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
               <CartesianGrid stroke={chartStyle.grid} strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" stroke={chartStyle.axis} fontSize={11} tickLine={false} />
-              <YAxis stroke={chartStyle.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={compactNumber} />
+              <YAxis
+                stroke={chartStyle.axis}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={compactNumber}
+              />
               <Tooltip
                 formatter={(value: unknown) => [
                   `${Number(value).toLocaleString()} ${unitLabel}`,
@@ -113,7 +124,12 @@ export function WeightCard() {
   }));
 
   return (
-    <CardFrame title={`Body weight (${unitLabel})`} Icon={Scale} to="/you/goals" toLabel="Log weight →">
+    <CardFrame
+      title={`Body weight (${unitLabel})`}
+      Icon={Scale}
+      to="/progress/goals"
+      toLabel="Log weight →"
+    >
       {data.length < 2 ? (
         <p className="py-10 text-center text-sm text-muted">
           Weigh in a few mornings a week to see your trend line here.
@@ -156,7 +172,7 @@ export function GoalsCard() {
   const goals = (progress.data ?? []).slice(0, 4);
 
   return (
-    <CardFrame title="Goals" Icon={Target} to="/you/goals" toLabel="Manage →">
+    <CardFrame title="Goals" Icon={Target} to="/progress/goals" toLabel="Manage →">
       {goals.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted">
           No goals yet — set one and your progress shows up here.

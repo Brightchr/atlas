@@ -1,49 +1,16 @@
-import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import {
-  CalendarDays,
-  Check,
-  ChevronRight,
-  Dumbbell,
-  LayoutGrid,
-  RotateCcw,
-  Search,
-  ShoppingCart,
-  Target,
-  UtensilsCrossed,
-} from 'lucide-react';
-import { fetchAllExercises } from '@/lib/exercise-db/client';
-import { buildSuggestions } from '@/features/exercises/suggestions';
-import {
-  getRecentLoggedSets,
-  getSavedTargets,
-  getSessionDates,
-  listGoals,
-} from '@/features/goals/repository';
-import { listMealPlanItems } from '@/features/nutrition/mealPlan';
-import { getDiaryForDate } from '@/features/nutrition/repository';
-import { listShoppingItems } from '@/features/shopping/repository';
-import { DEFAULT_TRAINING_PROFILE, useTrainingProfile } from '@/features/training/profile';
-import { adherenceStats } from '@/features/training/stats';
-import { StatTile } from '@/components/StatTile';
-import { RingTile } from '@/components/Ring';
+import { CalendarCheck, Flame, Scale, Trophy, type LucideIcon } from 'lucide-react';
 import { WeekStrip } from '@/components/WeekStrip';
-import { WorkoutHero } from '@/features/training/WorkoutHero';
-import { ArrangeableList, type ArrangeableItem } from '../components/ArrangeableList';
-import { PromoBanner } from '../components/PromoBanner';
+import { adherenceStats, recentPersonalRecords, weightTrend } from '@/features/training/stats';
+import { FriendsCard } from '@/features/social/components/FriendsCard';
+import { TodayWorkout } from '@/features/training/TodayWorkout';
+import { formatWeight, useUnits } from '@/lib/units';
 import { GoalsCard, VolumeCard, WeightCard } from '../components/ProgressCards';
+import { PromoBanner } from '../components/PromoBanner';
+import { PlannedNudges, SuggestedExercises } from '../components/TodayExtras';
+import { TodayFoodCard } from '../components/TodayFoodCard';
 import { WeeklyPulse } from '../components/WeeklyPulse';
-import {
-  isDefaultOrder,
-  loadCardOrder,
-  resetCardOrder,
-  saveCardOrder,
-  type DashboardCardId,
-} from '../layout';
-import { localDayOfWeek, localIsoDate } from '@/lib/dates';
-
-const todayIso = (): string => localIsoDate();
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -52,324 +19,142 @@ function greeting(): string {
   return 'Good evening';
 }
 
-const quickActions = [
-  { to: '/train', label: 'Start a workout', Icon: Dumbbell },
-  { to: '/history/log', label: 'Log a past workout', Icon: CalendarDays },
-  { to: '/exercises', label: 'Browse exercises', Icon: Search },
-  { to: '/eat', label: 'Log a meal', Icon: UtensilsCrossed },
-  { to: '/you/goals', label: 'Set a goal', Icon: Target },
-];
-
-export function DashboardPage() {
-  const date = todayIso();
-
-  const diaryQuery = useQuery({ queryKey: ['diary', date], queryFn: () => getDiaryForDate(date) });
-  const suggestedQuery = useQuery({
-    queryKey: ['suggestions'],
-    queryFn: async () => {
-      const [catalog, recentSets, goals, sessionDates] = await Promise.all([
-        fetchAllExercises(),
-        getRecentLoggedSets(21).catch(() => []),
-        listGoals().catch(() => []),
-        getSessionDates(2).catch((): string[] => []),
-      ]);
-      const trainedToday = sessionDates.includes(localIsoDate());
-      return buildSuggestions({ catalog, recentSets, goals, trainedToday });
-    },
-  });
-
-  const totals = (diaryQuery.data ?? []).reduce(
-    (acc, e) => ({ kcal: acc.kcal + e.macros.kcal, proteinG: acc.proteinG + e.macros.proteinG }),
-    { kcal: 0, proteinG: 0 },
+/** One number with a label: small enough that four sit in a row on a phone
+ * (two rows of two), and each is a door to the screen that explains it. */
+function Stat({
+  to,
+  Icon,
+  value,
+  label,
+  short,
+}: {
+  to: string;
+  Icon: LucideIcon;
+  value: string;
+  label: string;
+  /** A shorter label for phone width, where the full one would be cut off. */
+  short: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition-colors hover:bg-elev"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+        <Icon size={17} strokeWidth={1.9} aria-hidden />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-lg leading-tight font-bold tabular-nums">{value}</span>
+        <span className="block truncate text-xs text-muted">
+          <span className="sm:hidden">{short}</span>
+          <span className="hidden sm:inline">{label}</span>
+        </span>
+      </span>
+    </Link>
   );
+}
 
-  // The connective tissue: targets, weekly training vs the user's own goal,
-  // today's planned meals, and what's waiting on the shopping list.
-  const targetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
-  const profile = useTrainingProfile();
-  const weekSessions = useQuery({
-    queryKey: ['sessions', 'week'],
-    queryFn: () => getSessionDates(7),
-  });
-  const mealPlanQuery = useQuery({ queryKey: ['meal-plan'], queryFn: listMealPlanItems });
-  const shoppingQuery = useQuery({ queryKey: ['shopping'], queryFn: listShoppingItems });
+/** Today: what to do now, and how it is going.
+ *
+ * Top to bottom on a phone: a row of headline numbers, the workout your plan
+ * says to do, today's food, then the tracking cards (week, weight, volume,
+ * goals). On a wide screen the same cards sit in two columns — action on the
+ * left, tracking on the right — so nothing is stretched into a giant bar.
+ * Every card is a summary with a link to the tab that owns the detail; each
+ * fetches its own data, so this file is only layout. */
+export function DashboardPage() {
+  const units = useUnits();
+  // Same query keys the Plan and Progress tabs use, so results come from cache.
   const adherence = useQuery({
     queryKey: ['stats', 'adherence'],
     queryFn: () => adherenceStats(4),
   });
+  const weights = useQuery({ queryKey: ['stats', 'weight'], queryFn: () => weightTrend(90) });
+  const records = useQuery({
+    queryKey: ['stats', 'records', 30],
+    queryFn: () => recentPersonalRecords(30, 50),
+  });
+
+  // The last row is the current week.
   const thisWeek = adherence.data?.weeks[adherence.data.weeks.length - 1];
   const weekDone = thisWeek?.days.filter((d) => d.status === 'done').length ?? 0;
   const weekMissed = thisWeek?.days.filter((d) => d.status === 'missed').length ?? 0;
-
-  const targets = targetsQuery.data ?? null;
-  const trainedDays = weekSessions.data?.length ?? 0;
-  const daysTarget = (profile.data ?? DEFAULT_TRAINING_PROFILE).daysPerWeek;
-  const todayDow = localDayOfWeek();
-  const plannedMealsToday = (mealPlanQuery.data ?? []).filter((m) => m.dayOfWeek === todayDow);
-  const toBuy = (shoppingQuery.data ?? []).filter((i) => i.status === 'needed').length;
-
-  // The user's layout: card order persists per device; arrange mode overlays
-  // drag + move controls. The workout hero above stays pinned — it's the
-  // point of the app; a live promo strip slots in under it.
-  const [order, setOrder] = useState<DashboardCardId[]>(loadCardOrder);
-  const [arranging, setArranging] = useState(false);
-  const move = (from: number, to: number) => {
-    setOrder((current) => {
-      const next = [...current];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved!);
-      saveCardOrder(next);
-      return next;
-    });
-  };
-
-  const cardNodes: Record<DashboardCardId, { label: string; node: React.ReactNode | null }> = {
-    week: {
-      label: 'This week',
-      node: thisWeek ? (
-        <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} />
-      ) : null,
-    },
-    pulse: { label: 'Weekly pulse', node: <WeeklyPulse /> },
-    glance: {
-      label: 'At a glance',
-      node: (
-        <section aria-label="Today at a glance" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <RingTile
-            progress={targets ? totals.kcal / targets.kcal : 0}
-            centerLabel={targets ? `${Math.round((totals.kcal / targets.kcal) * 100)}%` : '—'}
-            title={`${Math.round(totals.kcal).toLocaleString()} kcal`}
-            subtitle={targets ? `of ${targets.kcal.toLocaleString()}` : 'set targets in Goals'}
-            color="#fb923c"
-            alertOnOver
-            to="/eat"
-          />
-          <RingTile
-            progress={targets ? totals.proteinG / targets.proteinG : 0}
-            centerLabel={
-              targets ? `${Math.round((totals.proteinG / targets.proteinG) * 100)}%` : '—'
-            }
-            title={`${Math.round(totals.proteinG)} g protein`}
-            subtitle={targets ? `of ${targets.proteinG} g` : 'set targets in Goals'}
-            color="#fb7185"
-            to="/eat"
-          />
-          <RingTile
-            progress={daysTarget ? trainedDays / daysTarget : 0}
-            centerLabel={daysTarget ? `${trainedDays}/${daysTarget}` : `${trainedDays}`}
-            title="Workouts"
-            subtitle="this week"
-            to="/you"
-          />
-          <StatTile
-            label="Meals today"
-            value={`${(['breakfast', 'lunch', 'dinner'] as const).filter((m) => (diaryQuery.data ?? []).some((e) => e.meal === m)).length}/3`}
-            hint={`${(diaryQuery.data ?? []).filter((e) => e.meal === 'snack').length} snacks`}
-            Icon={UtensilsCrossed}
-            tint="emerald"
-            to="/eat"
-          />
-        </section>
-      ),
-    },
-    progress: {
-      label: 'Progress',
-      node: (
-        <section className="grid items-stretch gap-3 lg:grid-cols-3">
-          <VolumeCard />
-          <WeightCard />
-          <GoalsCard />
-        </section>
-      ),
-    },
-    logfood: {
-      label: 'Log food',
-      node: (
-        <Link
-          to="/eat"
-          className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-        >
-          <Search size={16} className="text-muted" aria-hidden />
-          <span className="grow text-sm text-muted">Log food — search or log again…</span>
-          <ChevronRight size={16} className="text-muted" aria-hidden />
-        </Link>
-      ),
-    },
-    planned: {
-      label: 'Planned & shopping',
-      node:
-        plannedMealsToday.length > 0 || toBuy > 0 ? (
-          <section className="grid gap-3 sm:grid-cols-2">
-            {plannedMealsToday.length > 0 && (
-              <Link
-                to="/eat/meal-plan"
-                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
-                    <UtensilsCrossed size={17} strokeWidth={1.8} aria-hidden />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      {plannedMealsToday.length} meal{plannedMealsToday.length > 1 ? 's' : ''}{' '}
-                      planned today
-                    </span>
-                    <span className="block text-xs text-muted">
-                      Open the meal plan to log them in one tap
-                    </span>
-                  </span>
-                </span>
-                <ChevronRight size={16} className="text-muted" aria-hidden />
-              </Link>
-            )}
-            {toBuy > 0 && (
-              <Link
-                to="/eat/shopping"
-                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-500/15 text-sky-500">
-                    <ShoppingCart size={17} strokeWidth={1.8} aria-hidden />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      {toBuy} item{toBuy > 1 ? 's' : ''} on your shopping list
-                    </span>
-                    <span className="block text-xs text-muted">Groceries waiting to be bought</span>
-                  </span>
-                </span>
-                <ChevronRight size={16} className="text-muted" aria-hidden />
-              </Link>
-            )}
-          </section>
-        ) : null,
-    },
-    suggested: {
-      label: 'Suggested',
-      node: (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold">Suggested for you</h2>
-            <Link to="/you/goals" className="text-sm font-medium text-accent hover:underline">
-              Tune via goals
-            </Link>
-          </div>
-          {suggestedQuery.isError && (
-            <p className="text-sm text-rose-500">Could not reach the exercise database.</p>
-          )}
-          <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
-            {(suggestedQuery.data ?? []).map(({ exercise, reason }) => (
-              <li key={exercise.id} className="w-44 shrink-0 snap-start md:w-auto">
-                <Link
-                  to={`/exercises/${exercise.id}`}
-                  className="block h-full rounded-2xl border border-line bg-surface p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                >
-                  <div className="flex h-28 items-center justify-center overflow-hidden rounded-xl bg-elev">
-                    {exercise.imageUrls[0] ? (
-                      <img
-                        src={exercise.imageUrls[0]}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <Dumbbell size={28} className="text-muted" strokeWidth={1.5} aria-hidden />
-                    )}
-                  </div>
-                  <p className="mt-2 truncate text-sm font-semibold">{exercise.name}</p>
-                  <p className="truncate text-xs font-medium text-accent">{reason}</p>
-                </Link>
-              </li>
-            ))}
-            {suggestedQuery.isLoading &&
-              Array.from({ length: 4 }, (_, i) => (
-                <li
-                  key={i}
-                  className="h-44 w-44 shrink-0 animate-pulse rounded-2xl bg-elev md:w-auto"
-                />
-              ))}
-          </ul>
-        </section>
-      ),
-    },
-    actions: {
-      label: 'Quick actions',
-      node: (
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold">Quick actions</h2>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {quickActions.map(({ to, label, Icon }) => (
-              <li key={label}>
-                <Link
-                  to={to}
-                  className="flex items-center justify-between rounded-2xl border border-line bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-                      <Icon size={17} strokeWidth={1.8} aria-hidden />
-                    </span>
-                    <span className="text-sm font-medium">{label}</span>
-                  </span>
-                  <ChevronRight size={16} className="text-muted" aria-hidden />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ),
-    },
-  };
-
-  const items: ArrangeableItem[] = order.map((id) => ({ id, ...cardNodes[id] }));
+  // Everything the plan put on this week, whatever became of it.
+  const weekPlanned = thisWeek?.days.filter((d) => d.status !== 'off').length ?? 0;
+  const latestWeight = weights.data?.[weights.data.length - 1];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">{greeting()}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {new Date().toLocaleDateString(undefined, {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {arranging && !isDefaultOrder(order) && (
-            <button
-              type="button"
-              onClick={() => {
-                resetCardOrder();
-                setOrder(loadCardOrder());
-              }}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-medium text-muted transition-colors hover:bg-elev hover:text-ink"
-            >
-              <RotateCcw size={14} aria-hidden />
-              Reset
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setArranging((v) => !v)}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
-              arranging
-                ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                : 'border border-line text-muted hover:bg-elev hover:text-ink'
-            }`}
-          >
-            {arranging ? <Check size={14} aria-hidden /> : <LayoutGrid size={14} aria-hidden />}
-            {arranging ? 'Done' : 'Arrange'}
-          </button>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h1 className="text-2xl font-bold">{greeting()}</h1>
+        <p className="text-sm text-muted">
+          {new Date().toLocaleDateString(undefined, {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          })}
+        </p>
       </header>
 
-      {/* Pinned: the workout you're in / today's / a blank one — one tap. */}
-      <WorkoutHero />
-      {/* Only when a promotion is live, and dismissible. */}
-      <PromoBanner />
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <Stat
+          to="/train"
+          Icon={CalendarCheck}
+          value={weekPlanned > 0 ? `${weekDone} / ${weekPlanned}` : String(weekDone)}
+          label="Workouts this week"
+          short="This week"
+        />
+        <Stat
+          to="/train/schedule"
+          Icon={Flame}
+          value={String(adherence.data?.streak ?? 0)}
+          label="Session streak"
+          short="Streak"
+        />
+        <Stat
+          to="/progress"
+          Icon={Trophy}
+          value={String(records.data?.length ?? 0)}
+          label="Records, last 30 days"
+          short="Records (30d)"
+        />
+        <Stat
+          to="/progress/goals"
+          Icon={Scale}
+          value={latestWeight ? formatWeight(latestWeight.weightKg, units) : '—'}
+          label="Body weight"
+          short="Weight"
+        />
+      </div>
 
-      <ArrangeableList items={items} arranging={arranging} onMove={move} />
+      <div className="grid items-start gap-4 lg:grid-cols-5">
+        {/* Action: what to do today. */}
+        <div className="min-w-0 space-y-4 lg:col-span-3">
+          <TodayWorkout />
+          <TodayFoodCard />
+          {/* Planned meals / shopping list, only when there is something. */}
+          <PlannedNudges />
+          <VolumeCard />
+        </div>
+
+        {/* Tracking: how the week and the longer run are going. */}
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          {thisWeek && <WeekStrip days={thisWeek.days} done={weekDone} missed={weekMissed} />}
+          {/* The week in words, with a quick weigh-in. */}
+          <WeeklyPulse />
+          <WeightCard />
+          {/* Renders nothing when there are no goals. */}
+          <GoalsCard />
+          {/* Who is online and what they last trained. */}
+          <FriendsCard />
+        </div>
+      </div>
+
+      <SuggestedExercises />
+
+      {/* Only renders while a promotion is live, and is dismissible. Last on
+          the page so it never pushes today's content down. */}
+      <PromoBanner />
     </div>
   );
 }

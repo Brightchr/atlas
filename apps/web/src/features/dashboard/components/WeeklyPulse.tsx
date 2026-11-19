@@ -12,6 +12,7 @@ import {
 } from '@/features/goals/repository';
 import { DEFAULT_TRAINING_PROFILE, useTrainingProfile } from '@/features/training/profile';
 import { displayWeight, formatWeight, parseWeight, useUnits, weightUnit } from '@/lib/units';
+import { buttonClasses } from '@/components/ui';
 import { weeklyPulse, type PulseMessage } from '../pulse';
 
 const TONE_META: Record<PulseMessage['tone'], { Icon: typeof Sparkles; tint: string }> = {
@@ -36,7 +37,8 @@ export function WeeklyPulse() {
     queryFn: () => getSessionDates(7),
   });
   const weightHistory = useQuery({
-    queryKey: ['weight', 'recent'],
+    // Under ['goals'] so logging a weight anywhere refreshes it.
+    queryKey: ['goals', 'weight-history', 30],
     queryFn: () => getWeightHistory(30),
   });
   const planProfile = useQuery({ queryKey: ['profile'], queryFn: getProfile });
@@ -69,7 +71,7 @@ export function WeeklyPulse() {
           <Sparkles size={16} className="text-accent" aria-hidden />
           <h2 className="text-sm font-semibold">Your week</h2>
         </div>
-        <Link to="/you" className="text-xs font-medium text-accent hover:underline">
+        <Link to="/progress" className="text-xs font-medium text-accent hover:underline">
           See trends →
         </Link>
       </div>
@@ -90,33 +92,31 @@ export function WeeklyPulse() {
         })}
       </ul>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+      <div className="mt-3 flex items-center gap-2 border-t border-line pt-3">
         <Scale size={15} className="shrink-0 text-muted" aria-hidden />
         <input
-          type="number"
-          step="0.1"
-          min="20"
-          max="900"
+          type="text"
+          inputMode="decimal"
           value={weight}
-          onChange={(e) => setWeight(e.target.value)}
+          onChange={(e) => setWeight(e.target.value.replace(/[^0-9.]/g, ''))}
           placeholder={
             latest
               ? `Today's weight — last ${displayWeight(latest.weightKg, units)} ${weightUnit(units)}`
               : `Today's weight (${weightUnit(units)})`
           }
           aria-label={`Today's weight in ${weightUnit(units)}`}
-          className="w-64 max-w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+          className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 text-sm outline-none placeholder:text-muted/70 focus:border-accent md:min-h-9"
         />
         <button
           type="button"
           disabled={!Number(weight) || logWeight.isPending}
           onClick={() => logWeight.mutate(parseWeight(Number(weight), units))}
-          className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+          className={buttonClasses('soft', 'md')}
         >
           Log weight
         </button>
         {logWeight.isSuccess && !logWeight.isPending && (
-          <span className="text-xs text-accent">Logged ✓</span>
+          <span className="text-xs font-medium text-accent">Logged</span>
         )}
       </div>
     </section>

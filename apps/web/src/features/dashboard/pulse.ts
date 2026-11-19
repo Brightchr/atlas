@@ -117,7 +117,10 @@ export function weeklyPulse(input: PulseInput): PulseMessage[] {
       }
     } else if (rate > 0) {
       if (delta >= 0.2) {
-        messages.push({ tone: 'celebrate', text: `Up ${magnitude} this week — lean gain on track.` });
+        messages.push({
+          tone: 'celebrate',
+          text: `Up ${magnitude} this week — lean gain on track.`,
+        });
       } else if (flat) {
         messages.push({
           tone: 'steady',
