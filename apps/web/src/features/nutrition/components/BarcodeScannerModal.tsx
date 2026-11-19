@@ -98,7 +98,7 @@ export function BarcodeScannerModal({
             type="button"
             aria-label="Close scanner"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+            className="rounded-lg flex h-11 w-11 shrink-0 items-center justify-center text-muted transition-colors hover:bg-elev hover:text-ink"
           >
             <X size={16} aria-hidden />
           </button>
@@ -132,13 +132,13 @@ export function BarcodeScannerModal({
             inputMode="numeric"
             placeholder="Or type the number under the barcode"
             aria-label="Barcode number"
-            className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className="min-h-11 w-full min-w-0 rounded-xl border border-line bg-surface px-3 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
           />
           <button
             type="button"
             disabled={manual.replace(/\D/g, '').length < 8}
             onClick={submitManual}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-sm font-semibold transition-colors hover:bg-elev disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-sm font-semibold transition-colors hover:bg-elev disabled:opacity-50"
           >
             <Keyboard size={14} aria-hidden />
             Look up

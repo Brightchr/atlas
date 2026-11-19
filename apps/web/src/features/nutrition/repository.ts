@@ -1,7 +1,7 @@
 import type { DiaryEntry, Food, Macros, MealType } from '@arcadia/shared';
 import { getDb, newId, persist } from '@/lib/db';
 import type { FoodSnapshot } from '@/lib/off/client';
-import { localIsoDate } from '@/lib/dates';
+import { addDays, localIsoDate } from '@/lib/dates';
 
 export function scaleMacros(per100g: Macros, grams: number): Macros {
   const f = grams / 100;
@@ -186,8 +186,121 @@ export async function deleteDiaryEntry(id: string): Promise<void> {
   await persist();
 }
 
-/** Re-logs an existing entry as a fresh one (same food, grams and meal, now). */
-export async function duplicateDiaryEntry(id: string): Promise<void> {
+/** Changes how much of a food one entry holds and rescales its stored macros.
+ * Entries keep their own macro snapshot (so history survives a food being
+ * removed), which means a new amount has to rewrite those columns too. */
+export async function updateDiaryEntryGrams(id: string, grams: number): Promise<void> {
+  const db = await getDb();
+  const rows = (
+    await db.query(
+      `SELECT food_id, grams, kcal, protein_g, carbs_g, fat_g, sugar_g, fiber_g, sodium_g
+         FROM diary_entries WHERE id = ?`,
+      [id],
+    )
+  ).values as {
+    food_id: string;
+    grams: number;
+    kcal: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    sugar_g: number | null;
+    fiber_g: number | null;
+    sodium_g: number | null;
+  }[];
+  const entry = rows[0];
+  if (!entry) return;
+
+  // Prefer the food's exact per-100g numbers. If the food row is gone, scale
+  // the entry's own snapshot instead: treating "macros for the old grams" as
+  // the base, the new amount is (new / old) of it — scaleMacros divides by
+  // 100, hence the * 100.
+  const food = (await getFoodsByIds([entry.food_id])).get(entry.food_id);
+  const m = food
+    ? scaleMacros(food.per100g, grams)
+    : scaleMacros(
+        {
+          kcal: entry.kcal,
+          proteinG: entry.protein_g,
+          carbsG: entry.carbs_g,
+          fatG: entry.fat_g,
+          sugarG: entry.sugar_g ?? undefined,
+          fiberG: entry.fiber_g ?? undefined,
+          sodiumG: entry.sodium_g ?? undefined,
+        },
+        entry.grams > 0 ? (grams / entry.grams) * 100 : 100,
+      );
+  await db.run(
+    `UPDATE diary_entries
+        SET grams = ?, kcal = ?, protein_g = ?, carbs_g = ?, fat_g = ?,
+            sugar_g = ?, fiber_g = ?, sodium_g = ?
+      WHERE id = ?`,
+    [
+      grams,
+      m.kcal,
+      m.proteinG,
+      m.carbsG,
+      m.fatG,
+      m.sugarG ?? null,
+      m.fiberG ?? null,
+      m.sodiumG ?? null,
+      id,
+    ],
+  );
+  await persist();
+}
+
+/** A food the user has logged before, with how much they had last time —
+ * what the "Recent" and "Frequent" lists in the add-food sheet are made of. */
+export interface FoodHistoryItem {
+  food: Food;
+  /** Grams of the most recent entry for this food. */
+  lastGrams: number;
+  /** How many times it was logged inside the queried window. */
+  timesLogged: number;
+}
+
+/** Distinct foods from the diary, one row per food.
+ * - 'recent': every food ever logged, newest first.
+ * - 'frequent': foods logged at least twice in the last `days` days, most
+ *   often first.
+ * Ordering uses `logged_at` (when the user actually tapped Log), not the
+ * diary `date`, so back-filling last Tuesday still counts as recent. */
+export async function getFoodHistory(
+  kind: 'recent' | 'frequent',
+  limit = 8,
+  days = 60,
+): Promise<FoodHistoryItem[]> {
+  const db = await getDb();
+  // The sub-select picks the grams of each food's latest entry. The JOIN
+  // drops entries whose food no longer exists (nothing to log again).
+  const select = `
+    SELECT f.*, COUNT(*) AS times_logged, MAX(d.logged_at) AS last_logged_at,
+           (SELECT d2.grams FROM diary_entries d2
+             WHERE d2.food_id = d.food_id
+             ORDER BY d2.logged_at DESC LIMIT 1) AS last_grams
+      FROM diary_entries d
+      JOIN foods f ON f.id = d.food_id`;
+  const result =
+    kind === 'recent'
+      ? await db.query(`${select} GROUP BY d.food_id ORDER BY last_logged_at DESC LIMIT ?`, [limit])
+      : await db.query(
+          `${select} WHERE d.date >= ?
+            GROUP BY d.food_id HAVING COUNT(*) >= 2
+            ORDER BY times_logged DESC, last_logged_at DESC LIMIT ?`,
+          [addDays(localIsoDate(), -days), limit],
+        );
+  const rows = (result.values ?? []) as (FoodRow & { times_logged: number; last_grams: number })[];
+  return rows.map((r) => ({ food: toFood(r), lastGrams: r.last_grams, timesLogged: r.times_logged }));
+}
+
+/** Re-logs an existing entry as a fresh one (same food, grams and meal, now).
+ * `date` is the diary day it lands on — today unless the caller is looking
+ * at another day. */
+export async function duplicateDiaryEntry(
+  id: string,
+  date: string = localIsoDate(),
+): Promise<void> {
   const db = await getDb();
   await db.run(
     `INSERT INTO diary_entries
@@ -196,7 +309,7 @@ export async function duplicateDiaryEntry(id: string): Promise<void> {
      SELECT ?, ?, meal, food_id, food_name, grams, kcal, protein_g, carbs_g, fat_g,
             sugar_g, fiber_g, sodium_g, ?
        FROM diary_entries WHERE id = ?`,
-    [newId(), localIsoDate(), new Date().toISOString(), id],
+    [newId(), date, new Date().toISOString(), id],
   );
   await persist();
 }
