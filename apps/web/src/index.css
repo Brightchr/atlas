@@ -6,93 +6,116 @@
    @theme inline below (bg-surface, text-ink, border-line, bg-accent, …).
 --------------------------------------------------------------------------- */
 
-/* Six themes, one electric family: near-black or near-white grounds, hard
-   contrast, vivid accents. Darks — Volt (cyan/magenta, the default), Circuit
-   (pure black + signal green), Fjord (Nord-style slate + ice blue), Ember
-   (black cherry + red/orange fire). Lights — Glacier (blue), Prism (violet). */
+/* Seven themes in one family: flat near-black or near-white grounds, hairline
+   borders, one restrained accent, and light used as decoration. `--glow` is
+   the color of that light: the halo behind the page, around primary buttons
+   and along the top edge of cards. Darks: Onyx (monochrome, the default),
+   Aurora (cyan to violet), Cobalt (blue), Jade (green). Lights: Paper
+   (monochrome), Frost (blue), Orchid (violet). */
 :root,
-:root[data-theme='volt'] {
+:root[data-theme='onyx'] {
   color-scheme: dark;
-  --bg: #08090f;
-  --surface: #10121c;
-  --elev: #181b29;
-  --line: #262a3f;
-  --ink: #f0f3ff;
-  --muted: #8b93b8;
-  --accent: #22d3ee;
-  --accent-2: #e879f9;
-  --accent-ink: #08090f;
-  --accent-soft: #0e2b38;
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --elev: #151515;
+  --line: #242424;
+  --ink: #ededed;
+  --muted: #8f8f8f;
+  --accent: #ffffff;
+  --accent-2: #c9ccd1;
+  --accent-ink: #000000;
+  --accent-soft: #1c1c1c;
+  --glow: #9fb4ff;
 }
 
-:root[data-theme='circuit'] {
+:root[data-theme='aurora'] {
   color-scheme: dark;
-  --bg: #0a0b0a;
-  --surface: #111411;
-  --elev: #1a1e1a;
-  --line: #272d27;
-  --ink: #eef4ee;
-  --muted: #8fa091;
-  --accent: #22c55e;
-  --accent-2: #a3e635;
-  --accent-ink: #06130a;
-  --accent-soft: #123320;
+  --bg: #030305;
+  --surface: #0b0b11;
+  --elev: #15151e;
+  --line: #25252f;
+  --ink: #f1f1f5;
+  --muted: #9091a4;
+  --accent: #6ee7f9;
+  --accent-2: #a78bfa;
+  --accent-ink: #04040a;
+  --accent-soft: #11222c;
+  --glow: #7c8cff;
 }
 
-:root[data-theme='fjord'] {
+:root[data-theme='cobalt'] {
   color-scheme: dark;
-  --bg: #1f242e;
-  --surface: #272d39;
-  --elev: #2f3644;
-  --line: #3b4252;
-  --ink: #eceff4;
-  --muted: #94a3bd;
-  --accent: #88c0d0;
-  --accent-2: #81a1c1;
-  --accent-ink: #10151d;
-  --accent-soft: #23404b;
+  --bg: #02040a;
+  --surface: #080c16;
+  --elev: #111827;
+  --line: #1d2536;
+  --ink: #eef2f9;
+  --muted: #8893a9;
+  --accent: #3b9eff;
+  --accent-2: #7cc0ff;
+  --accent-ink: #020814;
+  --accent-soft: #0d2847;
+  --glow: #3b9eff;
 }
 
-:root[data-theme='ember'] {
+:root[data-theme='jade'] {
   color-scheme: dark;
-  --bg: #100b0c;
-  --surface: #181114;
-  --elev: #22181b;
-  --line: #33242a;
-  --ink: #f7eef0;
-  --muted: #b39199;
-  --accent: #ef4444;
-  --accent-2: #fb923c;
-  --accent-ink: #180808;
-  --accent-soft: #3b1620;
+  --bg: #020403;
+  --surface: #090d0b;
+  --elev: #121815;
+  --line: #202924;
+  --ink: #eef4f0;
+  --muted: #8a978f;
+  --accent: #3dd68c;
+  --accent-2: #8ff0bf;
+  --accent-ink: #02110a;
+  --accent-soft: #0f2e22;
+  --glow: #3dd68c;
 }
 
-:root[data-theme='glacier'] {
+:root[data-theme='paper'] {
   color-scheme: light;
-  --bg: #f4f6fa;
+  --bg: #fcfcfc;
   --surface: #ffffff;
-  --elev: #e9edf5;
-  --line: #dfe3ec;
-  --ink: #17203a;
-  --muted: #5b6478;
-  --accent: #2563eb;
-  --accent-2: #0891b2;
+  --elev: #f1f1f1;
+  --line: #e4e4e4;
+  --ink: #0a0a0a;
+  --muted: #6b6b6b;
+  --accent: #0a0a0a;
+  --accent-2: #3d3d3d;
   --accent-ink: #ffffff;
-  --accent-soft: #dbeafe;
+  --accent-soft: #ececec;
+  --glow: #8b9cff;
 }
 
-:root[data-theme='prism'] {
+:root[data-theme='frost'] {
   color-scheme: light;
-  --bg: #fafbfe;
+  --bg: #f7f9fc;
   --surface: #ffffff;
-  --elev: #eceef8;
-  --line: #dfe2f0;
-  --ink: #0d0f1c;
-  --muted: #4e5470;
-  --accent: #7c3aed;
-  --accent-2: #db2777;
+  --elev: #edf1f7;
+  --line: #dde3ec;
+  --ink: #0b1220;
+  --muted: #5f6b7e;
+  --accent: #0b6bff;
+  --accent-2: #3b9eff;
   --accent-ink: #ffffff;
-  --accent-soft: #ece4fd;
+  --accent-soft: #e2edff;
+  --glow: #3b9eff;
+}
+
+:root[data-theme='orchid'] {
+  color-scheme: light;
+  --bg: #fbfaff;
+  --surface: #ffffff;
+  --elev: #f1eefb;
+  --line: #e3defa;
+  --ink: #150f24;
+  --muted: #6c6480;
+  --accent: #6e56cf;
+  --accent-2: #9a86f0;
+  --accent-ink: #ffffff;
+  --accent-soft: #ece8ff;
+  --glow: #8e7bf0;
 }
 
 @theme inline {
@@ -106,8 +129,11 @@
   --color-accent-2: var(--accent-2);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-glow: var(--glow);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Inter Variable', ui-sans-serif, sans-serif;
+  /* One typeface throughout; headings get their character from weight and
+     tight tracking rather than a second font. */
+  --font-display: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -129,6 +155,98 @@ body {
   h3 {
     @apply font-display tracking-tight;
   }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Light as decoration. Everything below reads --glow, so each theme tints
+ * it; none of it carries meaning, so nothing breaks where color-mix() or
+ * background-clip are unsupported (the plain token colors show instead).
+ * ------------------------------------------------------------------------ */
+
+/* The halo: a soft light falling from the top of the screen. Fixed, so it
+   stays put while the content scrolls over it. */
+body {
+  background-image:
+    radial-gradient(
+      ellipse 90% 45% at 50% -12%,
+      color-mix(in srgb, var(--glow) 26%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 55% 30% at 85% 0%,
+      color-mix(in srgb, var(--accent-2) 10%, transparent),
+      transparent 70%
+    );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Page titles fade from full ink to a softer tone, top to bottom. */
+h1 {
+  background-image: linear-gradient(
+    180deg,
+    var(--ink) 30%,
+    color-mix(in srgb, var(--ink) 58%, transparent)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Every accent-gradient element (primary buttons, the active pill, hero
+   cards) is written as `from-accent to-accent-2` across the app; hooking the
+   glow onto that pair gives them all the same halo from one place. */
+.from-accent.to-accent-2 {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 10px 36px -10px color-mix(in srgb, var(--glow) 75%, transparent);
+}
+
+/* Cards catch the light along their top edge: a faint sheen inside, and a
+   hairline highlight where the border would be. Hooked onto the app's
+   standard card classes so hand-written cards get it too. */
+.rounded-2xl.border.border-line.bg-surface,
+.rounded-3xl.border.border-line.bg-surface {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ink) 5%, transparent),
+    transparent 5rem
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ink) 9%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+/* Opt-in: a stronger halo for the one thing a screen is about. */
+.glow-ring {
+  border-color: color-mix(in srgb, var(--glow) 45%, var(--line));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ink) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--glow) 18%, transparent),
+    0 18px 60px -18px color-mix(in srgb, var(--glow) 60%, transparent);
+}
+
+/* Opt-in: a beam of light across the top edge (active tab, featured card). */
+.glow-beam {
+  position: relative;
+}
+.glow-beam::before {
+  content: '';
+  position: absolute;
+  inset-inline: 18%;
+  top: -1px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  box-shadow: 0 0 14px 1px color-mix(in srgb, var(--glow) 80%, transparent);
+  pointer-events: none;
+}
+
+/* Focus shows as light, not as a hard outline. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 28%, transparent);
 }
 
 /* ------------------------------------------------------------------------ *
@@ -162,9 +280,28 @@ body {
   }
 }
 
+@keyframes sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Bottom sheets slide up into place. */
+.sheet-enter {
+  animation: sheet-enter 0.28s var(--spring) both;
+}
+
 /* Applied by section layouts to their outlet wrapper. */
 .page-enter {
-  animation: page-enter 0.38s var(--spring) both;
+  /* backwards, not both: once the animation ends the transform must be gone,
+     because a transformed ancestor re-anchors position:fixed children (sheets,
+     the rest bar) to itself instead of the screen. */
+  animation: page-enter 0.38s var(--spring) backwards;
 }
 
 /* One-shot celebration pulse (set logged, goal hit). */
@@ -186,6 +323,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .page-enter,
+  .sheet-enter,
   .pop-in {
     animation: none;
   }

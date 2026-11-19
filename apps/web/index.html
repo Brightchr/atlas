@@ -11,11 +11,11 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
-    <meta name="theme-color" content="#f4f5fb" />
+    <meta name="theme-color" content="#000000" />
     <title>Arcadia Atlas</title>
     <script>
       // Apply the stored theme before first paint to avoid a flash of the default.
-      document.documentElement.dataset.theme = ({aurora:'glacier',mint:'meadow',midnight:'indigo-night',carbon:'tide'})[localStorage.getItem('arcadia-theme')] || localStorage.getItem('arcadia-theme') || 'indigo-night';
+      document.documentElement.dataset.theme = (function (t) { var old = {volt:'aurora',circuit:'jade',fjord:'cobalt',ember:'onyx',glacier:'frost',prism:'orchid',mint:'frost',midnight:'onyx',carbon:'onyx','indigo-night':'aurora',tide:'jade',meadow:'paper',ion:'jade','old-growth':'jade',timberline:'paper'}; return old[t] || t || 'onyx'; })(localStorage.getItem('arcadia-theme'));
 
       // Browsers never fire requestAnimationFrame in hidden/background tabs, but
       // jeep-sqlite (our browser SQLite) renders via rAF and would stall forever.

@@ -2,32 +2,39 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import type { ReactNode } from 'react';
 
 export const THEMES = [
-  { id: 'volt', label: 'Volt', mode: 'dark', swatch: ['#08090f', '#22d3ee'] },
-  { id: 'circuit', label: 'Circuit', mode: 'dark', swatch: ['#0a0b0a', '#22c55e'] },
-  { id: 'fjord', label: 'Fjord', mode: 'dark', swatch: ['#1f242e', '#88c0d0'] },
-  { id: 'ember', label: 'Ember', mode: 'dark', swatch: ['#100b0c', '#ef4444'] },
-  { id: 'glacier', label: 'Glacier', mode: 'light', swatch: ['#f4f6fa', '#2563eb'] },
-  { id: 'prism', label: 'Prism', mode: 'light', swatch: ['#fafbfe', '#7c3aed'] },
+  { id: 'onyx', label: 'Onyx', mode: 'dark', swatch: ['#000000', '#ffffff'] },
+  { id: 'aurora', label: 'Aurora', mode: 'dark', swatch: ['#030305', '#6ee7f9'] },
+  { id: 'cobalt', label: 'Cobalt', mode: 'dark', swatch: ['#02040a', '#3b9eff'] },
+  { id: 'jade', label: 'Jade', mode: 'dark', swatch: ['#020403', '#3dd68c'] },
+  { id: 'paper', label: 'Paper', mode: 'light', swatch: ['#fcfcfc', '#0a0a0a'] },
+  { id: 'frost', label: 'Frost', mode: 'light', swatch: ['#f7f9fc', '#0b6bff'] },
+  { id: 'orchid', label: 'Orchid', mode: 'light', swatch: ['#fbfaff', '#6e56cf'] },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]['id'];
 
 const STORAGE_KEY = 'arcadia-theme';
-const DEFAULT_THEME: ThemeId = 'volt';
+const DEFAULT_THEME: ThemeId = 'onyx';
 
-/** Theme lineups have been renamed twice; carry old choices to their nearest
- * new home instead of silently resetting to the default. */
+/** Theme lineups have been renamed three times; carry old choices to their
+ * nearest new home instead of silently resetting to the default. Keep this
+ * map in step with the copy in index.html (the before-first-paint script). */
 const LEGACY_THEMES: Record<string, ThemeId> = {
-  aurora: 'glacier',
-  mint: 'glacier',
-  midnight: 'volt',
-  carbon: 'volt',
-  'indigo-night': 'volt',
-  tide: 'circuit',
-  meadow: 'glacier',
-  ion: 'circuit',
-  'old-growth': 'circuit',
-  timberline: 'glacier',
+  volt: 'aurora',
+  circuit: 'jade',
+  fjord: 'cobalt',
+  ember: 'onyx',
+  glacier: 'frost',
+  prism: 'orchid',
+  mint: 'frost',
+  midnight: 'onyx',
+  carbon: 'onyx',
+  'indigo-night': 'aurora',
+  tide: 'jade',
+  meadow: 'paper',
+  ion: 'jade',
+  'old-growth': 'jade',
+  timberline: 'paper',
 };
 
 function readStoredTheme(): ThemeId {
