@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Dumbbell, Play, Plus, X } from 'lucide-react';
+import { Dumbbell, Play, Plus, X } from 'lucide-react';
 import type { Exercise, WorkoutExercise } from '@arcadia/shared';
 import { useExerciseCatalog } from '@/features/exercises/api';
+import { buttonClasses, Sheet } from '@/components/ui';
 import { ExercisePicker } from '../components/ExercisePicker';
 import {
   addExerciseToWorkout,
@@ -175,15 +176,7 @@ export function WorkoutDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/train/library"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        Routines
-      </Link>
-
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{workout.name}</h1>
@@ -196,9 +189,9 @@ export function WorkoutDetailPage() {
           type="button"
           disabled={workout.exercises.length === 0 || startMutation.isPending}
           onClick={() => startMutation.mutate()}
-          className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+          className={buttonClasses('primary', 'lg', 'w-full sm:w-auto')}
         >
-          <Play size={16} aria-hidden />
+          <Play size={18} aria-hidden />
           Start workout
         </button>
       </header>
@@ -215,16 +208,19 @@ export function WorkoutDetailPage() {
         ))}
       </ul>
 
-      {picking ? (
-        <ExercisePicker
-          onPick={(exercise) => addMutation.mutate(exercise)}
-          onClose={() => setPicking(false)}
-        />
-      ) : (
+      {picking && (
+        <Sheet title="Add exercise" tall onClose={() => setPicking(false)}>
+          <ExercisePicker
+            onPick={(exercise) => addMutation.mutate(exercise)}
+            onClose={() => setPicking(false)}
+          />
+        </Sheet>
+      )}
+      {(
         <button
           type="button"
           onClick={() => setPicking(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
+          className={buttonClasses("secondary", "lg", "w-full")}
         >
           <Plus size={15} aria-hidden />
           Add exercise

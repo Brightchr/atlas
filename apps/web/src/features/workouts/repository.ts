@@ -304,9 +304,25 @@ async function insertSessionExercises(
   }
 }
 
+/** Only one workout can be in progress. Every "start" goes through this
+ * first: if a session is already open it is returned (the caller lands back
+ * in it) instead of quietly creating a second unfinished session that the
+ * UI would then never surface. */
+async function openSessionId(): Promise<string | null> {
+  const db = await getDb();
+  const rows = (
+    await db.query(
+      'SELECT id FROM workout_sessions WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1',
+    )
+  ).values as { id: string }[];
+  return rows[0]?.id ?? null;
+}
+
 /** Start a session from a routine: its slots are copied in, so the routine
  * can change (or go) without touching this session. */
 export async function startSession(workout: Workout): Promise<string> {
+  const alreadyOpen = await openSessionId();
+  if (alreadyOpen) return alreadyOpen;
   const db = await getDb();
   const id = newId();
   await db.run(
@@ -320,6 +336,8 @@ export async function startSession(workout: Workout): Promise<string> {
 
 /** An empty workout: no routine, no exercises yet — add them as you go. */
 export async function startEmptySession(name = 'Workout'): Promise<string> {
+  const alreadyOpen = await openSessionId();
+  if (alreadyOpen) return alreadyOpen;
   const db = await getDb();
   const id = newId();
   await db.run(
@@ -360,6 +378,8 @@ export async function createPastSession(args: {
 export async function repeatSession(sourceId: string): Promise<string | null> {
   const source = await getSession(sourceId);
   if (!source) return null;
+  const alreadyOpen = await openSessionId();
+  if (alreadyOpen) return alreadyOpen;
   const db = await getDb();
   const id = newId();
   await db.run(
@@ -406,6 +426,65 @@ export async function addExerciseToSession(
     [{ ...exercise, targetSets: 3, targetReps: 10, targetDurationSec: null, restSec: null }],
     position,
   );
+  await persist();
+}
+
+/** What you did last time, per exercise: the sets from the most recent
+ * FINISHED session (other than `excludeSessionId`) that logged each one.
+ * The live logger shows these beside each set and prefills from them, so
+ * nobody has to remember last week's numbers. Keyed by exercise id. */
+export async function getPreviousSets(
+  exerciseIds: number[],
+  excludeSessionId: string,
+): Promise<Record<number, LoggedSet[]>> {
+  if (exerciseIds.length === 0) return {};
+  const db = await getDb();
+  const placeholders = exerciseIds.map(() => '?').join(', ');
+  const rows = (
+    await db.query(
+      `SELECT ls.*
+         FROM logged_sets ls
+         JOIN workout_sessions ws ON ws.id = ls.session_id
+        WHERE ws.finished_at IS NOT NULL
+          AND ls.session_id != ?
+          AND ls.exercise_id IN (${placeholders})
+        ORDER BY ws.started_at DESC, ls.set_number ASC`,
+      [excludeSessionId, ...exerciseIds],
+    )
+  ).values as LoggedSetRow[];
+
+  // Rows arrive newest session first, so the first session seen for an
+  // exercise is its most recent one; later sessions' rows are skipped.
+  const latestSession = new Map<number, string>();
+  const out: Record<number, LoggedSet[]> = {};
+  for (const row of rows) {
+    const session = latestSession.get(row.exercise_id);
+    if (session === undefined) latestSession.set(row.exercise_id, row.session_id);
+    else if (session !== row.session_id) continue;
+    (out[row.exercise_id] ??= []).push(toLoggedSet(row));
+  }
+  return out;
+}
+
+/** Swap an exercise with its neighbour (direction −1 = earlier, +1 = later). */
+export async function moveSessionExercise(id: string, direction: -1 | 1): Promise<void> {
+  const db = await getDb();
+  const own = (await db.query('SELECT * FROM session_exercises WHERE id = ?', [id]))
+    .values as SessionExerciseRow[];
+  if (!own[0]) return; // legacy sessions have no rows of their own to reorder
+  const all = (
+    await db.query('SELECT * FROM session_exercises WHERE session_id = ? ORDER BY position', [
+      own[0].session_id,
+    ])
+  ).values as SessionExerciseRow[];
+  const index = all.findIndex((e) => e.id === id);
+  const other = all[index + direction];
+  if (!other) return;
+  await db.run('UPDATE session_exercises SET position = ? WHERE id = ?', [other.position, id]);
+  await db.run('UPDATE session_exercises SET position = ? WHERE id = ?', [
+    own[0].position,
+    other.id,
+  ]);
   await persist();
 }
 

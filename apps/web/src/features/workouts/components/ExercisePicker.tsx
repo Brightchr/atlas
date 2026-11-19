@@ -19,7 +19,7 @@ export function ExercisePicker({
   const [lastAdded, setLastAdded] = useState<string | null>(null);
   const catalog = useExerciseCatalog();
   const matches =
-    term.trim().length >= 2 ? filterExercises(catalog.data ?? [], term).slice(0, 8) : [];
+    term.trim().length >= 2 ? filterExercises(catalog.data ?? [], term).slice(0, 20) : [];
 
   const pick = (exercise: Exercise) => {
     onPick(exercise);
@@ -28,7 +28,7 @@ export function ExercisePicker({
   };
 
   return (
-    <div className="space-y-2 rounded-2xl border border-line bg-surface p-3 shadow-sm">
+    <div className="space-y-2">
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
@@ -46,14 +46,14 @@ export function ExercisePicker({
                 ? `Added ${lastAdded} ✓ — search for the next one…`
                 : 'Search the exercise catalog…'
             }
-            className="w-full rounded-xl border border-line bg-surface py-2 pr-3 pl-9 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className="h-12 w-full rounded-xl border border-line bg-bg pr-3 pl-9 text-base outline-none placeholder:text-muted/70 focus:border-accent"
           />
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+          className="hidden"
         >
           <X size={15} aria-hidden />
         </button>
@@ -64,7 +64,7 @@ export function ExercisePicker({
             <button
               type="button"
               onClick={() => pick(exercise)}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-elev"
+              className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2 text-left text-base transition-colors hover:bg-elev"
             >
               {exercise.imageUrls[0] ? (
                 <img

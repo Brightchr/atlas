@@ -1,26 +1,44 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Flag, Pencil, Plus, Save, Timer, TimerOff, Trash2, X } from 'lucide-react';
-import type { Exercise, LoggedSet, SessionExercise, WorkoutSession } from '@arcadia/shared';
 import {
-  displayWeight,
-  formatWeight,
-  parseWeight,
-  type UnitSystem,
-  useUnits,
-  weightUnit,
-} from '@/lib/units';
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  Flag,
+  Pencil,
+  Plus,
+  Save,
+  Timer,
+  TimerOff,
+  Trash2,
+} from 'lucide-react';
+import type { Exercise, SessionExercise, WorkoutSession } from '@arcadia/shared';
+import {
+  Button,
+  buttonClasses,
+  Card,
+  ConfirmSheet,
+  IconButton,
+  Sheet,
+  useBack,
+} from '@/components/ui';
+import { displayWeight, useUnits, weightUnit } from '@/lib/units';
 import { useRestTimerEnabled, useSetRestTimerEnabled } from '@/lib/restTimer';
+import { ExerciseCard, type SetValues } from '../components/ExerciseCard';
 import { ExercisePicker } from '../components/ExercisePicker';
+import { RestBar } from '../components/RestBar';
 import {
   addExerciseToSession,
   deleteLoggedSet,
   discardSession,
   finishSession,
+  getPreviousSets,
   getSession,
   getWorkout,
   logSet,
+  moveSessionExercise,
   removeSessionExercise,
   renameSession,
   saveSessionAsRoutine,
@@ -29,13 +47,8 @@ import {
   updateRoutineFromSession,
   updateSessionTimes,
 } from '../repository';
-
-function formatElapsed(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+import { DEFAULT_REST_SEC, formatClock, startRest, stopRest } from '../restTimer';
+import { useWakeLock } from '../useWakeLock';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 /** Local-time pieces for <input type="date"> / <input type="time">. */
@@ -55,171 +68,8 @@ function durationMinutes(session: WorkoutSession): number {
   );
 }
 
-const primaryButton =
-  'springy inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50';
-const secondaryButton =
-  'springy inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev';
-const iconButton =
-  'springy inline-flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm';
-
-/** Set logger for one exercise in the session. */
-function ExerciseLogger({
-  exercise,
-  sets,
-  units,
-  pending,
-  onLog,
-  onDeleteSet,
-  onRemove,
-}: {
-  exercise: SessionExercise;
-  sets: LoggedSet[];
-  units: UnitSystem;
-  pending: boolean;
-  onLog: (args: {
-    reps: number | null;
-    weightKg: number | null;
-    durationSec: number | null;
-  }) => void;
-  onDeleteSet: (id: string) => void;
-  onRemove: () => void;
-}) {
-  const timed = exercise.targetDurationSec !== null;
-  const targetSets = exercise.targetSets ?? 3;
-  const [reps, setReps] = useState(String(exercise.targetReps ?? 10));
-  const [weight, setWeight] = useState('');
-  const [minutes, setMinutes] = useState(
-    String(Math.round((exercise.targetDurationSec ?? 60) / 60)),
-  );
-  const done = sets.length;
-  const target = timed ? 1 : targetSets;
-  const complete = done >= target;
-
-  const input =
-    'w-20 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent';
-
-  return (
-    <li
-      className={`rounded-2xl border p-3 shadow-sm ${complete ? 'border-accent/40 bg-accent-soft/40' : 'border-line bg-surface'}`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            to={`/exercises/${exercise.exerciseId}`}
-            className="block truncate font-semibold hover:text-accent"
-          >
-            {exercise.exerciseName}
-          </Link>
-          <p className="text-xs text-muted tabular-nums">
-            {timed
-              ? `Target ${Math.round((exercise.targetDurationSec ?? 0) / 60)} min`
-              : `Target ${targetSets} × ${exercise.targetReps ?? '—'}`}
-            {exercise.restSec ? ` · rest ${exercise.restSec}s` : ''}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span
-            className={`rounded-full px-2.5 py-1 text-xs font-bold tabular-nums ${
-              complete ? 'bg-accent text-accent-ink' : 'bg-elev text-muted'
-            }`}
-          >
-            {done}/{target}
-          </span>
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove ${exercise.exerciseName} from this workout`}
-            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
-          >
-            <X size={15} aria-hidden />
-          </button>
-        </div>
-      </div>
-
-      {sets.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {sets.map((set) => (
-            <li key={set.id} className="flex items-center gap-2 text-sm tabular-nums">
-              <Check size={13} className="shrink-0 text-accent" aria-hidden />
-              <span className="min-w-0 flex-1">
-                Set {set.setNumber}:{' '}
-                {set.durationSec !== null
-                  ? `${Math.round(set.durationSec / 60)} min`
-                  : `${set.reps ?? '—'} reps${set.weightKg ? ` @ ${formatWeight(set.weightKg, units)}` : ''}`}
-              </span>
-              <button
-                type="button"
-                onClick={() => onDeleteSet(set.id)}
-                aria-label={`Delete set ${set.setNumber}`}
-                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
-              >
-                <X size={12} aria-hidden />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        {timed ? (
-          <label className="flex items-center gap-1.5 text-xs text-muted">
-            Minutes
-            <input
-              type="number"
-              min="1"
-              value={minutes}
-              onChange={(e) => setMinutes(e.target.value)}
-              className={input}
-            />
-          </label>
-        ) : (
-          <>
-            <label className="flex items-center gap-1.5 text-xs text-muted">
-              Reps
-              <input
-                type="number"
-                min="1"
-                value={reps}
-                onChange={(e) => setReps(e.target.value)}
-                className={input}
-              />
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-muted">
-              {weightUnit(units)}
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="—"
-                className={input}
-              />
-            </label>
-          </>
-        )}
-        <button
-          type="button"
-          disabled={pending || (timed ? !Number(minutes) : !Number(reps))}
-          onClick={() =>
-            onLog(
-              timed
-                ? { reps: null, weightKg: null, durationSec: Math.round(Number(minutes) * 60) }
-                : {
-                    reps: Number(reps),
-                    weightKg: Number(weight) ? parseWeight(Number(weight), units) : null,
-                    durationSec: null,
-                  },
-            )
-          }
-          className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          Log set
-        </button>
-      </div>
-    </li>
-  );
-}
+const field =
+  'block min-h-11 rounded-xl border border-line bg-bg px-3 text-base text-ink outline-none focus:border-accent';
 
 /** Tap-to-edit title. The routine's own name is never touched. */
 function SessionTitle({ name, onRename }: { name: string; onRename: (n: string) => void }) {
@@ -233,11 +83,11 @@ function SessionTitle({ name, onRename }: { name: string; onRename: (n: string) 
           setDraft(name);
           setEditing(true);
         }}
-        className="group inline-flex max-w-full items-center gap-2 text-left"
+        className="flex max-w-full items-center gap-1.5 text-left"
         title="Rename this workout"
       >
-        <h1 className="truncate text-2xl font-bold">{name}</h1>
-        <Pencil size={14} className="shrink-0 text-muted group-hover:text-ink" aria-hidden />
+        <h1 className="truncate text-lg font-bold">{name}</h1>
+        <Pencil size={13} className="shrink-0 text-muted" aria-hidden />
       </button>
     );
   }
@@ -256,13 +106,53 @@ function SessionTitle({ name, onRename }: { name: string; onRename: (n: string) 
         if (e.key === 'Escape') setEditing(false);
       }}
       aria-label="Workout name"
-      className="w-full max-w-md rounded-xl border border-line bg-surface px-3 py-1.5 text-xl font-bold outline-none focus:border-accent"
+      className="h-9 w-full rounded-lg border border-line bg-bg px-2 text-lg font-bold outline-none focus:border-accent"
     />
   );
 }
 
-/** What happens to the routine when the session ends. */
-type FinishChoice = 'finish' | 'save-routine' | 'update-routine' | 'discard';
+/** Finishing saves the workout to history. By default it changes NOTHING
+ * else: what you did today (an extra exercise, a skipped one) must never
+ * rewrite the plan. Two opt-in switches, both off until you turn them on,
+ * keep the old abilities for when you do mean it:
+ *   - an extra/ad-hoc workout can be saved as a new routine;
+ *   - a workout that drifted from its routine can update that routine. */
+type FinishChoice = 'finish' | 'discard';
+
+interface FinishOptions {
+  /** Save this ad-hoc workout as a new routine under this name. */
+  saveAsRoutine?: string;
+  /** Make the routine match the exercises done in this workout. */
+  updateRoutine?: boolean;
+}
+
+/** A labelled on/off row, 48px tall, for the optional finish switches. */
+function ToggleRow({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-line px-3 py-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-5 w-5 shrink-0 accent-(--accent)"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className="block text-xs text-muted">{hint}</span>
+      </span>
+    </label>
+  );
+}
 
 function FinishSheet({
   session,
@@ -273,154 +163,210 @@ function FinishSheet({
   onClose,
 }: {
   session: WorkoutSession;
+  /** The session's exercises no longer match the routine it started from. */
   routineDiffers: boolean;
   volumeLabel: string;
   pending: boolean;
-  onChoose: (choice: FinishChoice, routineName?: string) => void;
+  onChoose: (choice: FinishChoice, options?: FinishOptions) => void;
   onClose: () => void;
 }) {
-  const [routineName, setRoutineName] = useState(session.workoutName);
-  const adHoc = session.workoutId === null;
-  const elapsed = formatElapsed(Date.now() - Date.parse(session.startedAt));
+  const elapsed = formatClock((Date.now() - Date.parse(session.startedAt)) / 1000);
   const nothingLogged = session.sets.length === 0;
+  const adHoc = session.workoutId === null;
+  const canSaveRoutine = adHoc && session.exercises.length > 0;
+  const [saveRoutine, setSaveRoutine] = useState(false);
+  const [routineName, setRoutineName] = useState(session.workoutName);
+  const [updateRoutine, setUpdateRoutine] = useState(false);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="finish-title"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div>
-          <h2 id="finish-title" className="text-lg font-bold">
-            Finish workout?
-          </h2>
-          <p className="mt-1 text-sm text-muted tabular-nums">
-            {elapsed} · {session.sets.length} set{session.sets.length === 1 ? '' : 's'} ·{' '}
-            {volumeLabel}
-          </p>
-        </div>
+    <Sheet title="Finish workout?" onClose={onClose}>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[
+          ['Time', elapsed],
+          ['Sets', String(session.sets.length)],
+          ['Lifted', volumeLabel],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-xl bg-elev px-2 py-3">
+            <p className="truncate text-lg font-bold tabular-nums">{value}</p>
+            <p className="text-xs font-semibold tracking-wide text-muted uppercase">{label}</p>
+          </div>
+        ))}
+      </div>
 
-        {nothingLogged && (
-          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            Nothing was logged. Finishing keeps an empty entry in your history.
-          </p>
-        )}
+      {nothingLogged && (
+        <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-700 dark:text-amber-300">
+          Nothing was logged. Finishing keeps an empty entry in your history.
+        </p>
+      )}
 
-        {adHoc && session.exercises.length > 0 && (
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold tracking-wide text-muted uppercase">
-              Save as a routine
-            </span>
+      {canSaveRoutine && (
+        <div className="mt-4 space-y-2">
+          <ToggleRow
+            checked={saveRoutine}
+            onChange={setSaveRoutine}
+            label="Also save as a routine"
+            hint="Keeps these exercises as a routine you can put in your plan."
+          />
+          {saveRoutine && (
             <input
               value={routineName}
               onChange={(e) => setRoutineName(e.target.value)}
-              className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              aria-label="Routine name"
+              className={`${field} w-full`}
             />
-          </label>
-        )}
-
-        <div className="grid gap-2">
-          {adHoc && session.exercises.length > 0 && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => onChoose('save-routine', routineName)}
-              className={primaryButton}
-            >
-              <Save size={15} aria-hidden />
-              Save routine & finish
-            </button>
-          )}
-          {!adHoc && routineDiffers && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => onChoose('update-routine')}
-              className={primaryButton}
-            >
-              <Save size={15} aria-hidden />
-              Update routine & finish
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => onChoose('finish')}
-            className={adHoc || routineDiffers ? secondaryButton : primaryButton}
-          >
-            <Flag size={15} aria-hidden />
-            {!adHoc && routineDiffers ? 'Keep routine as is & finish' : 'Finish'}
-          </button>
-          {nothingLogged && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => onChoose('discard')}
-              className="springy inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-rose-500 transition-colors hover:bg-rose-500/10"
-            >
-              <Trash2 size={15} aria-hidden />
-              Discard instead
-            </button>
           )}
         </div>
+      )}
+      {!adHoc && routineDiffers && (
+        <div className="mt-4">
+          <ToggleRow
+            checked={updateRoutine}
+            onChange={setUpdateRoutine}
+            label="Also update the routine"
+            hint="Makes the routine match today's exercises. Leave off to keep your plan as it is."
+          />
+        </div>
+      )}
+
+      <div className="mt-5 grid gap-2">
+        <Button
+          size="xl"
+          disabled={pending}
+          onClick={() =>
+            onChoose('finish', {
+              saveAsRoutine: canSaveRoutine && saveRoutine ? routineName : undefined,
+              updateRoutine: !adHoc && routineDiffers && updateRoutine,
+            })
+          }
+        >
+          <Flag size={20} aria-hidden />
+          Finish workout
+        </Button>
+        {nothingLogged && (
+          <Button size="lg" variant="danger" disabled={pending} onClick={() => onChoose('discard')}>
+            <Trash2 size={18} aria-hidden />
+            Discard instead
+          </Button>
+        )}
+        <Button size="lg" variant="ghost" onClick={onClose}>
+          Keep going
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Reorder, how-to and remove for one exercise, as a sheet of big rows. */
+function ExerciseMenu({
+  exercise,
+  isFirst,
+  isLast,
+  onMove,
+  onRemove,
+  onClose,
+}: {
+  exercise: SessionExercise;
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (direction: -1 | 1) => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const row = buttonClasses('secondary', 'lg', 'w-full justify-start');
+  return (
+    <Sheet title={exercise.exerciseName} onClose={onClose}>
+      <div className="grid gap-2">
+        {/* Safe to leave now: the workout and its rest timer follow you in
+            the bar above the tabs. */}
+        <Link to={`/exercises/${exercise.exerciseId}`} className={row}>
+          <BookOpen size={18} aria-hidden />
+          How to do it
+        </Link>
+        <button type="button" disabled={isFirst} onClick={() => onMove(-1)} className={row}>
+          <ArrowUp size={18} aria-hidden />
+          Move earlier
+        </button>
+        <button type="button" disabled={isLast} onClick={() => onMove(1)} className={row}>
+          <ArrowDown size={18} aria-hidden />
+          Move later
+        </button>
         <button
           type="button"
-          onClick={onClose}
-          className="w-full text-center text-xs font-medium text-muted hover:text-ink"
+          onClick={onRemove}
+          className={buttonClasses('danger', 'lg', 'w-full justify-start')}
         >
-          Keep going
+          <Trash2 size={18} aria-hidden />
+          Remove from this workout
         </button>
       </div>
-    </div>
+    </Sheet>
   );
 }
 
 /** Live logging for an open session, and the editor for a finished one
  * (reached from History): same screen, with the clock swapped for date and
  * duration fields. Exercises belong to the session — adding or removing one
- * here never changes the routine it came from. */
+ * here never changes the routine it came from.
+ *
+ * On a phone this screen is "workout mode": the app shell hides its top bar
+ * and tabs (see AppLayout), the header and Finish stay pinned, the screen
+ * stays awake, and the rest timer sits under the thumb. */
 export function WorkoutSessionPage() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const units = useUnits();
+  const backToHistory = useBack('/history');
 
   const sessionQuery = useQuery({
     queryKey: ['sessions', sessionId],
     queryFn: () => getSession(sessionId!),
   });
   const session = sessionQuery.data;
+  // The routine this session started from, to tell whether it drifted.
   const routineQuery = useQuery({
     queryKey: ['workouts', session?.workoutId],
     queryFn: () => getWorkout(session!.workoutId!),
     enabled: Boolean(session?.workoutId),
   });
+  // Last time's numbers for every exercise in this session. Its key is NOT
+  // under ['sessions'], so logging a set doesn't refetch it: history can't
+  // change while this session is still open.
+  const exerciseIds = (session?.exercises ?? []).map((e) => e.exerciseId);
+  const previousQuery = useQuery({
+    queryKey: ['previous-sets', sessionId, exerciseIds.join(',')],
+    queryFn: () => getPreviousSets(exerciseIds, sessionId!),
+    enabled: exerciseIds.length > 0,
+  });
 
-  // Tick once a second for the elapsed clock and the rest countdown.
+  const live = Boolean(session) && session!.finishedAt === null;
+  useWakeLock(live);
+
+  // Tick once a second for the elapsed clock.
   const [now, setNow] = useState(() => Date.now());
-  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   useEffect(() => {
+    if (!live) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
-  const restRemaining = restEndsAt === null ? 0 : Math.ceil((restEndsAt - now) / 1000);
+  }, [live]);
 
   const restTimerEnabled = useRestTimerEnabled();
   const setRestTimerEnabled = useSetRestTimerEnabled();
   const toggleRestTimer = () => {
-    if (restTimerEnabled) setRestEndsAt(null); // silence a running countdown too
+    if (restTimerEnabled) stopRest(); // silence a running countdown too
     setRestTimerEnabled.mutate(!restTimerEnabled);
   };
 
-  const [picking, setPicking] = useState(false);
+  // Which exercise is open. null = "the current one" (first unfinished);
+  // an id = the user opened that one; 'none' = they collapsed everything.
+  const [openId, setOpenId] = useState<string | null>(null);
+  // `?add=1` (from "Log extra exercise") opens the picker straight away.
+  const [searchParams] = useSearchParams();
+  const [picking, setPicking] = useState(searchParams.get('add') === '1');
   const [finishing, setFinishing] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [menuFor, setMenuFor] = useState<SessionExercise | null>(null);
+  const [removing, setRemoving] = useState<SessionExercise | null>(null);
 
   // Edit-mode fields (finished sessions only).
   const [dateInput, setDateInput] = useState('');
@@ -438,9 +384,13 @@ export function WorkoutSessionPage() {
     mutationFn: logSet,
     onSuccess: (_data, variables) => {
       void invalidate();
-      if (!restTimerEnabled || session?.finishedAt) return;
-      const rest = session?.exercises.find((e) => e.exerciseId === variables.exerciseId)?.restSec;
-      if (rest) setRestEndsAt(Date.now() + rest * 1000);
+      // Hand control back to "the current exercise", so finishing one
+      // exercise's sets opens the next unfinished one automatically.
+      setOpenId(null);
+      if (!restTimerEnabled || !session || session.finishedAt) return;
+      const exercise = session.exercises.find((e) => e.exerciseId === variables.exerciseId);
+      // Exercises added mid-workout have no rest time of their own.
+      startRest(session.id, exercise?.restSec ?? DEFAULT_REST_SEC);
     },
   });
   const deleteSetMutation = useMutation({ mutationFn: deleteLoggedSet, onSuccess: invalidate });
@@ -449,7 +399,18 @@ export function WorkoutSessionPage() {
       addExerciseToSession(sessionId!, { exerciseId: exercise.id, exerciseName: exercise.name }),
     onSuccess: invalidate,
   });
-  const removeMutation = useMutation({ mutationFn: removeSessionExercise, onSuccess: invalidate });
+  const removeMutation = useMutation({
+    mutationFn: removeSessionExercise,
+    onSuccess: () => {
+      setRemoving(null);
+      void invalidate();
+    },
+  });
+  const moveMutation = useMutation({
+    mutationFn: ({ id, direction }: { id: string; direction: -1 | 1 }) =>
+      moveSessionExercise(id, direction),
+    onSuccess: invalidate,
+  });
   const renameMutation = useMutation({
     mutationFn: (name: string) => renameSession(sessionId!, name),
     onSuccess: invalidate,
@@ -461,24 +422,29 @@ export function WorkoutSessionPage() {
   const discardMutation = useMutation({
     mutationFn: () => discardSession(sessionId!),
     onSuccess: () => {
+      stopRest();
       void queryClient.invalidateQueries();
-      void navigate(session?.finishedAt ? '/history' : '/train', { replace: true });
+      void navigate(session?.finishedAt ? '/history' : '/', { replace: true });
     },
   });
   const finishMutation = useMutation({
-    mutationFn: async ({ choice, routineName }: { choice: FinishChoice; routineName?: string }) => {
+    mutationFn: async ({ choice, options }: { choice: FinishChoice; options?: FinishOptions }) => {
       if (choice === 'discard') {
         await discardSession(sessionId!);
         return null;
       }
-      if (choice === 'save-routine') await saveSessionAsRoutine(sessionId!, routineName ?? '');
-      if (choice === 'update-routine') await updateRoutineFromSession(sessionId!);
+      // Both only run when the user switched them on in the finish sheet.
+      if (options?.saveAsRoutine !== undefined) {
+        await saveSessionAsRoutine(sessionId!, options.saveAsRoutine);
+      }
+      if (options?.updateRoutine) await updateRoutineFromSession(sessionId!);
       await finishSession(sessionId!);
       return sessionId!;
     },
     onSuccess: (id) => {
+      stopRest();
       void queryClient.invalidateQueries();
-      void navigate(id ? `/history/${id}` : '/train', { replace: true });
+      void navigate(id ? `/history/${id}` : '/', { replace: true });
     },
   });
   const saveTimesMutation = useMutation({
@@ -502,236 +468,259 @@ export function WorkoutSessionPage() {
     return (
       <div className="space-y-3 p-4 md:p-6">
         <p className="text-rose-500">Could not find this session.</p>
-        <Link to="/train" className="font-medium text-accent hover:underline">
-          Back to workouts
+        <Link to="/" className={buttonClasses('secondary')}>
+          Back to Today
         </Link>
       </div>
     );
   }
 
   const editing = session.finishedAt !== null;
-  const elapsed = formatElapsed(now - Date.parse(session.startedAt));
   const totalSets = session.sets.length;
   const volumeKg = session.sets.reduce((sum, s) => sum + (s.weightKg ?? 0) * (s.reps ?? 0), 0);
   const volumeLabel =
     volumeKg > 0
-      ? `${Math.round(displayWeight(volumeKg, units)).toLocaleString()} ${weightUnit(units)} lifted`
-      : 'no load';
+      ? `${Math.round(displayWeight(volumeKg, units)).toLocaleString()} ${weightUnit(units)}`
+      : '—';
   const routineDiffers = Boolean(
     routineQuery.data && sessionDiffersFromRoutine(session, routineQuery.data),
   );
   // Backdated sets land on the session's own date, not "now".
   const completedAt = editing ? session.startedAt : undefined;
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24 md:p-6">
-      <header className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <SessionTitle name={session.workoutName} onRename={(n) => renameMutation.mutate(n)} />
-            <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted tabular-nums">
-              <Timer size={14} aria-hidden />
-              {editing
-                ? new Date(session.startedAt).toLocaleDateString([], {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                  })
-                : elapsed}{' '}
-              · {totalSets} set{totalSets === 1 ? '' : 's'}
-              {session.workoutId === null && ' · empty workout'}
-            </p>
-          </div>
+  const setsFor = (exercise: SessionExercise) =>
+    session.sets.filter((s) => s.exerciseId === exercise.exerciseId);
+  const isDone = (exercise: SessionExercise) => {
+    const target = exercise.targetSets ?? (exercise.targetDurationSec !== null ? 1 : 3);
+    return setsFor(exercise).length >= target;
+  };
+  const current = session.exercises.find((e) => !isDone(e));
+  const expandedId = openId ?? current?.id ?? null;
+  const doneCount = session.exercises.filter(isDone).length;
 
-          {editing ? (
-            <button
-              type="button"
-              disabled={saveTimesMutation.isPending}
-              onClick={() => saveTimesMutation.mutate()}
-              className={primaryButton}
-            >
-              <Save size={15} aria-hidden />
-              Save
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-pressed={restTimerEnabled}
-                title={
-                  restTimerEnabled
-                    ? 'Rest timer on — tap to stop it auto-starting (remembered)'
-                    : 'Rest timer off — tap to turn it back on'
-                }
-                onClick={toggleRestTimer}
-                className={`${iconButton} ${
-                  restTimerEnabled
-                    ? 'border-accent/40 bg-accent-soft text-accent'
-                    : 'border-line bg-surface text-muted hover:text-ink'
-                }`}
-              >
-                {restTimerEnabled ? (
-                  <Timer size={17} aria-hidden />
-                ) : (
-                  <TimerOff size={17} aria-hidden />
-                )}
-              </button>
-              <button
-                type="button"
-                disabled={finishMutation.isPending}
-                onClick={() => setFinishing(true)}
-                className={primaryButton}
-              >
-                <Flag size={15} aria-hidden />
-                Finish
-              </button>
-            </div>
-          )}
+  const log = (exercise: SessionExercise, values: SetValues) =>
+    logMutation.mutate({
+      sessionId: session.id,
+      exerciseId: exercise.exerciseId,
+      exerciseName: exercise.exerciseName,
+      completedAt,
+      ...values,
+    });
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      {/* Pinned header: leave (minimise), what and how long, Finish. */}
+      <header className="sticky top-0 z-20 flex items-center gap-1 border-b border-line bg-bg/90 px-2 py-2 backdrop-blur-xl md:px-4">
+        {editing ? (
+          <IconButton label="Back" onClick={backToHistory}>
+            <ChevronDown size={24} className="rotate-90" aria-hidden />
+          </IconButton>
+        ) : (
+          <IconButton
+            label="Minimise workout (it keeps running)"
+            onClick={() => void navigate('/')}
+          >
+            <ChevronDown size={24} aria-hidden />
+          </IconButton>
+        )}
+        <div className="min-w-0 flex-1">
+          <SessionTitle name={session.workoutName} onRename={(n) => renameMutation.mutate(n)} />
+          <p className="truncate text-sm text-muted tabular-nums">
+            {editing ? (
+              new Date(session.startedAt).toLocaleDateString([], {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })
+            ) : (
+              <span className="font-semibold text-ink">
+                {formatClock((now - Date.parse(session.startedAt)) / 1000)}
+              </span>
+            )}{' '}
+            · {totalSets} set{totalSets === 1 ? '' : 's'}
+            {session.exercises.length > 0 && ` · ${doneCount}/${session.exercises.length} done`}
+          </p>
         </div>
 
+        {editing ? (
+          <Button disabled={saveTimesMutation.isPending} onClick={() => saveTimesMutation.mutate()}>
+            <Save size={16} aria-hidden />
+            Save
+          </Button>
+        ) : (
+          <>
+            <IconButton
+              label={
+                restTimerEnabled
+                  ? 'Rest timer on: tap to stop it starting after each set'
+                  : 'Rest timer off: tap to turn it back on'
+              }
+              aria-pressed={restTimerEnabled}
+              variant={restTimerEnabled ? 'soft' : 'ghost'}
+              onClick={toggleRestTimer}
+            >
+              {restTimerEnabled ? (
+                <Timer size={20} aria-hidden />
+              ) : (
+                <TimerOff size={20} aria-hidden />
+              )}
+            </IconButton>
+            <Button disabled={finishMutation.isPending} onClick={() => setFinishing(true)}>
+              <Flag size={16} aria-hidden />
+              Finish
+            </Button>
+          </>
+        )}
+      </header>
+
+      {/* pb-48 keeps the last card clear of the rest bar. */}
+      <div className="space-y-3 p-3 pb-48 md:p-6 md:pb-40">
         {editing && (
-          <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-surface p-3 shadow-sm">
-            <label className="space-y-1 text-xs text-muted">
+          <Card className="flex flex-wrap items-end gap-3 p-3">
+            <label className="space-y-1 text-sm text-muted">
               Date
               <input
                 type="date"
                 value={dateInput}
                 max={toDateInput(new Date().toISOString())}
                 onChange={(e) => setDateInput(e.target.value)}
-                className="block rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                className={field}
               />
             </label>
-            <label className="space-y-1 text-xs text-muted">
+            <label className="space-y-1 text-sm text-muted">
               Start
               <input
                 type="time"
                 value={timeInput}
                 onChange={(e) => setTimeInput(e.target.value)}
-                className="block rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                className={field}
               />
             </label>
-            <label className="space-y-1 text-xs text-muted">
+            <label className="space-y-1 text-sm text-muted">
               Duration (min)
               <input
-                type="number"
-                min="1"
+                type="text"
+                inputMode="numeric"
                 value={durationInput}
-                onChange={(e) => setDurationInput(e.target.value)}
-                className="block w-24 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                onChange={(e) => setDurationInput(e.target.value.replace(/[^0-9]/g, ''))}
+                className={`${field} w-24`}
               />
             </label>
-          </div>
+          </Card>
         )}
-      </header>
 
-      <ul className="space-y-2">
-        {session.exercises.map((exercise) => (
-          <ExerciseLogger
-            key={exercise.id}
-            exercise={exercise}
-            sets={session.sets.filter((s) => s.exerciseId === exercise.exerciseId)}
-            units={units}
-            pending={logMutation.isPending}
-            onLog={({ reps, weightKg, durationSec }) =>
-              logMutation.mutate({
-                sessionId: session.id,
-                exerciseId: exercise.exerciseId,
-                exerciseName: exercise.exerciseName,
-                setNumber:
-                  session.sets.filter((s) => s.exerciseId === exercise.exerciseId).length + 1,
-                reps,
-                weightKg,
-                durationSec,
-                completedAt,
-              })
-            }
-            onDeleteSet={(setId) => deleteSetMutation.mutate(setId)}
-            onRemove={() => removeMutation.mutate(exercise.id)}
-          />
-        ))}
-        {session.exercises.length === 0 && (
-          <li className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
-            No exercises yet. Add one to get going.
-          </li>
-        )}
-      </ul>
+        <ul className="space-y-2">
+          {session.exercises.map((exercise) => (
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              sets={setsFor(exercise)}
+              previous={previousQuery.data?.[exercise.exerciseId] ?? []}
+              units={units}
+              expanded={expandedId === exercise.id}
+              pending={logMutation.isPending}
+              onToggle={() => setOpenId(expandedId === exercise.id ? 'none' : exercise.id)}
+              onLog={(values) => log(exercise, values)}
+              onUnlog={(setId) => deleteSetMutation.mutate(setId)}
+              onMenu={() => setMenuFor(exercise)}
+            />
+          ))}
+          {session.exercises.length === 0 && (
+            <li className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">
+              No exercises yet. Add your first one to get going.
+            </li>
+          )}
+        </ul>
 
-      {picking ? (
-        <ExercisePicker
-          onPick={(exercise) => addMutation.mutate(exercise)}
-          onClose={() => setPicking(false)}
-        />
-      ) : (
-        <button type="button" onClick={() => setPicking(true)} className={secondaryButton}>
-          <Plus size={15} aria-hidden />
+        <Button
+          variant={session.exercises.length === 0 ? 'primary' : 'secondary'}
+          size="lg"
+          block
+          onClick={() => setPicking(true)}
+        >
+          <Plus size={18} aria-hidden />
           Add exercise
-        </button>
-      )}
+        </Button>
 
-      <label className="block space-y-1.5">
-        <span className="text-xs font-semibold tracking-wide text-muted uppercase">Notes</span>
-        <textarea
-          key={session.id}
-          defaultValue={session.notes ?? ''}
-          onBlur={(e) => {
-            if ((e.target.value.trim() || null) !== session.notes)
-              notesMutation.mutate(e.target.value);
-          }}
-          rows={2}
-          placeholder="How did it go?"
-          className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
-        />
-      </label>
-
-      <div className="flex items-center justify-between gap-3 pt-2">
-        {confirmDiscard ? (
-          <span className="flex items-center gap-2 text-sm">
-            <span className="text-muted">
-              {editing ? 'Delete this workout?' : 'Discard this workout?'}
-            </span>
-            <button
-              type="button"
-              disabled={discardMutation.isPending}
-              onClick={() => discardMutation.mutate()}
-              className="rounded-lg bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-600"
-            >
-              {editing ? 'Delete' : 'Discard'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDiscard(false)}
-              className="rounded-lg px-2.5 py-1 text-xs font-semibold text-muted hover:bg-elev"
-            >
-              Keep
-            </button>
+        <label className="block space-y-1.5 pt-2">
+          <span className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">
+            Notes
           </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmDiscard(true)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-rose-500"
-          >
-            <Trash2 size={13} aria-hidden />
-            {editing ? 'Delete workout' : 'Discard workout'}
-          </button>
-        )}
+          <textarea
+            key={session.id}
+            defaultValue={session.notes ?? ''}
+            onBlur={(e) => {
+              if ((e.target.value.trim() || null) !== session.notes)
+                notesMutation.mutate(e.target.value);
+            }}
+            rows={2}
+            placeholder="How did it go?"
+            className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-base outline-none placeholder:text-muted/70 focus:border-accent"
+          />
+        </label>
+
+        <Button variant="ghost" block onClick={() => setConfirmDiscard(true)}>
+          <Trash2 size={16} aria-hidden />
+          {editing ? 'Delete workout' : 'Discard workout'}
+        </Button>
       </div>
 
-      {/* Floating rest countdown */}
-      {!editing && restEndsAt !== null && restRemaining > 0 && (
-        <div className="fixed inset-x-4 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))] z-30 mx-auto flex max-w-sm items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-surface px-4 py-3 shadow-lg md:bottom-6">
-          <span className="flex items-center gap-2 font-semibold tabular-nums">
-            <Timer size={16} className="text-accent" aria-hidden />
-            Rest {formatElapsed(restRemaining * 1000)}
-          </span>
-          <button
-            type="button"
-            onClick={() => setRestEndsAt(null)}
-            className="rounded-xl border border-line px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-elev"
-          >
-            Skip
-          </button>
-        </div>
+      {!editing && <RestBar sessionId={session.id} />}
+
+      {picking && (
+        <Sheet title="Add exercise" tall onClose={() => setPicking(false)}>
+          <ExercisePicker
+            onPick={(exercise) => addMutation.mutate(exercise)}
+            onClose={() => setPicking(false)}
+          />
+        </Sheet>
+      )}
+
+      {menuFor && (
+        <ExerciseMenu
+          exercise={menuFor}
+          isFirst={session.exercises[0]?.id === menuFor.id}
+          isLast={session.exercises[session.exercises.length - 1]?.id === menuFor.id}
+          onMove={(direction) => {
+            moveMutation.mutate({ id: menuFor.id, direction });
+            setMenuFor(null);
+          }}
+          onRemove={() => {
+            // Nothing logged: nothing to lose, so no second question.
+            if (setsFor(menuFor).length === 0) removeMutation.mutate(menuFor.id);
+            else setRemoving(menuFor);
+            setMenuFor(null);
+          }}
+          onClose={() => setMenuFor(null)}
+        />
+      )}
+
+      {removing && (
+        <ConfirmSheet
+          title={`Remove ${removing.exerciseName}?`}
+          body={`This also deletes the ${setsFor(removing).length} set${
+            setsFor(removing).length === 1 ? '' : 's'
+          } you logged for it in this workout.`}
+          confirmLabel="Remove exercise"
+          pending={removeMutation.isPending}
+          onConfirm={() => removeMutation.mutate(removing.id)}
+          onClose={() => setRemoving(null)}
+        />
+      )}
+
+      {confirmDiscard && (
+        <ConfirmSheet
+          title={editing ? 'Delete this workout?' : 'Discard this workout?'}
+          body={
+            totalSets > 0
+              ? `Everything logged in it (${totalSets} set${totalSets === 1 ? '' : 's'}) will be deleted. This cannot be undone.`
+              : 'It will be removed. This cannot be undone.'
+          }
+          confirmLabel={editing ? 'Delete workout' : 'Discard workout'}
+          pending={discardMutation.isPending}
+          onConfirm={() => discardMutation.mutate()}
+          onClose={() => setConfirmDiscard(false)}
+        />
       )}
 
       {finishing && (
@@ -740,7 +729,7 @@ export function WorkoutSessionPage() {
           routineDiffers={routineDiffers}
           volumeLabel={volumeLabel}
           pending={finishMutation.isPending}
-          onChoose={(choice, routineName) => finishMutation.mutate({ choice, routineName })}
+          onChoose={(choice, options) => finishMutation.mutate({ choice, options })}
           onClose={() => setFinishing(false)}
         />
       )}
