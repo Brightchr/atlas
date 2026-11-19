@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarPlus, ChevronRight, Dumbbell, Timer } from 'lucide-react';
+import { CalendarPlus, ChevronRight, Dumbbell } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
-import { useUnits } from '@/lib/units';
+import { PageHeader, SectionLabel, buttonClasses } from '@/components/ui';
+import { displayWeight, useUnits, weightUnit } from '@/lib/units';
 import { countFinishedSessions, listSessionHistory, type SessionSummary } from '../stats';
 
 const PAGE_SIZE = 30;
-const KG_TO_LB = 2.2046226218;
 
 function monthKey(iso: string): string {
   const d = new Date(iso);
@@ -17,54 +17,36 @@ function monthLabel(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: 'long', year: 'numeric' });
 }
 
-function SessionRow({
-  s,
-  unitLabel,
-  toDisplay,
-}: {
-  s: SessionSummary;
-  unitLabel: string;
-  toDisplay: (kg: number) => number;
-}) {
+/** One finished workout. The whole card is the link, so the tap target is the
+ * full width of the screen and well over 56px tall. */
+function SessionRow({ s }: { s: SessionSummary }) {
+  const units = useUnits();
   const when = new Date(s.startedAt);
+  // "Tue, Nov 4 · 52 min · 18 sets" — pieces that don't apply are left out.
+  const meta = [
+    when.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+    s.durationMin !== null ? `${s.durationMin} min` : null,
+    `${s.setCount} set${s.setCount === 1 ? '' : 's'}`,
+    s.volumeKg > 0
+      ? `${Math.round(displayWeight(s.volumeKg, units)).toLocaleString()} ${weightUnit(units)}`
+      : null,
+  ].filter(Boolean);
+  // "Squat · Bench · Row +2": what the workout actually was, at a glance.
+  const more = s.exerciseCount - s.exerciseNames.length;
+  const preview = s.exerciseNames.join(' · ') + (more > 0 ? ` +${more}` : '');
+
   return (
     <li>
       <Link
         to={`/history/${s.id}`}
-        className="springy flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        className="springy flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-sm hover:bg-elev"
       >
-        <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-accent-soft text-accent">
-          <span className="text-[10px] font-semibold tracking-wide uppercase">
-            {when.toLocaleDateString([], { weekday: 'short' })}
-          </span>
-          <span className="text-base leading-none font-bold tabular-nums">{when.getDate()}</span>
-        </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-semibold">{s.workoutName}</span>
-          <span className="block truncate text-xs text-muted">
-            {s.exerciseNames.length > 0
-              ? s.exerciseNames.join(' · ') +
-                (s.exerciseCount > 3 ? ` +${s.exerciseCount - 3}` : '')
-              : 'No exercises logged'}
-          </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted tabular-nums">
-            {s.durationMin !== null && (
-              <span className="inline-flex items-center gap-1">
-                <Timer size={12} aria-hidden />
-                {s.durationMin} min
-              </span>
-            )}
-            <span>
-              {s.setCount} set{s.setCount === 1 ? '' : 's'}
-            </span>
-            {s.volumeKg > 0 && (
-              <span>
-                {toDisplay(s.volumeKg).toLocaleString()} {unitLabel}
-              </span>
-            )}
-          </span>
+          <span className="block truncate text-base font-semibold">{s.workoutName}</span>
+          <span className="block truncate text-sm text-muted tabular-nums">{meta.join(' · ')}</span>
+          {preview && <span className="block truncate text-xs text-muted">{preview}</span>}
         </span>
-        <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />
+        <ChevronRight size={20} className="shrink-0 text-muted" aria-hidden />
       </Link>
     </li>
   );
@@ -73,18 +55,16 @@ function SessionRow({
 /** Every finished workout, newest first, grouped by month. The place to see
  * what you've done — and to log something you did without the app. */
 export function HistoryPage() {
-  const units = useUnits();
   const [page, setPage] = useState(1);
   const total = useQuery({ queryKey: ['sessions', 'count'], queryFn: countFinishedSessions });
   const history = useQuery({
     queryKey: ['sessions', 'history', page],
     queryFn: () => listSessionHistory(PAGE_SIZE, (page - 1) * PAGE_SIZE),
   });
-  const toDisplay = (kg: number) =>
-    units === 'imperial' ? Math.round(kg * KG_TO_LB) : Math.round(kg);
-  const unitLabel = units === 'imperial' ? 'lb' : 'kg';
   const pageCount = Math.max(1, Math.ceil((total.data ?? 0) / PAGE_SIZE));
 
+  // The list arrives newest-first, so sessions of the same month are already
+  // next to each other: start a new group whenever the month changes.
   const groups: { key: string; label: string; items: SessionSummary[] }[] = [];
   for (const s of history.data ?? []) {
     const key = monthKey(s.startedAt);
@@ -94,34 +74,28 @@ export function HistoryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">History</h1>
-          <p className="text-sm text-muted">
-            {total.data === undefined
-              ? ' '
-              : `${total.data} workout${total.data === 1 ? '' : 's'} logged`}
-          </p>
-        </div>
-        <Link
-          to="/history/log"
-          className="springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
-        >
-          <CalendarPlus size={15} aria-hidden />
-          Log past workout
-        </Link>
-      </header>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <PageHeader
+        title="History"
+        subtitle={
+          total.data === undefined
+            ? undefined
+            : `${total.data} workout${total.data === 1 ? '' : 's'} logged`
+        }
+        actions={
+          <Link to="/history/log" className={buttonClasses('secondary')}>
+            <CalendarPlus size={18} aria-hidden />
+            Log past workout
+          </Link>
+        }
+      />
 
       {history.isSuccess && groups.length === 0 && (
         <div className="rounded-2xl border border-dashed border-line p-8 text-center">
           <Dumbbell size={28} className="mx-auto text-muted" aria-hidden />
           <p className="mt-3 font-semibold">Nothing here yet</p>
           <p className="mt-1 text-sm text-muted">Finished workouts show up here, newest first.</p>
-          <Link
-            to="/train"
-            className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
-          >
+          <Link to="/train" className={buttonClasses('primary', 'md', 'mt-4')}>
             Start your first workout
           </Link>
         </div>
@@ -129,12 +103,10 @@ export function HistoryPage() {
 
       {groups.map((group) => (
         <section key={group.key} className="space-y-2">
-          <h2 className="px-1 text-xs font-semibold tracking-wide text-muted uppercase">
-            {group.label}
-          </h2>
-          <ul className="space-y-2">
+          <SectionLabel>{group.label}</SectionLabel>
+          <ul className="grid gap-2 lg:grid-cols-2">
             {group.items.map((s) => (
-              <SessionRow key={s.id} s={s} unitLabel={unitLabel} toDisplay={toDisplay} />
+              <SessionRow key={s.id} s={s} />
             ))}
           </ul>
         </section>
@@ -145,7 +117,9 @@ export function HistoryPage() {
         pageCount={pageCount}
         onChange={(p) => {
           setPage(p);
-          window.scrollTo({ top: 0 });
+          // The page itself never scrolls — the app shell's <main> element is
+          // the scroll container — so window.scrollTo would do nothing here.
+          document.querySelector('main')?.scrollTo({ top: 0 });
         }}
       />
     </div>

@@ -8,6 +8,7 @@ import {
   TrendingUp,
   UtensilsCrossed,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -19,7 +20,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useUnits } from '@/lib/units';
+import { Card, PageHeader, buttonClasses } from '@/components/ui';
+import { displayWeight, kgToLb, useUnits, weightUnit } from '@/lib/units';
 import { getSavedTargets } from '@/features/goals/repository';
 import { nutritionDiscipline } from '@/features/nutrition/stats';
 import { GainsHero } from '../components/GainsHero';
@@ -35,35 +37,35 @@ import {
 const compactNumber = (v: number): string =>
   Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : String(v);
 
-const KG_TO_LB = 2.2046226218;
-
+/** A titled card — every chart and list on this page sits in one. */
 function Panel({
   title,
   Icon,
   children,
 }: {
   title: string;
-  Icon: typeof Award;
+  Icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+    <Card className="p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <Icon size={15} strokeWidth={1.8} aria-hidden />
-        </span>
+        <Icon size={18} className="shrink-0 text-accent" strokeWidth={1.8} aria-hidden />
         <h2 className="text-sm font-semibold">{title}</h2>
       </div>
       {children}
-    </section>
+    </Card>
   );
 }
 
+// recharts draws SVG, so it takes colors as strings rather than classes; the
+// CSS variables keep the charts on the active theme.
 const chartStyle = {
   grid: 'var(--color-line)',
   axis: 'var(--color-muted)',
   accent: 'var(--color-accent)',
 };
+const tickSize = 12;
 
 /** Progress: the data the app has been logging all along, finally visible —
  * weekly training volume, muscle balance, top lifts, and weight trend. */
@@ -82,31 +84,27 @@ export function ProgressPage() {
     queryFn: async () => nutritionDiscipline(14, (await getSavedTargets())?.kcal ?? null),
   });
 
-  const toDisplay = (kg: number) =>
-    units === 'imperial' ? Math.round(kg * KG_TO_LB) : Math.round(kg);
-  const unitLabel = units === 'imperial' ? 'lb' : 'kg';
+  // Lifted weights read best as whole numbers ("225 lb", not "224.9 lb").
+  const toDisplay = (kg: number) => Math.round(units === 'imperial' ? kgToLb(kg) : kg);
+  const unitLabel = weightUnit(units);
 
   const weeklyData = (weekly.data ?? []).map((w) => ({ ...w, volume: toDisplay(w.volumeKg) }));
+  // Body weight keeps one decimal — half a pound matters there.
   const weightData = (weight.data ?? []).map((w) => ({
     ...w,
-    weight: units === 'imperial' ? Math.round(w.weightKg * KG_TO_LB * 10) / 10 : w.weightKg,
+    weight: displayWeight(w.weightKg, units),
   }));
 
   const hasAnyTraining = (history.data ?? []).length > 0;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Progress</h1>
-        <p className="text-sm text-muted">
-          Every set you log builds this page — volume, balance, records, and trend lines.
-        </p>
-      </header>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <PageHeader title="Progress" />
 
       {!hasAnyTraining && history.isSuccess && (
-        <p className="rounded-2xl border border-line bg-surface p-6 text-center text-sm text-muted">
+        <Card className="p-6 text-center text-sm text-muted">
           Finish your first workout and your charts start here.
-        </p>
+        </Card>
       )}
 
       <GainsHero />
@@ -117,10 +115,15 @@ export function ProgressPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid stroke={chartStyle.grid} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" stroke={chartStyle.axis} fontSize={11} tickLine={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke={chartStyle.axis}
+                  fontSize={tickSize}
+                  tickLine={false}
+                />
                 <YAxis
                   stroke={chartStyle.axis}
-                  fontSize={11}
+                  fontSize={tickSize}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={compactNumber}
@@ -142,19 +145,20 @@ export function ProgressPage() {
           {(muscles.data ?? []).length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">No sets logged this week yet.</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {(muscles.data ?? []).slice(0, 8).map((m) => {
+                // Sorted most-trained first, so the first row sets the scale.
                 const max = muscles.data![0]!.sets;
                 return (
                   <li key={m.muscle} className="flex items-center gap-3">
-                    <span className="w-28 shrink-0 truncate text-xs font-medium">{m.muscle}</span>
+                    <span className="w-28 shrink-0 truncate text-sm font-medium">{m.muscle}</span>
                     <span className="h-2.5 grow overflow-hidden rounded-full bg-elev">
                       <span
                         className="block h-full rounded-full bg-linear-to-r from-accent to-accent-2"
                         style={{ width: `${Math.max(8, (m.sets / max) * 100)}%` }}
                       />
                     </span>
-                    <span className="w-8 shrink-0 text-right text-xs tabular-nums text-muted">
+                    <span className="w-8 shrink-0 text-right text-sm text-muted tabular-nums">
                       {m.sets}
                     </span>
                   </li>
@@ -172,20 +176,27 @@ export function ProgressPage() {
           ) : (
             <ul className="divide-y divide-line">
               {(lifts.data ?? []).map((l, i) => (
-                <li key={l.exerciseName} className="flex items-center gap-3 py-2">
-                  <span className="w-5 text-center text-xs font-bold text-accent">{i + 1}</span>
+                <li key={l.exerciseName}>
+                  {/* The whole row opens the exercise, not just its name. */}
                   <Link
                     to={`/exercises/${l.exerciseId}`}
-                    className="grow truncate text-sm font-medium hover:text-accent hover:underline"
+                    className="-mx-2 flex min-h-12 items-center gap-3 rounded-xl px-2 hover:bg-elev"
                   >
-                    {l.exerciseName}
+                    <span className="w-5 shrink-0 text-center text-sm font-bold text-accent">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 grow truncate text-sm font-medium">
+                      {l.exerciseName}
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-sm font-semibold tabular-nums">
+                        {toDisplay(l.estimatedOneRepMaxKg)} {unitLabel}
+                      </span>
+                      <span className="block text-sm text-muted tabular-nums">
+                        best {toDisplay(l.bestWeightKg)}
+                      </span>
+                    </span>
                   </Link>
-                  <span className="text-sm font-semibold tabular-nums">
-                    {toDisplay(l.estimatedOneRepMaxKg)} {unitLabel}
-                  </span>
-                  <span className="text-xs tabular-nums text-muted">
-                    best {toDisplay(l.bestWeightKg)}
-                  </span>
                 </li>
               ))}
             </ul>
@@ -195,17 +206,22 @@ export function ProgressPage() {
         <Panel title={`Body weight (${unitLabel})`} Icon={TrendingUp}>
           {weightData.length < 2 ? (
             <p className="py-8 text-center text-sm text-muted">
-              Log your weight on the Goals page a few days in a row to see the trend.
+              Log your weight under Goals a few days in a row to see the trend.
             </p>
           ) : (
             <div className="h-52">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={weightData} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke={chartStyle.grid} strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" stroke={chartStyle.axis} fontSize={11} tickLine={false} />
+                  <XAxis
+                    dataKey="label"
+                    stroke={chartStyle.axis}
+                    fontSize={tickSize}
+                    tickLine={false}
+                  />
                   <YAxis
                     stroke={chartStyle.axis}
-                    fontSize={11}
+                    fontSize={tickSize}
                     tickLine={false}
                     axisLine={false}
                     domain={['dataMin - 1', 'dataMax + 1']}
@@ -230,7 +246,7 @@ export function ProgressPage() {
           <div className="mb-3 flex flex-wrap gap-2">
             {eating.data.targetKcal !== null && (
               <span
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold tabular-nums ${
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums ${
                   eating.data.daysOverTarget > 3 ? 'bg-rose-500/15 text-rose-500' : 'bg-elev'
                 }`}
               >
@@ -239,14 +255,14 @@ export function ProgressPage() {
               </span>
             )}
             <span
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold tabular-nums ${
-                eating.data.unplannedTotal > 4 ? 'bg-amber-500/15 text-amber-600' : 'bg-elev'
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums ${
+                eating.data.unplannedTotal > 4 ? 'bg-amber-500/15 text-amber-500' : 'bg-elev'
               }`}
             >
               {eating.data.unplannedTotal} unplanned extra
               {eating.data.unplannedTotal === 1 ? '' : 's'}
             </span>
-            <span className="rounded-full bg-elev px-3 py-1.5 text-xs font-semibold tabular-nums">
+            <span className="rounded-full bg-elev px-3 py-1.5 text-sm font-semibold tabular-nums">
               {eating.data.avgMeals} meals · {eating.data.avgSnacks} snacks / day
             </span>
           </div>
@@ -272,62 +288,55 @@ export function ProgressPage() {
               );
             })}
           </div>
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2 text-sm text-muted">
             {eating.data.targetKcal !== null
               ? `Bars vs your ${eating.data.targetKcal.toLocaleString()} kcal target — rose = over target, amber = had unplanned extras.`
-              : 'Set daily targets on the Goals page to see over-target days here.'}
+              : 'Set daily targets under Goals to see over-target days here.'}
           </p>
         </Panel>
       )}
 
-      <Panel title="Workout history" Icon={CalendarCheck}>
+      <Panel title="Recent workouts" Icon={CalendarCheck}>
         {(history.data ?? []).length === 0 ? (
           <p className="py-6 text-center text-sm text-muted">No finished workouts yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="pb-2 font-semibold">Workout</th>
-                  <th className="pb-2 font-semibold">Date</th>
-                  <th className="pb-2 text-right font-semibold">Sets</th>
-                  <th className="pb-2 text-right font-semibold">Volume</th>
-                  <th className="pb-2 text-right font-semibold">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {(history.data ?? []).map((s) => (
-                  <tr key={s.id}>
-                    <td className="py-2 font-medium">
-                      <Link to={`/history/${s.id}`} className="hover:text-accent hover:underline">
-                        {s.workoutName}
-                      </Link>
-                    </td>
-                    <td className="py-2 text-muted">
-                      {new Date(s.startedAt).toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">{s.setCount}</td>
-                    <td className="py-2 text-right tabular-nums">
-                      {toDisplay(s.volumeKg).toLocaleString()} {unitLabel}
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-muted">
-                      {s.durationMin ? `${s.durationMin} min` : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Link
-              to="/history"
-              className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
-            >
+          <>
+            {/* Rows instead of a table: a five-column table needs sideways
+                scrolling on a phone, and its only link was the workout name. */}
+            <ul className="divide-y divide-line">
+              {(history.data ?? []).map((s) => (
+                <li key={s.id}>
+                  <Link
+                    to={`/history/${s.id}`}
+                    className="-mx-2 flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 hover:bg-elev"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{s.workoutName}</span>
+                      <span className="block truncate text-sm text-muted tabular-nums">
+                        {[
+                          new Date(s.startedAt).toLocaleDateString([], {
+                            month: 'short',
+                            day: 'numeric',
+                          }),
+                          s.durationMin ? `${s.durationMin} min` : null,
+                          `${s.setCount} set${s.setCount === 1 ? '' : 's'}`,
+                          s.volumeKg > 0
+                            ? `${toDisplay(s.volumeKg).toLocaleString()} ${unitLabel}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                    </span>
+                    <ChevronRight size={18} className="shrink-0 text-muted" aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <Link to="/history" className={buttonClasses('secondary', 'md', 'mt-3 w-full')}>
               See all history
-              <ChevronRight size={14} aria-hidden />
             </Link>
-          </div>
+          </>
         )}
       </Panel>
     </div>

@@ -19,7 +19,7 @@ export function SchedulePage() {
   const s = stats.data;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header>
         <h1 className="text-2xl font-bold">Schedule</h1>
         <p className="text-sm text-muted">
@@ -51,7 +51,7 @@ export function SchedulePage() {
           <div className="mt-4 space-y-1.5">
             {s.weeks.map((week, i) => (
               <div key={week.monday} className="grid grid-cols-[44px_repeat(7,minmax(0,1fr))] items-center gap-1.5">
-                <span className={`text-[9px] font-bold ${i === s.weeks.length - 1 ? 'text-accent' : 'text-muted'}`}>
+                <span className={`text-xs font-bold ${i === s.weeks.length - 1 ? 'text-accent' : 'text-muted'}`}>
                   {i === s.weeks.length - 1 ? 'NOW' : formatDateShort(week.monday)}
                 </span>
                 {week.days.map((day) => (

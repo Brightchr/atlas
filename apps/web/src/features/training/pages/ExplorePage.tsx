@@ -59,7 +59,7 @@ const categoryTone: Record<WorkoutCategory, string> = {
 
 function Tag({ children, tone = 'bg-accent-soft text-accent' }: { children: React.ReactNode; tone?: string }) {
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>
       {children}
     </span>
   );
@@ -326,42 +326,36 @@ const BROWSE_TILES: {
   key: BrowseKey;
   label: string;
   blurb: string;
-  gradient: string;
   Icon: typeof Dumbbell;
 }[] = [
   {
     key: 'plans',
     label: 'Weekly plans',
-    blurb: 'Complete weeks, ready to follow',
-    gradient: 'from-accent to-accent-2',
+    blurb: 'Complete weeks, ready to follow',
     Icon: CalendarDays,
   },
   {
     key: 'strength',
     label: 'Strength',
-    blurb: 'Barbells, dumbbells, muscle',
-    gradient: 'from-indigo-500 to-violet-600',
+    blurb: 'Barbells, dumbbells, muscle',
     Icon: Dumbbell,
   },
   {
     key: 'cardio',
     label: 'Cardio',
-    blurb: 'Steady engines, long burns',
-    gradient: 'from-sky-500 to-blue-600',
+    blurb: 'Steady engines, long burns',
     Icon: HeartPulse,
   },
   {
     key: 'hiit',
     label: 'HIIT',
-    blurb: 'Short, sharp, breathless',
-    gradient: 'from-orange-500 to-rose-500',
+    blurb: 'Short, sharp, breathless',
     Icon: Flame,
   },
   {
     key: 'mobility',
     label: 'Stretch & mobility',
-    blurb: 'Move better, recover faster',
-    gradient: 'from-teal-500 to-emerald-600',
+    blurb: 'Move better, recover faster',
     Icon: PersonStanding,
   },
 ];
@@ -658,7 +652,7 @@ export function ExplorePage() {
         <>
           <section aria-label="Browse all">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-              {BROWSE_TILES.map(({ key, label, blurb, gradient, Icon }) => {
+              {BROWSE_TILES.map(({ key, label, blurb, Icon }) => {
                 const count =
                   key === 'plans'
                     ? CATALOG_PLANS.length
@@ -668,14 +662,16 @@ export function ExplorePage() {
                     key={key}
                     type="button"
                     onClick={() => openBrowse(key)}
-                    className={`springy relative flex h-28 flex-col justify-between overflow-hidden rounded-2xl bg-linear-to-br ${gradient} p-3.5 text-left text-white shadow-sm hover:-translate-y-0.5 hover:shadow-md`}
+                    className="springy relative flex h-28 flex-col justify-between overflow-hidden rounded-2xl border border-line bg-surface p-3.5 text-left transition-colors hover:bg-elev"
                   >
-                    <Icon size={22} strokeWidth={1.8} className="opacity-90" aria-hidden />
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                      <Icon size={18} strokeWidth={1.8} aria-hidden />
+                    </span>
                     <span>
                       <span className="block text-sm leading-tight font-bold">{label}</span>
-                      <span className="block text-[11px] leading-snug opacity-85">{blurb}</span>
+                      <span className="block text-xs leading-snug text-muted">{blurb}</span>
                     </span>
-                    <span className="absolute top-3 right-3 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">
+                    <span className="absolute top-3 right-3 rounded-full bg-elev px-2 py-0.5 text-xs font-semibold text-muted">
                       {count}
                     </span>
                   </button>

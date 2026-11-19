@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Clock, Download, Dumbbell, ListChecks, Wrench } from 'lucide-react';
+import { Clock, Download, Dumbbell, ListChecks, Wrench } from 'lucide-react';
 import { fetchAllExercises } from '@/lib/exercise-db/client';
 import { GOAL_LABELS, LEVEL_LABELS, type TrainingGoal, type TrainingLevel } from '../profile';
 import { CATALOG_WORKOUTS, type CatalogWorkout } from '../catalog';
@@ -83,7 +83,7 @@ export function CatalogWorkoutPage() {
 
   if (!workout) {
     return (
-      <div className="mx-auto max-w-3xl p-6 text-center text-sm text-muted">
+      <div className="mx-auto max-w-5xl p-6 text-center text-sm text-muted">
         This workout isn't in the catalog.{' '}
         <Link to="/train/explore" className="text-accent hover:underline">
           Back to Explore
@@ -110,15 +110,7 @@ export function CatalogWorkoutPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/train/explore"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        Explore
-      </Link>
-
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

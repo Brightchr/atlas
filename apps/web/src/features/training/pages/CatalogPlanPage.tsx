@@ -1,7 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   BedDouble,
   CalendarDays,
   Download,
@@ -43,7 +42,7 @@ export function CatalogPlanPage() {
 
   if (!plan) {
     return (
-      <div className="mx-auto max-w-3xl p-6 text-center text-sm text-muted">
+      <div className="mx-auto max-w-5xl p-6 text-center text-sm text-muted">
         This plan isn't in the catalog.{' '}
         <Link to="/train/explore" className="text-accent hover:underline">
           Back to Explore
@@ -60,15 +59,7 @@ export function CatalogPlanPage() {
   const guide = PLAN_GUIDES[plan.key];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/train/explore"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        Explore
-      </Link>
-
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
       <header className="rounded-2xl bg-linear-to-br from-accent to-accent-2 p-5 text-accent-ink shadow-lg">
         <div className="mb-2 flex flex-wrap gap-1.5">
           <span className="rounded-full bg-accent-ink/15 px-2.5 py-0.5 text-[11px] font-bold">

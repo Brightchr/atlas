@@ -1,28 +1,40 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowLeft,
-  CalendarCheck,
-  Globe,
-  Pencil,
-  Repeat,
-  Share2,
-  Trash2,
-  Users,
-} from 'lucide-react';
+import { Check, Globe, Pencil, Repeat, Share2, Trash2, Users } from 'lucide-react';
 import type { SharedSessionVisibility } from '@arcadia/shared';
+import { Button, Card, ConfirmSheet, PageHeader, Sheet } from '@/components/ui';
 import { useShareSession, useUnshareSession, useWorkoutFeed } from '@/features/social/sessions';
 import { discardSession, getSession, repeatSession } from '@/features/workouts/repository';
-import { useUnits } from '@/lib/units';
+import { displayWeight, useUnits, weightUnit } from '@/lib/units';
 
-const KG_TO_LB = 2.2046226218;
+/** A timed set as people say it: "20s" under a minute, "1:30" from there on.
+ * (Rounding to whole minutes used to turn a 20-second plank into "0 min".) */
+function formatSetDuration(totalSec: number): string {
+  const sec = Math.round(totalSec);
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
 
-const actionButton =
-  'springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold shadow-sm transition-colors hover:bg-elev';
+// The four actions share one look: icon above label, so all four fit side by
+// side on a 375px phone while each stays a 56px-tall target. Written out
+// rather than built on buttonClasses() because that sets its own padding and
+// gap, and two Tailwind classes for the same property don't reliably override
+// each other.
+const actionBase =
+  'springy flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50';
+const actionNeutral = `${actionBase} border border-line bg-surface text-ink shadow-sm hover:bg-elev`;
+const actionActive = `${actionBase} bg-accent-soft text-accent`;
+const actionDanger = `${actionBase} bg-rose-500/10 text-rose-500 hover:bg-rose-500/20`;
+
+const SHARE_OPTIONS = [
+  { id: 'friends', label: 'Friends', hint: 'Accepted friends only', Icon: Users },
+  { id: 'public', label: 'Public', hint: 'Anyone who opens your profile', Icon: Globe },
+] as const;
 
 /** Drill-down for one finished workout: every set, grouped by exercise, with
- * the things you'd want to do with it next — repeat it, fix it, drop it. */
+ * the things you'd want to do with it next — repeat it, fix it, share it,
+ * drop it. */
 export function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -58,20 +70,16 @@ export function SessionDetailPage() {
 
   if (session.isSuccess && !session.data) {
     return (
-      <div className="mx-auto max-w-2xl p-6 text-center text-sm text-muted">
-        Couldn't find this session.{' '}
-        <Link to="/history" className="text-accent hover:underline">
-          Back to history
-        </Link>
+      <div className="mx-auto max-w-2xl space-y-4 p-4 md:p-6">
+        <PageHeader title="Workout" back="/history" />
+        <p className="text-sm text-muted">Couldn't find this session.</p>
       </div>
     );
   }
   if (!session.data) return null;
 
   const s = session.data;
-  const toDisplay = (kg: number) =>
-    units === 'imperial' ? Math.round(kg * KG_TO_LB * 10) / 10 : kg;
-  const unitLabel = units === 'imperial' ? 'lb' : 'kg';
+  const unitLabel = weightUnit(units);
   // Session order first (its own exercise list), then anything logged that
   // isn't in it (legacy sessions).
   const order = new Map<string, number>();
@@ -90,165 +98,63 @@ export function SessionDetailPage() {
     ? Math.max(1, Math.round((Date.parse(s.finishedAt) - Date.parse(s.startedAt)) / 60_000))
     : null;
 
+  // "52 min · 18 sets · 12,400 lb total" — pieces that don't apply drop out.
+  const summary = [
+    durationMin ? `${durationMin} min` : null,
+    `${s.sets.length} set${s.sets.length === 1 ? '' : 's'}`,
+    volume > 0
+      ? `${Math.round(displayWeight(volume, units)).toLocaleString()} ${unitLabel} total`
+      : null,
+  ].filter(Boolean);
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/history"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        History
-      </Link>
+      <PageHeader
+        title={s.workoutName}
+        subtitle={new Date(s.startedAt).toLocaleDateString([], {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        })}
+        back="/history"
+      />
 
-      <header className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <CalendarCheck size={18} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-bold">{s.workoutName}</h1>
-            <p className="text-xs text-muted">
-              {new Date(s.startedAt).toLocaleDateString([], {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-              })}
-              {durationMin && ` · ${durationMin} min`} · {s.sets.length} set
-              {s.sets.length === 1 ? '' : 's'}
-              {volume > 0 &&
-                ` · ${Math.round(toDisplay(volume)).toLocaleString()} ${unitLabel} total`}
-            </p>
-          </div>
-        </div>
-        {s.notes && <p className="mt-3 text-sm whitespace-pre-wrap text-muted">{s.notes}</p>}
+      <p className="text-sm text-muted tabular-nums">{summary.join(' · ')}</p>
+      {s.notes && <p className="text-sm whitespace-pre-wrap text-muted">{s.notes}</p>}
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={repeat.isPending}
-            onClick={() => repeat.mutate()}
-            className={actionButton}
-          >
-            <Repeat size={14} aria-hidden />
-            Repeat
-          </button>
-          <Link to={`/workouts/session/${s.id}`} className={actionButton}>
-            <Pencil size={14} aria-hidden />
-            Edit
-          </Link>
-          <button
-            type="button"
-            onClick={() => setSharing((v) => !v)}
-            aria-expanded={sharing}
-            className={`${actionButton} ${sharedAs ? 'border-accent/40 bg-accent-soft text-accent' : ''}`}
-          >
-            <Share2 size={14} aria-hidden />
-            {sharedAs ? `Shared · ${sharedAs.visibility}` : 'Share'}
-          </button>
-          {confirmDelete ? (
-            <span className="ml-auto flex items-center gap-1.5 text-xs">
-              <button
-                type="button"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
-                className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 font-semibold text-rose-600"
-              >
-                Delete
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(false)}
-                className="rounded-lg px-2.5 py-1.5 font-semibold text-muted hover:bg-elev"
-              >
-                Keep
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-rose-500"
-            >
-              <Trash2 size={13} aria-hidden />
-              Delete
-            </button>
-          )}
-        </div>
-      </header>
-
-      {sharing && (
-        <section className="space-y-3 rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <div>
-            <h2 className="text-sm font-semibold">Share this workout</h2>
-            <p className="text-xs text-muted">
-              A snapshot of the exercises and sets goes to the server. Friends see it in their
-              activity feed; public shares also show on your profile. Unshare any time.
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(
-              [
-                { id: 'friends', label: 'Friends', hint: 'Accepted friends only', Icon: Users },
-                {
-                  id: 'public',
-                  label: 'Public',
-                  hint: 'Anyone who opens your profile',
-                  Icon: Globe,
-                },
-              ] as const
-            ).map(({ id, label, hint, Icon }) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={visibility === id}
-                onClick={() => setVisibility(id)}
-                className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                  visibility === id
-                    ? 'border-accent/40 bg-accent-soft'
-                    : 'border-line bg-surface hover:bg-elev'
-                }`}
-              >
-                <Icon size={16} className="shrink-0 text-accent" aria-hidden />
-                <span>
-                  <span className="block text-sm font-semibold">{label}</span>
-                  <span className="block text-xs text-muted">{hint}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-          {share.isError && (
-            <p className="text-xs text-rose-500">
-              Couldn't share: {share.error instanceof Error ? share.error.message : 'try again'}.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={share.isPending || s.sets.length === 0}
-              onClick={() =>
-                share.mutate({ session: s, visibility }, { onSuccess: () => setSharing(false) })
-              }
-              className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              <Share2 size={14} aria-hidden />
-              {sharedAs ? 'Update share' : 'Share'}
-            </button>
-            {sharedAs && (
-              <button
-                type="button"
-                disabled={unshare.isPending}
-                onClick={() => unshare.mutate(s.id, { onSuccess: () => setSharing(false) })}
-                className="text-xs font-medium text-muted transition-colors hover:text-rose-500"
-              >
-                Unshare
-              </button>
-            )}
-            {s.sets.length === 0 && (
-              <span className="text-xs text-muted">Log at least one set to share.</span>
-            )}
-          </div>
-        </section>
-      )}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          type="button"
+          className={actionNeutral}
+          disabled={repeat.isPending}
+          onClick={() => repeat.mutate()}
+        >
+          <Repeat size={20} aria-hidden />
+          Repeat
+        </button>
+        <Link to={`/workouts/session/${s.id}`} className={actionNeutral}>
+          <Pencil size={20} aria-hidden />
+          Edit
+        </Link>
+        {/* Accent-tinted when already shared, so the state is visible without
+            opening the sheet. */}
+        <button
+          type="button"
+          className={sharedAs ? actionActive : actionNeutral}
+          onClick={() => {
+            // Open on the current setting when it's already shared.
+            if (sharedAs) setVisibility(sharedAs.visibility);
+            setSharing(true);
+          }}
+        >
+          <Share2 size={20} aria-hidden />
+          {sharedAs ? 'Shared' : 'Share'}
+        </button>
+        <button type="button" className={actionDanger} onClick={() => setConfirmDelete(true)}>
+          <Trash2 size={20} aria-hidden />
+          Delete
+        </button>
+      </div>
 
       {sections.length === 0 && (
         <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
@@ -257,27 +163,109 @@ export function SessionDetailPage() {
       )}
 
       {sections.map(([name, sets]) => (
-        <section key={name} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+        <Card key={name} className="px-4 pt-1 pb-3">
           <Link
             to={`/exercises/${sets[0]!.exerciseId}`}
-            className="text-sm font-semibold text-accent hover:underline"
+            className="flex min-h-11 items-center text-base font-semibold text-accent hover:underline"
           >
             {name}
           </Link>
-          <ul className="mt-2 space-y-1">
+          <ul className="divide-y divide-line">
             {sets.map((set) => (
-              <li key={set.id} className="flex items-baseline justify-between text-sm">
-                <span className="text-xs text-muted">Set {set.setNumber}</span>
-                <span className="tabular-nums">
+              <li key={set.id} className="flex items-baseline justify-between py-2 text-sm">
+                <span className="text-muted">Set {set.setNumber}</span>
+                <span className="font-medium tabular-nums">
                   {set.durationSec
-                    ? `${Math.round(set.durationSec / 60)} min`
-                    : `${set.reps ?? '—'} reps${set.weightKg ? ` × ${toDisplay(set.weightKg)} ${unitLabel}` : ''}`}
+                    ? formatSetDuration(set.durationSec)
+                    : `${set.reps ?? '—'} reps${set.weightKg ? ` × ${displayWeight(set.weightKg, units)} ${unitLabel}` : ''}`}
                 </span>
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ))}
+
+      {sharing && (
+        <Sheet
+          title="Share this workout"
+          onClose={() => setSharing(false)}
+          footer={
+            <div className="grid gap-2">
+              <Button
+                size="lg"
+                block
+                disabled={share.isPending || s.sets.length === 0}
+                onClick={() =>
+                  share.mutate({ session: s, visibility }, { onSuccess: () => setSharing(false) })
+                }
+              >
+                <Share2 size={18} aria-hidden />
+                {sharedAs ? 'Update share' : 'Share'}
+              </Button>
+              {sharedAs && (
+                <Button
+                  variant="ghost"
+                  block
+                  disabled={unshare.isPending}
+                  onClick={() => unshare.mutate(s.id, { onSuccess: () => setSharing(false) })}
+                >
+                  Stop sharing
+                </Button>
+              )}
+            </div>
+          }
+        >
+          <p className="text-sm text-muted">
+            A snapshot of the exercises and sets goes to the server. Friends see it in their
+            activity feed; public shares also show on your profile. You can stop sharing any time.
+          </p>
+          <div className="mt-4 grid gap-2">
+            {SHARE_OPTIONS.map(({ id, label, hint, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={visibility === id}
+                onClick={() => setVisibility(id)}
+                className={`flex min-h-14 items-center gap-3 rounded-xl border px-4 py-2 text-left transition-colors ${
+                  visibility === id
+                    ? 'border-accent bg-accent-soft'
+                    : 'border-line bg-surface hover:bg-elev'
+                }`}
+              >
+                <Icon size={20} className="shrink-0 text-accent" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="block text-sm text-muted">{hint}</span>
+                </span>
+                {visibility === id && (
+                  <Check size={18} className="shrink-0 text-accent" aria-hidden />
+                )}
+              </button>
+            ))}
+          </div>
+          {s.sets.length === 0 && (
+            <p className="mt-3 text-sm text-muted">Log at least one set to share.</p>
+          )}
+          {share.isError && (
+            <p className="mt-3 text-sm text-rose-500">
+              Couldn't share: {share.error instanceof Error ? share.error.message : 'try again'}.
+            </p>
+          )}
+        </Sheet>
+      )}
+
+      {confirmDelete && (
+        <ConfirmSheet
+          title="Delete this workout?"
+          body={`"${s.workoutName}" and its ${s.sets.length} logged set${
+            s.sets.length === 1 ? '' : 's'
+          } will be removed from your history. This can't be undone.`}
+          confirmLabel="Delete workout"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate()}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
     </div>
   );
 }

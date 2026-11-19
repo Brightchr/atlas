@@ -1,17 +1,25 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CalendarPlus } from 'lucide-react';
+import { CalendarPlus } from 'lucide-react';
+import { Button, Card, PageHeader } from '@/components/ui';
 import { createPastSession, listWorkouts } from '@/features/workouts/repository';
+import { localIsoDate } from '@/lib/dates';
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const todayInput = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
+// min-h-11 = 44px, and text-base (16px) stops iOS Safari zooming the page
+// when a field is focused.
 const field =
-  'w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink shadow-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
+  'min-h-11 w-full rounded-xl border border-line bg-bg px-3 text-base text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold tracking-wide text-muted uppercase">{label}</span>
+      {children}
+    </label>
+  );
+}
 
 /** Log a workout that happened without the app (or before you had it).
  * Creates a finished, dated session and hands over to the session editor to
@@ -22,7 +30,9 @@ export function LogPastWorkoutPage() {
   const workouts = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
 
   const [name, setName] = useState('Workout');
-  const [date, setDate] = useState(todayInput);
+  // localIsoDate() is today as yyyy-mm-dd in local time — exactly the format
+  // <input type="date"> wants.
+  const [date, setDate] = useState(() => localIsoDate());
   const [time, setTime] = useState('18:00');
   const [duration, setDuration] = useState('60');
   const [routineId, setRoutineId] = useState('');
@@ -48,96 +58,88 @@ export function LogPastWorkoutPage() {
   const pickRoutine = (id: string) => {
     setRoutineId(id);
     const routine = (workouts.data ?? []).find((w) => w.id === id);
+    // Take the routine's name unless the user already typed their own.
     if (routine && (name === 'Workout' || !name.trim())) setName(routine.name);
   };
 
   return (
     <div className="mx-auto max-w-xl space-y-4 p-4 md:p-6">
-      <Link
-        to="/history"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-ink"
-      >
-        <ArrowLeft size={15} aria-hidden />
-        History
-      </Link>
+      <PageHeader title="Log a past workout" back="/history" />
+      <p className="text-sm text-muted">
+        Set when it happened. You'll add the exercises and sets on the next screen.
+      </p>
 
-      <header>
-        <h1 className="text-2xl font-bold">Log a past workout</h1>
-        <p className="text-sm text-muted">
-          Set when it happened. You'll add the exercises and sets on the next screen.
-        </p>
-      </header>
+      <Card className="p-4">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate();
+          }}
+        >
+          <Field label="Routine">
+            <select
+              value={routineId}
+              onChange={(e) => pickRoutine(e.target.value)}
+              className={field}
+            >
+              <option value="">None — I'll add exercises myself</option>
+              {(workouts.data ?? []).map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} · {w.exercises.length} exercise{w.exercises.length === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-      <form
-        className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-sm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          create.mutate();
-        }}
-      >
-        <label className="block space-y-1.5">
-          <span className="text-xs font-semibold tracking-wide text-muted uppercase">Routine</span>
-          <select value={routineId} onChange={(e) => pickRoutine(e.target.value)} className={field}>
-            <option value="">None — I'll add exercises myself</option>
-            {(workouts.data ?? []).map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} · {w.exercises.length} exercise{w.exercises.length === 1 ? '' : 's'}
-              </option>
-            ))}
-          </select>
-        </label>
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
+          </Field>
 
-        <label className="block space-y-1.5">
-          <span className="text-xs font-semibold tracking-wide text-muted uppercase">Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
-        </label>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold tracking-wide text-muted uppercase">Date</span>
+          <Field label="Date">
             <input
               type="date"
               required
               value={date}
-              max={todayInput()}
+              max={localIsoDate()}
               onChange={(e) => setDate(e.target.value)}
               className={field}
             />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold tracking-wide text-muted uppercase">Start</span>
-            <input
-              type="time"
-              required
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className={field}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-xs font-semibold tracking-wide text-muted uppercase">
-              Minutes
-            </span>
-            <input
-              type="number"
-              min="1"
-              required
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              className={field}
-            />
-          </label>
-        </div>
+          </Field>
 
-        <button
-          type="submit"
-          disabled={create.isPending}
-          className="springy inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <CalendarPlus size={16} aria-hidden />
-          Continue to exercises
-        </button>
-      </form>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Start">
+              <input
+                type="time"
+                required
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className={field}
+              />
+            </Field>
+            <Field label="Minutes">
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                required
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                className={field}
+              />
+            </Field>
+          </div>
+
+          {create.isError && (
+            <p className="text-sm text-rose-500">Couldn't save that workout — try again.</p>
+          )}
+
+          <Button type="submit" size="lg" block disabled={create.isPending}>
+            <CalendarPlus size={18} aria-hidden />
+            Continue to exercises
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
