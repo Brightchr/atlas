@@ -58,6 +58,29 @@ async function openDatabase(): Promise<SQLiteDBConnection> {
     // local database and the app looks factory-reset. Best-effort: browsers
     // may decline; sync is the recovery path either way.
     void navigator.storage?.persist?.().catch(() => undefined);
+    // jeep-sqlite (a Stencil component) finishes loading on
+    // requestAnimationFrame, which browsers pause while a tab is hidden. The
+    // app opened in a background tab would then sit until the init timeout
+    // and report a broken database. So, only while the store initialises,
+    // each frame callback also gets a 100ms timer and runs on whichever
+    // fires first. (document.hidden is not a reliable test: a window covered
+    // by another app reports "visible" and still gets no frames.)
+    const nativeRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (callback) => {
+      let ran = false;
+      const once = (time: number) => {
+        if (ran) return;
+        ran = true;
+        callback(time);
+      };
+      window.setTimeout(() => once(performance.now()), 100);
+      return nativeRaf.call(window, once);
+    };
+    const restoreRaf = () => {
+      window.requestAnimationFrame = nativeRaf;
+    };
+    // Whatever happens below, hand the real function back shortly after.
+    window.setTimeout(restoreRaf, INIT_TIMEOUT_MS);
     const { defineCustomElements } = await import('jeep-sqlite/loader');
     defineCustomElements(window);
     if (!document.querySelector('jeep-sqlite')) {
