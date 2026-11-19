@@ -1,279 +1,72 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowLeftRight,
-  BookmarkPlus,
-  BookOpenText,
-  ChevronRight,
-  Cookie,
-  Moon,
-  NotebookPen,
-  Plus,
-  ShoppingCart,
-  Sparkles,
-  Sun,
-  Sunrise,
-  X,
-} from 'lucide-react';
-import type { Food, Macros, MealPlanItem, MealType } from '@arcadia/shared';
-import { formatDate } from '@/lib/dates';
+import { CalendarDays } from 'lucide-react';
+import type { Food, MealPlanItem, MealType } from '@arcadia/shared';
+import { Button, ConfirmSheet } from '@/components/ui';
 import { getSavedTargets } from '@/features/goals/repository';
+import { localDayOfWeek } from '@/lib/dates';
 import { getActiveMealPlan } from '../activeMealPlan';
-import { FoodPicker } from '../components/FoodPicker';
-import { NamesArtStrip, RecipeThumb } from '../components/RecipeArt';
-import { SwapPicker } from '../components/SwapPicker';
+import { AddToSlotSheet } from '../components/mealplan/AddToSlotSheet';
+import { DayView } from '../components/mealplan/DayView';
+import { MacroSummary } from '../components/mealplan/MacroSummary';
+import { PlanActions } from '../components/mealplan/PlanActions';
+import { PlanCard } from '../components/mealplan/PlanCard';
+import {
+  DAYS,
+  itemMacros,
+  summarizeWeek,
+  sumMacros,
+  type PlanLookup,
+} from '../components/mealplan/planMath';
+import { SwapSheet } from '../components/mealplan/SwapSheet';
+import { WeekView } from '../components/mealplan/WeekView';
+import { Segmented } from '../components/Segmented';
 import {
   addMealPlanItem,
-  addPlanRangeToShoppingList,
-  getShoppingCadenceDays,
   listMealPlanItems,
-  logPlanDayToDiary,
   removeMealPlanItem,
-  setShoppingCadenceDays,
   swapMealPlanItemForCatalogRecipe,
 } from '../mealPlan';
 import type { CatalogRecipe } from '../recipeCatalog';
-import { MEAL_PLAN_TEMPLATES, templateArtNames } from '../mealPlanCatalog';
-import { saveCurrentWeekAsPlan } from '../savedMealPlans';
-import { listRecipes, type RecipeDetails } from '../recipes';
-import { getFoodsByIds, scaleMacros } from '../repository';
-import { localDayOfWeek, localIsoDate } from '@/lib/dates';
+import { listRecipes } from '../recipes';
+import { getFoodsByIds } from '../repository';
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const MEALS: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const VIEWS = [
+  ['week', 'Week'],
+  ['day', 'Day'],
+] as const;
 
-const MEAL_META: Record<MealType, { Icon: typeof Sunrise; tint: string }> = {
-  breakfast: { Icon: Sunrise, tint: 'bg-amber-500/15 text-amber-500' },
-  lunch: { Icon: Sun, tint: 'bg-orange-500/15 text-orange-500' },
-  dinner: { Icon: Moon, tint: 'bg-indigo-500/15 text-indigo-400' },
-  snack: { Icon: Cookie, tint: 'bg-teal-500/15 text-teal-600' },
-};
-
-/** Today as a 0 = Monday … 6 = Sunday index (JS Date has 0 = Sunday). */
-const todayIndex = () => localDayOfWeek();
-
-function itemMacros(
-  item: MealPlanItem,
-  foods: Map<string, Food>,
-  recipes: RecipeDetails[],
-): Macros | null {
-  if (item.kind === 'food') {
-    const food = foods.get(item.refId);
-    return food && item.grams ? scaleMacros(food.per100g, item.grams) : null;
-  }
-  const recipe = recipes.find((r) => r.id === item.refId);
-  if (!recipe) return null;
-  const s = item.servings ?? 1;
-  return {
-    kcal: Math.round(recipe.perServing.kcal * s),
-    proteinG: +(recipe.perServing.proteinG * s).toFixed(1),
-    carbsG: +(recipe.perServing.carbsG * s).toFixed(1),
-    fatG: +(recipe.perServing.fatG * s).toFixed(1),
-  };
-}
-
-function amountLabel(item: MealPlanItem): string {
-  if (item.kind === 'food') return `${item.grams ?? 0} g`;
-  const s = item.servings ?? 1;
-  return `${s} serving${s === 1 ? '' : 's'}`;
-}
-
-function sumMacros(items: MealPlanItem[], foods: Map<string, Food>, recipes: RecipeDetails[]) {
-  return items.reduce(
-    (acc, item) => {
-      const m = itemMacros(item, foods, recipes);
-      return m
-        ? {
-            kcal: acc.kcal + m.kcal,
-            proteinG: acc.proteinG + m.proteinG,
-            carbsG: acc.carbsG + m.carbsG,
-            fatG: acc.fatG + m.fatG,
-          }
-        : acc;
-    },
-    { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 },
-  );
-}
-
-/** Inline add flow for one slot: pick a plain food (with grams) or a recipe
- * (with servings). */
-function SlotAdder({
-  recipes,
-  onAddFood,
-  onAddRecipe,
-  onClose,
-}: {
-  recipes: RecipeDetails[];
-  onAddFood: (food: Food, grams: number) => void;
-  onAddRecipe: (recipe: RecipeDetails, servings: number) => void;
-  onClose: () => void;
-}) {
-  const [mode, setMode] = useState<'food' | 'recipe'>(recipes.length > 0 ? 'recipe' : 'food');
-  const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? '');
-  const [servings, setServings] = useState('1');
-
-  return (
-    <div className="mt-2 space-y-2 rounded-xl bg-elev p-2.5">
-      <div className="flex items-center gap-1.5">
-        {recipes.length > 0 && (
-          <button
-            type="button"
-            aria-pressed={mode === 'recipe'}
-            onClick={() => setMode('recipe')}
-            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-              mode === 'recipe' ? 'bg-accent text-accent-ink' : 'text-muted hover:text-ink'
-            }`}
-          >
-            <BookOpenText size={12} aria-hidden />
-            Recipe
-          </button>
-        )}
-        <button
-          type="button"
-          aria-pressed={mode === 'food'}
-          onClick={() => setMode('food')}
-          className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-            mode === 'food' ? 'bg-accent text-accent-ink' : 'text-muted hover:text-ink'
-          }`}
-        >
-          Food
-        </button>
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded p-1 text-muted transition-colors hover:text-ink"
-        >
-          <X size={13} aria-hidden />
-        </button>
-      </div>
-
-      {mode === 'recipe' ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={recipeId}
-            onChange={(e) => setRecipeId(e.target.value)}
-            aria-label="Recipe"
-            className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
-          >
-            {recipes.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.perServing.kcal} kcal/serving)
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min="0.5"
-            step="0.5"
-            value={servings}
-            onChange={(e) => setServings(e.target.value)}
-            aria-label="Servings"
-            className="w-20 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-          <button
-            type="button"
-            disabled={!recipeId || !Number(servings)}
-            onClick={() => {
-              const recipe = recipes.find((r) => r.id === recipeId);
-              if (recipe) onAddRecipe(recipe, Number(servings));
-            }}
-            className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            Add
-          </button>
-        </div>
-      ) : (
-        <FoodPicker onPick={onAddFood} />
-      )}
-    </div>
-  );
-}
-
-/** One meal of one day in the week overview: art strip, primary item, the
- * rest as "+ item" lines — tap to jump into that day's editor. */
-function WeekMealCard({
-  meal,
-  items,
-  foods,
-  recipes,
-  onOpen,
-  onSwap,
-}: {
-  meal: MealType;
-  items: MealPlanItem[];
-  foods: Map<string, Food>;
-  recipes: RecipeDetails[];
-  onOpen: () => void;
-  onSwap?: () => void;
-}) {
-  const kcal = Math.round(sumMacros(items, foods, recipes).kcal);
-  const primary = items[0];
-
-  return (
-    <div
-      onClick={onOpen}
-      className="springy flex w-full cursor-pointer items-stretch overflow-hidden rounded-2xl border border-line bg-surface text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-    >
-      <span
-        aria-hidden
-        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-        className="flex w-6 shrink-0 items-center justify-center bg-elev/60 py-2 text-[10px] font-semibold tracking-wider text-muted uppercase"
-      >
-        {meal}
-      </span>
-      {primary ? (
-        <>
-          <RecipeThumb name={primary.name} className="w-16 self-stretch rounded-none text-2xl" />
-          <span className="min-w-0 flex-1 px-3 py-2.5">
-            <span className="block truncate text-sm font-semibold">{primary.name}</span>
-            {items.slice(1).map((i) => (
-              <span key={i.id} className="block truncate text-xs text-muted">
-                + {i.name}
-              </span>
-            ))}
-          </span>
-          <span className="flex shrink-0 items-center gap-1 pr-2 text-xs text-muted tabular-nums">
-            {kcal > 0 && <span>{kcal} kcal</span>}
-            {onSwap && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSwap();
-                }}
-                aria-label={`Swap ${primary.name}`}
-                className="rounded-lg border border-line bg-surface p-1.5 shadow-sm transition-colors hover:bg-elev hover:text-ink"
-              >
-                <ArrowLeftRight size={13} aria-hidden />
-              </button>
-            )}
-          </span>
-        </>
-      ) : (
-        <span className="flex flex-1 items-center gap-1.5 px-3 py-3 text-sm text-muted/70">
-          <Plus size={14} aria-hidden />
-          Add {meal}
-          <ChevronRight size={14} className="ml-auto" aria-hidden />
-        </span>
-      )}
-    </div>
-  );
-}
-
+/** The weekly meal plan. Two views of the same seven days: Week (overview,
+ * swap a meal) and Day (edit one day).
+ *
+ * Layout: on wide screens the plan, its numbers and its actions sit in a
+ * left column and the week/day fills the right; on phones they stack in that
+ * order. Adding, swapping, removing and saving all happen in sheets on top,
+ * so the page never jumps around.
+ *
+ * This component owns the plan data and which sheet is open; the pieces
+ * under components/mealplan/ only draw what they are given. */
 export function MealPlanPage() {
   const [view, setView] = useState<'week' | 'day'>('week');
-  const [day, setDay] = useState(todayIndex);
-  const [openSlot, setOpenSlot] = useState<MealType | null>(null);
-  const navigate = useNavigate();
+  // The day shown in the Day view (0 = Monday). Starts on today.
+  const [day, setDay] = useState(() => localDayOfWeek());
+  // Which sheet is open. Items are remembered by id so each sheet always
+  // shows the freshest copy from the query (and closes if the item is gone).
+  const [adding, setAdding] = useState<{ day: number; meal: MealType } | null>(null);
+  const [swapId, setSwapId] = useState<string | null>(null);
+  const [removeId, setRemoveId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const planQuery = useQuery({ queryKey: ['mealPlan'], queryFn: listMealPlanItems });
   const recipesQuery = useQuery({ queryKey: ['recipes'], queryFn: listRecipes });
   const targetsQuery = useQuery({ queryKey: ['targets'], queryFn: getSavedTargets });
+  // What the week is based on (a template, a saved plan, or nothing).
+  const activePlanQuery = useQuery({
+    queryKey: ['mealPlan', 'active'],
+    queryFn: getActiveMealPlan,
+  });
 
+  // Plan items only store a food's id; load those foods to get their macros.
   const foodIds = useMemo(
     () => [...new Set((planQuery.data ?? []).filter((i) => i.kind === 'food').map((i) => i.refId))],
     [planQuery.data],
@@ -286,630 +79,195 @@ export function MealPlanPage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
   const addMutation = useMutation({ mutationFn: addMealPlanItem, onSuccess: invalidate });
-  const removeMutation = useMutation({ mutationFn: removeMealPlanItem, onSuccess: invalidate });
+  const removeMutation = useMutation({
+    mutationFn: removeMealPlanItem,
+    onSuccess: () => {
+      setRemoveId(null);
+      void invalidate();
+    },
+  });
   // Swapping one slot for a catalog recipe (keeps day, meal and servings).
-  const [swapId, setSwapId] = useState<string | null>(null);
   const swapMutation = useMutation({
     mutationFn: ({ id, entry, servings }: { id: string; entry: CatalogRecipe; servings: number }) =>
       swapMealPlanItemForCatalogRecipe(id, entry, servings),
     onSuccess: () => {
       setSwapId(null);
       void invalidate();
+      // The swap imports the catalog recipe, so the recipe list changed too.
       void queryClient.invalidateQueries({ queryKey: ['recipes'] });
     },
   });
-  const logDay = view === 'week' ? todayIndex() : day;
-  const logDayMutation = useMutation({
-    mutationFn: () => logPlanDayToDiary(logDay, localIsoDate()),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['diary'] });
-      void queryClient.invalidateQueries({ queryKey: ['goals'] });
-    },
-  });
-  // The grocery cadence: how many days each shopping trip should cover.
-  const cadenceQuery = useQuery({
-    queryKey: ['settings', 'shopping_cadence'],
-    queryFn: getShoppingCadenceDays,
-  });
-  const cadence = cadenceQuery.data ?? 7;
-  const [customCadence, setCustomCadence] = useState(false);
-  const setCadence = useMutation({
-    mutationFn: setShoppingCadenceDays,
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['settings', 'shopping_cadence'] }),
-  });
-  const shoppingMutation = useMutation({
-    mutationFn: () => addPlanRangeToShoppingList(cadence),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['shopping'] }),
-  });
 
-  // Saving the current week as a reusable named plan (Browse → My plans).
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [planName, setPlanName] = useState('');
-  const savePlanMutation = useMutation({
-    mutationFn: () => saveCurrentWeekAsPlan(planName),
-    onSuccess: () => {
-      setSavingPlan(false);
-      setPlanName('');
-      void queryClient.invalidateQueries({ queryKey: ['mealPlan', 'saved'] });
-    },
-  });
+  const items = useMemo(() => planQuery.data ?? [], [planQuery.data]);
+  // useMemo keeps `lookup` the same object between renders so the week
+  // summary below is only recalculated when the data actually changes.
+  const lookup: PlanLookup = useMemo(
+    () => ({
+      foods: foodsQuery.data ?? new Map<string, Food>(),
+      recipes: recipesQuery.data ?? [],
+    }),
+    [foodsQuery.data, recipesQuery.data],
+  );
+  const week = useMemo(() => summarizeWeek(items, lookup), [items, lookup]);
 
-  // What the week is based on (template or custom) — the hero card's story.
-  const activePlanQuery = useQuery({
-    queryKey: ['mealPlan', 'active'],
-    queryFn: getActiveMealPlan,
-  });
+  const targets = targetsQuery.data;
   const activePlan = activePlanQuery.data ?? null;
-  const activeTemplate = activePlan?.key
-    ? MEAL_PLAN_TEMPLATES.find((t) => t.key === activePlan.key)
-    : undefined;
+  const hasItems = items.length > 0;
+  const dayItems = items.filter((i) => i.dayOfWeek === day);
+  const swapItem = items.find((i) => i.id === swapId) ?? null;
+  const removeItem = items.find((i) => i.id === removeId) ?? null;
 
-  const recipes = recipesQuery.data ?? [];
-  const foods = foodsQuery.data ?? new Map<string, Food>();
-  const allItems = planQuery.data ?? [];
-  const dayItems = allItems.filter((i) => i.dayOfWeek === day);
-  const dayTotals = sumMacros(dayItems, foods, recipes);
-  const hasAnyItems = allItems.length > 0;
+  // "Log to diary" copies today's plan in the Week view and the day on
+  // screen in the Day view.
+  const logDay = view === 'week' ? localDayOfWeek() : day;
 
-  // Week summary: the average planned day, ignoring empty days.
-  const weekSummary = useMemo(() => {
-    const items = planQuery.data ?? [];
-    const foodMap = foodsQuery.data ?? new Map<string, Food>();
-    const recipeList = recipesQuery.data ?? [];
-    const perDay = DAYS.map((_, i) =>
-      sumMacros(
-        items.filter((it) => it.dayOfWeek === i),
-        foodMap,
-        recipeList,
-      ),
-    );
-    const planned = perDay.filter((d) => d.kcal > 0);
-    if (planned.length === 0) return null;
-    const avg = (pick: (m: Macros) => number) =>
-      Math.round(planned.reduce((s, d) => s + pick(d), 0) / planned.length);
-    return {
-      days: planned.length,
-      kcal: avg((m) => m.kcal),
-      proteinG: avg((m) => m.proteinG),
-      carbsG: avg((m) => m.carbsG),
-      fatG: avg((m) => m.fatG),
-      perDay,
-    };
-  }, [planQuery.data, foodsQuery.data, recipesQuery.data]);
-
-  const openDaySlot = (d: number, meal: MealType | null) => {
-    setDay(d);
-    setView('day');
-    setOpenSlot(meal);
-    setSwapId(null);
+  const openSwap = (item: MealPlanItem) => {
+    swapMutation.reset(); // forget an earlier failure before reopening
+    setSwapId(item.id);
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{view === 'week' ? 'This week' : DAYS[day]}</h1>
-          <p className="text-sm text-muted">
-            Plan breakfast to snacks for each day — then log a day to your diary in one tap or turn
-            the week into a shopping list.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="grid grid-cols-2 rounded-xl border border-line bg-surface p-1 text-xs font-semibold shadow-sm">
-            {(
-              [
-                ['week', 'Week'],
-                ['day', 'Day'],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={view === value}
-                onClick={() => {
-                  setView(value);
-                  setOpenSlot(null);
-                  setSwapId(null);
-                }}
-                className={`rounded-lg px-3 py-1.5 transition-colors ${
-                  view === value ? 'bg-accent text-accent-ink shadow-sm' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => void navigate('/eat/meal-plan/browse')}
-            className="springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
-          >
-            <BookOpenText size={15} aria-hidden />
-            Browse plans
-          </button>
-          <button
-            type="button"
-            onClick={() => void navigate('/eat/meal-plan/build')}
-            className="springy inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
-          >
-            <Sparkles size={15} aria-hidden />
-            Build a plan
-          </button>
-        </div>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 truncate text-2xl font-bold">
+          {view === 'week' ? 'This week' : DAYS[day]}
+        </h1>
+        <Segmented
+          label="View"
+          options={VIEWS}
+          value={view}
+          onChange={setView}
+          className="w-40 shrink-0"
+        />
       </header>
 
-      {hasAnyItems && activePlan && (
-        <section className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
-          {activeTemplate && (
-            <NamesArtStrip names={templateArtNames(activeTemplate)} className="h-14" />
-          )}
-          <div className="flex flex-wrap items-center gap-3 p-3.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold tracking-wider text-muted uppercase">
-                Your plan
-              </p>
-              <p className="truncate font-semibold">{activePlan.name}</p>
-              <p className="text-xs text-muted tabular-nums">
-                since {formatDate(activePlan.appliedAt)}
-                {activeTemplate &&
-                  ` · ~${activeTemplate.kcalPerDay.toLocaleString()} kcal · ${activeTemplate.proteinPerDay} g protein / day`}
-              </p>
-            </div>
-            {activeTemplate && (
-              <div className="hidden flex-wrap gap-1 sm:flex">
-                {activeTemplate.style.slice(0, 3).map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => void navigate('/eat/meal-plan/browse')}
-              className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
-            >
-              Switch plan
-            </button>
-          </div>
-        </section>
-      )}
+      {planQuery.isError && <p className="text-sm text-rose-500">Couldn't load your meal plan.</p>}
 
-      {view === 'week' && !hasAnyItems && (
-        <section className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => void navigate('/eat/meal-plan/browse')}
-            className="springy flex flex-col items-start rounded-2xl border border-line bg-surface p-5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-          >
-            <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <BookOpenText size={18} aria-hidden />
-            </span>
-            <span className="font-semibold">Browse meal plans</span>
-            <span className="text-sm text-muted">
-              21 ready-made weeks — weight loss, muscle gain, maintenance. Open one, see every day,
-              apply it.
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void navigate('/eat/meal-plan/build')}
-            className="springy flex flex-col items-start rounded-2xl border border-line bg-surface p-5 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-          >
-            <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Sparkles size={18} aria-hidden />
-            </span>
-            <span className="font-semibold">Build your own</span>
-            <span className="text-sm text-muted">
-              Pick meals you actually want to eat and they fill your week — or switch to Day and
-              plan by hand.
-            </span>
-          </button>
-        </section>
-      )}
+      {/* Phones: one flex column. The left group is `display: contents`
+          there, so its cards join the same column and `order-*` can put the
+          numbers first, then the week, then the actions and the plan card.
+          Wide screens: a real two-column grid — left group 2/5, week 3/5 —
+          where those order classes no longer apply inside the left block. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:items-start">
+        <div className="contents min-w-0 lg:col-span-2 lg:block lg:space-y-4">
+          <PlanCard
+            activePlan={activePlan}
+            hasItems={hasItems}
+            // An empty week leads with "get a plan"; otherwise switching
+            // plans is the rarest thing here and goes last on phones.
+            className={hasItems ? 'order-5' : 'order-first'}
+          />
 
-      {view === 'week' && weekSummary && (
-        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold">Average planned day</p>
-            <p className="text-xs text-muted">
-              {weekSummary.days} of 7 days planned
-            </p>
-          </div>
-          <p className="text-sm text-muted tabular-nums">
-            {weekSummary.kcal}
-            {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal ·{' '}
-            {weekSummary.proteinG}
-            {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.proteinG)}` : ''} g protein ·{' '}
-            {weekSummary.carbsG} g carbs · {weekSummary.fatG} g fat
-          </p>
-          {targetsQuery.data && (
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elev">
-              <div
-                className={`h-full rounded-full transition-[width] duration-500 ${
-                  weekSummary.kcal > targetsQuery.data.kcal
-                    ? 'bg-rose-500'
-                    : 'bg-linear-to-r from-accent to-accent-2'
-                }`}
-                style={{
-                  width: `${Math.min(100, Math.round((weekSummary.kcal / targetsQuery.data.kcal) * 100))}%`,
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {view === 'week' && hasAnyItems && (
-        <div className="space-y-5">
-          {DAYS.map((label, i) => {
-            const isToday = i === todayIndex();
-            const kcal = Math.round(weekSummary?.perDay[i]?.kcal ?? 0);
-            return (
-              <section key={label}>
-                <div className="mb-2 flex items-baseline justify-between gap-2">
-                  <h2 className="font-display text-lg font-bold tracking-tight">
-                    {label}
-                    {isToday && (
-                      <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 align-middle text-[10px] font-semibold text-accent">
-                        Today
-                      </span>
-                    )}
-                  </h2>
-                  {kcal > 0 && (
-                    <span className="text-xs text-muted tabular-nums">
-                      {kcal}
-                      {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {MEALS.map((meal) => {
-                    const mealItems = allItems.filter(
-                      (it) => it.dayOfWeek === i && it.meal === meal,
-                    );
-                    const primary = mealItems[0];
-                    return (
-                      <div key={meal}>
-                        <WeekMealCard
-                          meal={meal}
-                          items={mealItems}
-                          foods={foods}
-                          recipes={recipes}
-                          onOpen={() => openDaySlot(i, null)}
-                          onSwap={
-                            primary
-                              ? () => setSwapId(swapId === primary.id ? null : primary.id)
-                              : undefined
-                          }
-                        />
-                        {primary && swapId === primary.id && (
-                          <SwapPicker
-                            item={primary}
-                            currentKcal={itemMacros(primary, foods, recipes)?.kcal ?? null}
-                            pending={swapMutation.isPending}
-                            onPick={(entry) =>
-                              swapMutation.mutate({
-                                id: primary.id,
-                                entry,
-                                servings: primary.servings ?? 1,
-                              })
-                            }
-                            onClose={() => setSwapId(null)}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
-
-      {view === 'day' && (
-        <>
-          <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-            {DAYS.map((label, i) => (
-              <button
-                key={label}
-                type="button"
-                aria-pressed={day === i}
-                onClick={() => {
-                  setDay(i);
-                  setOpenSlot(null);
-                  setSwapId(null);
-                }}
-                className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
-                  day === i
-                    ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                    : 'border border-line bg-surface text-muted shadow-sm hover:bg-elev hover:text-ink'
-                }`}
-              >
-                {label.slice(0, 3)}
-                {i === todayIndex() && <span className="sr-only"> (today)</span>}
-              </button>
-            ))}
-          </div>
-
-          <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-            <p className="text-sm font-semibold">{DAYS[day]} totals</p>
-            <p className="text-sm text-muted tabular-nums">
-              {Math.round(dayTotals.kcal)}
-              {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.kcal)}` : ''} kcal ·{' '}
-              {Math.round(dayTotals.proteinG)}
-              {targetsQuery.data ? ` / ${Math.round(targetsQuery.data.proteinG)}` : ''} g protein ·{' '}
-              {Math.round(dayTotals.carbsG)} g carbs · {Math.round(dayTotals.fatG)} g fat
-            </p>
-            {targetsQuery.data && (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elev">
-                <div
-                  className={`h-full rounded-full transition-[width] duration-500 ${
-                    dayTotals.kcal > targetsQuery.data.kcal
-                      ? 'bg-rose-500'
-                      : 'bg-linear-to-r from-accent to-accent-2'
-                  }`}
-                  style={{
-                    width: `${Math.min(100, Math.round((dayTotals.kcal / targetsQuery.data.kcal) * 100))}%`,
-                  }}
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {MEALS.map((meal) => {
-              const slotItems = dayItems.filter((i) => i.meal === meal);
-              const { Icon, tint } = MEAL_META[meal];
-              return (
-                <section
-                  key={meal}
-                  className="rounded-2xl border border-line bg-surface p-4 shadow-sm"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2.5">
-                      <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tint}`}
-                      >
-                        <Icon size={16} strokeWidth={1.8} aria-hidden />
-                      </span>
-                      <h2 className="text-sm font-semibold capitalize">{meal}</h2>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setOpenSlot(openSlot === meal ? null : meal)}
-                      className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
-                    >
-                      <Plus size={13} aria-hidden />
-                      Add
-                    </button>
-                  </div>
-
-                  {slotItems.length === 0 && openSlot !== meal && (
-                    <p className="mt-1.5 text-sm text-muted/70">Nothing planned.</p>
-                  )}
-                  {slotItems.length > 0 && (
-                    <ul className="mt-2 space-y-1.5">
-                      {slotItems.map((item) => {
-                        const m = itemMacros(item, foods, recipes);
-                        return (
-                          <li key={item.id}>
-                            <div className="flex items-center gap-2.5 text-sm">
-                              <RecipeThumb
-                                name={item.name}
-                                className="h-9 w-9 rounded-lg text-base"
-                              />
-                              <span className="min-w-0 flex-1 truncate">
-                                {item.kind === 'recipe' ? (
-                                  <Link
-                                    to={`/eat/recipes/${item.refId}`}
-                                    className="hover:text-accent hover:underline"
-                                  >
-                                    {item.name}
-                                  </Link>
-                                ) : (
-                                  item.name
-                                )}
-                                <span className="text-muted"> · {amountLabel(item)}</span>
-                              </span>
-                              {m && (
-                                <span className="shrink-0 text-xs text-muted tabular-nums">
-                                  {m.kcal} kcal
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setSwapId(swapId === item.id ? null : item.id)}
-                                aria-label={`Swap ${item.name}`}
-                                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
-                              >
-                                <ArrowLeftRight size={13} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeMutation.mutate(item.id)}
-                                aria-label={`Remove ${item.name}`}
-                                className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-elev hover:text-ink"
-                              >
-                                <X size={13} aria-hidden />
-                              </button>
-                            </div>
-                            {swapId === item.id && (
-                              <SwapPicker
-                                item={item}
-                                currentKcal={m?.kcal ?? null}
-                                pending={swapMutation.isPending}
-                                onPick={(entry) =>
-                                  swapMutation.mutate({
-                                    id: item.id,
-                                    entry,
-                                    servings: item.servings ?? 1,
-                                  })
-                                }
-                                onClose={() => setSwapId(null)}
-                              />
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-
-                  {openSlot === meal && (
-                    <SlotAdder
-                      recipes={recipes}
-                      onClose={() => setOpenSlot(null)}
-                      onAddFood={(food, grams) =>
-                        addMutation.mutate({
-                          dayOfWeek: day,
-                          meal,
-                          kind: 'food',
-                          refId: food.id,
-                          name: food.name,
-                          grams,
-                          servings: null,
-                        })
-                      }
-                      onAddRecipe={(recipe, servings) =>
-                        addMutation.mutate({
-                          dayOfWeek: day,
-                          meal,
-                          kind: 'recipe',
-                          refId: recipe.id,
-                          name: recipe.name,
-                          grams: null,
-                          servings,
-                        })
-                      }
-                    />
-                  )}
-                </section>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={
-            allItems.filter((i) => i.dayOfWeek === logDay).length === 0 || logDayMutation.isPending
-          }
-          onClick={() => logDayMutation.mutate()}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2.5 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          <NotebookPen size={15} aria-hidden />
-          Log {view === 'week' ? 'today' : DAYS[day]} to today's diary
-        </button>
-        <span className="inline-flex items-center gap-1.5">
-          <label htmlFor="shop-cadence" className="text-xs font-medium text-muted">
-            I shop
-          </label>
-          <select
-            id="shop-cadence"
-            value={customCadence || ![3, 7, 14, 30].includes(cadence) ? 'custom' : String(cadence)}
-            onChange={(e) => {
-              if (e.target.value === 'custom') {
-                setCustomCadence(true);
-              } else {
-                setCustomCadence(false);
-                setCadence.mutate(Number(e.target.value));
-              }
-            }}
-            className="rounded-xl border border-line bg-surface px-2.5 py-2 text-sm outline-none focus:border-accent"
-          >
-            <option value="3">every 3 days</option>
-            <option value="7">weekly</option>
-            <option value="14">bi-weekly</option>
-            <option value="30">monthly</option>
-            <option value="custom">custom…</option>
-          </select>
-          {(customCadence || ![3, 7, 14, 30].includes(cadence)) && (
-            <>
-              <input
-                type="number"
-                min="1"
-                max="90"
-                value={cadence}
-                onChange={(e) => setCadence.mutate(Number(e.target.value) || 1)}
-                aria-label="Days between shopping trips"
-                className="w-16 rounded-xl border border-line bg-surface px-2 py-2 text-sm outline-none focus:border-accent"
-              />
-              <span className="text-xs text-muted">days</span>
-            </>
-          )}
-        </span>
-        <button
-          type="button"
-          disabled={!hasAnyItems || shoppingMutation.isPending}
-          onClick={() => shoppingMutation.mutate()}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
-        >
-          <ShoppingCart size={15} aria-hidden />
-          Add next {cadence} day{cadence === 1 ? '' : 's'} to shopping list
-        </button>
-        {savingPlan ? (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <input
-              value={planName}
-              autoFocus
-              onChange={(e) => setPlanName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && planName.trim() && savePlanMutation.mutate()}
-              placeholder="Plan name — e.g. My cutting week"
-              aria-label="Saved plan name"
-              className="w-52 min-w-0 rounded-xl border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+          {view === 'week' && week && (
+            <MacroSummary
+              title="Average planned day"
+              note={`${week.days} of 7 days planned`}
+              macros={week.average}
+              targets={targets}
+              className="order-1"
             />
-            <button
-              type="button"
-              disabled={!planName.trim() || savePlanMutation.isPending}
-              onClick={() => savePlanMutation.mutate()}
-              className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-3.5 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              Save
-            </button>
-            <button
-              type="button"
-              onClick={() => setSavingPlan(false)}
-              aria-label="Cancel save"
-              className="rounded-xl p-2 text-muted hover:bg-elev hover:text-ink"
-            >
-              <X size={14} aria-hidden />
-            </button>
-          </span>
-        ) : (
-          <button
-            type="button"
-            disabled={!hasAnyItems}
-            onClick={() => {
-              setPlanName(activePlan?.kind === 'custom' ? activePlan.name : '');
-              setSavingPlan(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors hover:bg-elev disabled:opacity-50"
-          >
-            <BookmarkPlus size={15} aria-hidden />
-            Save week as plan
-          </button>
-        )}
+          )}
+          {view === 'day' && (
+            <MacroSummary
+              title={`${DAYS[day]} totals`}
+              macros={sumMacros(dayItems, lookup)}
+              targets={targets}
+              className="order-1"
+            />
+          )}
+
+          {/* Every action here needs something planned, so the card only
+              appears once the week has at least one item. */}
+          {hasItems && (
+            <PlanActions
+              logDay={logDay}
+              logLabel={view === 'week' ? 'today' : DAYS[day]!}
+              canLog={items.some((i) => i.dayOfWeek === logDay)}
+              defaultPlanName={activePlan?.kind === 'custom' ? activePlan.name : ''}
+            />
+          )}
+        </div>
+
+        <div className="order-2 min-w-0 lg:col-span-3">
+          {view === 'day' && (
+            <DayView
+              day={day}
+              onDayChange={setDay}
+              items={dayItems}
+              lookup={lookup}
+              onAdd={(meal) => setAdding({ day, meal })}
+              onSwap={openSwap}
+              onRemove={(item) => setRemoveId(item.id)}
+            />
+          )}
+          {view === 'week' && hasItems && (
+            <WeekView
+              items={items}
+              lookup={lookup}
+              perDay={week?.perDay}
+              targets={targets}
+              onOpenDay={(d) => {
+                setDay(d);
+                setView('day');
+              }}
+              onAdd={(d, meal) => setAdding({ day: d, meal })}
+              onSwap={openSwap}
+            />
+          )}
+          {view === 'week' && !hasItems && planQuery.isSuccess && (
+            <section className="rounded-2xl border border-dashed border-line p-8 text-center">
+              <CalendarDays size={22} className="mx-auto mb-2 text-muted" aria-hidden />
+              <p className="text-sm text-muted">
+                Your week is empty. Start from a plan, or fill in a day yourself.
+              </p>
+              <Button variant="secondary" className="mt-3" onClick={() => setView('day')}>
+                Plan a day by hand
+              </Button>
+            </section>
+          )}
+        </div>
       </div>
-      {savePlanMutation.isSuccess && (
-        <p className="text-sm text-accent">
-          Saved — find it under Browse plans → My plans. Saving the same name again updates it.
-        </p>
+
+      {adding && (
+        <AddToSlotSheet
+          day={adding.day}
+          meal={adding.meal}
+          recipes={lookup.recipes}
+          // mutateAsync returns a promise, so the sheet can show "Added"
+          // (or an error) when each save finishes.
+          onAdd={(item) => addMutation.mutateAsync(item)}
+          onClose={() => setAdding(null)}
+        />
       )}
-      {logDayMutation.isSuccess && (
-        <p className="text-sm text-accent">Planned meals logged to today's diary ✓</p>
+
+      {swapItem && (
+        <SwapSheet
+          item={swapItem}
+          currentKcal={itemMacros(swapItem, lookup)?.kcal ?? null}
+          pending={swapMutation.isPending}
+          failed={swapMutation.isError}
+          onPick={(entry) =>
+            swapMutation.mutate({ id: swapItem.id, entry, servings: swapItem.servings ?? 1 })
+          }
+          onClose={() => setSwapId(null)}
+        />
       )}
-      {shoppingMutation.isSuccess && (
-        <p className="text-sm text-accent">
-          {shoppingMutation.data} ingredient{shoppingMutation.data === 1 ? '' : 's'} added — covers
-          you until your next trip in {cadence} day{cadence === 1 ? '' : 's'} ✓
-        </p>
+
+      {removeItem && (
+        <ConfirmSheet
+          title="Remove from plan?"
+          body={
+            <>
+              <span className="font-semibold text-ink">{removeItem.name}</span> will be removed from{' '}
+              {DAYS[removeItem.dayOfWeek]} {removeItem.meal}. Your recipes and diary are not
+              affected.
+            </>
+          }
+          confirmLabel="Remove"
+          pending={removeMutation.isPending}
+          onConfirm={() => removeMutation.mutate(removeItem.id)}
+          onClose={() => setRemoveId(null)}
+        />
       )}
     </div>
   );

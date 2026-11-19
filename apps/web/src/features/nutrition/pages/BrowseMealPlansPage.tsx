@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, Dumbbell, Pencil, Sparkles, Trash2 } from 'lucide-react';
+import { Check, Dumbbell, Pencil, Sparkles, Trash2 } from 'lucide-react';
+import { Button, PageHeader } from '@/components/ui';
 import { formatDate } from '@/lib/dates';
 import { DIET_BLURBS } from '@/features/plans/dietStaples';
 import { getActivePlanId, listPlans } from '@/features/plans/repository';
@@ -98,7 +99,7 @@ function SavedPlanCard({ plan }: { plan: SavedMealPlan }) {
             disabled={!name.trim() || rename.isPending}
             onClick={() => rename.mutate()}
             aria-label="Save name"
-            className="rounded-lg bg-accent p-1.5 text-accent-ink disabled:opacity-50"
+            className="rounded-lg bg-accent flex h-11 w-11 shrink-0 items-center justify-center text-accent-ink disabled:opacity-50"
           >
             <Check size={14} aria-hidden />
           </button>
@@ -163,7 +164,7 @@ function SavedPlanCard({ plan }: { plan: SavedMealPlan }) {
                 setMode('rename');
               }}
               aria-label={`Rename ${plan.name}`}
-              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+              className="rounded-lg flex h-11 w-11 shrink-0 items-center justify-center text-muted transition-colors hover:bg-elev hover:text-ink"
             >
               <Pencil size={13} aria-hidden />
             </button>
@@ -171,7 +172,7 @@ function SavedPlanCard({ plan }: { plan: SavedMealPlan }) {
               type="button"
               onClick={() => setMode('confirm-delete')}
               aria-label={`Delete ${plan.name}`}
-              className="rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
+              className="rounded-lg flex h-11 w-11 shrink-0 items-center justify-center text-muted transition-colors hover:bg-elev hover:text-ink"
             >
               <Trash2 size={13} aria-hidden />
             </button>
@@ -249,31 +250,22 @@ export function BrowseMealPlansPage() {
   const maintain = templates.filter((t) => t.goal === 'maintain');
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void navigate('/eat/meal-plan')}
-          aria-label="Back to meal plan"
-          className="rounded-xl border border-line bg-surface p-2 shadow-sm transition-colors hover:bg-elev"
-        >
-          <ChevronLeft size={16} aria-hidden />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold">Meal plans</h1>
-          <p className="text-sm text-muted">
-            A full week of eating, ready to go — open one to see every day before you commit.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void navigate('/eat/meal-plan/build')}
-          className="springy inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-elev"
-        >
-          <Sparkles size={15} aria-hidden />
-          Build your own
-        </button>
-      </header>
+    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+      <div className="space-y-1">
+        <PageHeader
+          title="Meal plans"
+          back="/eat/meal-plan"
+          actions={
+            <Button variant="secondary" onClick={() => void navigate('/eat/meal-plan/build')}>
+              <Sparkles size={16} aria-hidden />
+              Build your own
+            </Button>
+          }
+        />
+        <p className="text-sm text-muted">
+          A full week of eating, ready to go — open one to see every day before you commit.
+        </p>
+      </div>
 
       {saved.length > 0 && (
         <section>

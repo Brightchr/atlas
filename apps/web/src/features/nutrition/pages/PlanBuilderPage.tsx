@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, Plus, Search, Sparkles, X } from 'lucide-react';
+import { Check, Plus, Search, Sparkles, X } from 'lucide-react';
+import { PageHeader } from '@/components/ui';
 import type { MealType } from '@arcadia/shared';
 import { buildWeekFromCatalogSelections } from '../mealPlan';
 import {
@@ -110,24 +111,14 @@ export function PlanBuilderPage() {
   const untouchedMeals = SHELVES.map(([meal]) => meal).filter((m) => !affectedMeals.includes(m));
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
-      <header className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void navigate('/eat/meal-plan')}
-          aria-label="Back to meal plan"
-          className="rounded-xl border border-line bg-surface p-2 shadow-sm transition-colors hover:bg-elev"
-        >
-          <ChevronLeft size={16} aria-hidden />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold">Build a meal plan</h1>
-          <p className="text-sm text-muted">
-            Pick meals you actually want to eat — they'll repeat across your week, each in the meal
-            it fits.
-          </p>
-        </div>
-      </header>
+    <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
+      <div className="space-y-1">
+        <PageHeader title="Build a meal plan" back="/eat/meal-plan" />
+        <p className="text-sm text-muted">
+          Pick meals you actually want to eat — they'll repeat across your week, each in the meal
+          it fits.
+        </p>
+      </div>
 
       <div className="relative">
         <Search
@@ -240,7 +231,7 @@ export function PlanBuilderPage() {
                   setConfirming(false);
                 }}
                 aria-label="Clear picks"
-                className="rounded-xl p-2 text-muted transition-colors hover:bg-elev hover:text-ink"
+                className="rounded-xl flex h-11 w-11 shrink-0 items-center justify-center text-muted transition-colors hover:bg-elev hover:text-ink"
               >
                 <X size={15} aria-hidden />
               </button>

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import type { MealType } from '@arcadia/shared';
+import { PageHeader } from '@/components/ui';
 import { applyMealPlanTemplate } from '../mealPlan';
 import {
   MEAL_PLAN_TEMPLATES,
@@ -44,10 +45,8 @@ export function MealPlanTemplatePage() {
   if (!template) {
     return (
       <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
+        <PageHeader title="Plan not found" back="/eat/meal-plan/browse" />
         <p className="text-sm text-muted">This plan doesn't exist.</p>
-        <Link to="/eat/meal-plan/browse" className="text-sm font-medium text-accent hover:underline">
-          ← All meal plans
-        </Link>
       </div>
     );
   }
@@ -63,22 +62,16 @@ export function MealPlanTemplatePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <div>
-        <Link
-          to="/eat/meal-plan/browse"
-          className="inline-flex items-center gap-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          All meal plans
-        </Link>
-      </div>
+      {/* Short header title: PageHeader truncates; the plan's full name is in
+          the card below where it can wrap. */}
+      <PageHeader title="Meal plan" back="/eat/meal-plan/browse" />
 
       <header className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
         <NamesArtStrip names={templateArtNames(template)} className="h-24 md:h-32" />
         <div className="space-y-2 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">{template.name}</h1>
+              <h2 className="text-2xl font-bold">{template.name}</h2>
               <p className="text-sm text-muted tabular-nums">
                 ~{template.kcalPerDay.toLocaleString()} kcal · {template.proteinPerDay} g protein
                 per day
