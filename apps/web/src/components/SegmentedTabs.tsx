@@ -11,9 +11,9 @@ export interface SegmentTab {
   match?: string[];
 }
 
-/** The one sub-navigation pattern of the redesign: a springy pill bar at the
- * top of each section (Train, Eat, You). Detail pages keep their section's
- * bar lit via `match`, so drilling down never loses the chrome. */
+/** The one sub-navigation pattern: a pill bar at the top of a section's
+ * top-level pages (Eat, Progress). Each pill is 44px tall. On narrow phones
+ * the icons drop out so four labels still fit without truncating. */
 export function SegmentedTabs({ tabs, pathname }: { tabs: SegmentTab[]; pathname: string }) {
   return (
     <nav
@@ -29,15 +29,15 @@ export function SegmentedTabs({ tabs, pathname }: { tabs: SegmentTab[]; pathname
           <NavLink
             key={to}
             to={to}
-            className={`springy inline-flex items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold sm:text-sm ${
+            end={end}
+            className={`springy inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-1 text-sm font-semibold ${
               active
                 ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
                 : 'text-muted hover:bg-elev hover:text-ink'
             }`}
           >
-            <Icon size={14} strokeWidth={1.9} aria-hidden />
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{label}</span>
+            <Icon size={16} strokeWidth={1.9} className="hidden shrink-0 sm:block" aria-hidden />
+            <span className="truncate">{label}</span>
           </NavLink>
         );
       })}

@@ -13,7 +13,7 @@ export function Pagination({ page, pageCount, onChange }: PaginationProps) {
   if (pageCount <= 1) return null;
 
   const button =
-    'flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface shadow-sm transition-colors hover:bg-elev disabled:opacity-40 disabled:hover:bg-surface';
+    'flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface shadow-sm transition-colors hover:bg-elev disabled:opacity-40 disabled:hover:bg-surface';
 
   return (
     <nav aria-label="Pagination" className="flex items-center justify-center gap-2 pt-2">

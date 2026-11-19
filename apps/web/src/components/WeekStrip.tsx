@@ -28,13 +28,13 @@ function DayCell({ day }: { day: AdherenceDay }) {
     case 'planned':
       return (
         <span className={`${base} border border-dashed border-line bg-elev`}>
-          <span className="text-[11px] font-semibold text-muted">·</span>
+          <span className="text-xs font-semibold text-muted">·</span>
         </span>
       );
     default:
       return (
         <span className={`${base} bg-elev`}>
-          <span className="text-[11px] text-muted">—</span>
+          <span className="text-xs text-muted">—</span>
         </span>
       );
   }
@@ -58,7 +58,7 @@ export function WeekStrip({ days, done, missed }: { days: AdherenceDay[]; done: 
         {days.map((day, i) => (
           <div key={day.date} className="text-center">
             <p
-              className={`mb-1 text-[9px] font-bold ${day.status === 'today' ? 'text-accent' : 'text-muted'}`}
+              className={`mb-1 text-xs font-bold ${day.status === 'today' ? 'text-accent' : 'text-muted'}`}
             >
               {DAY_LABELS[i]}
             </p>
