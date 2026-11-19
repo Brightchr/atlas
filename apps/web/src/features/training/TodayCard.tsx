@@ -1,22 +1,34 @@
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, BedDouble, Play, TimerReset } from 'lucide-react';
 import type { TrainingPlan, Workout, WorkoutSession } from '@arcadia/shared';
 import { getActivePlanId, listPlans } from '@/features/plans/repository';
 import { getOpenSession, listWorkouts, startSession } from '@/features/workouts/repository';
-import { localDayOfWeek } from '@/lib/dates';
+import { localDayOfWeek, localIsoDate } from '@/lib/dates';
+import { pickNextUp } from './nextUp';
+import { listSessionHistory, type SessionSummary } from './stats';
 
-export interface TodaysDay {
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** The next workout in the plan (see nextUp.ts for how it is chosen). */
+export interface NextUp {
   plan: TrainingPlan;
-  isRestDay: boolean;
-  workout: Workout | undefined;
+  workout: Workout;
+  /** The weekday the plan pencils this workout in for (Monday = 0). */
+  dayOfWeek: number;
+  /** A plan workout was already finished today; this one is for next time. */
+  doneToday: boolean;
 }
 
-/** What the plan says about today, plus any session left open. Shared by the
- * dashboard hero and the Workout hub so the two never disagree. */
+/** The open session (if any) and the plan's next workout. Shared by the Home
+ * hero and the Workout tab so the two never disagree. */
 export function useTodayWorkout(): {
   openSession: WorkoutSession | null | undefined;
-  todaysDay: TodaysDay | undefined;
+  nextUp: NextUp | undefined;
+  hasPlan: boolean;
+  /** The plan marks today as rest (or simply has nothing on it). */
+  restToday: boolean;
+  /** The most recent finished workout, for the "last workout" line. */
+  lastSession: SessionSummary | undefined;
   loaded: boolean;
   start: (workout: Workout) => void;
   starting: boolean;
@@ -27,27 +39,42 @@ export function useTodayWorkout(): {
   const activeQuery = useQuery({ queryKey: ['plans', 'active'], queryFn: getActivePlanId });
   const workoutsQuery = useQuery({ queryKey: ['workouts'], queryFn: listWorkouts });
   const openSession = useQuery({ queryKey: ['sessions', 'open'], queryFn: getOpenSession });
+  const history = useQuery({
+    queryKey: ['sessions', 'history', 'recent'],
+    queryFn: () => listSessionHistory(20),
+  });
 
   const workoutsById = new Map((workoutsQuery.data ?? []).map((w) => [w.id, w]));
-  const today = localDayOfWeek();
-  // The ACTIVE plan decides the day; without one, any plan that schedules
-  // something today still works (the pre-switcher behavior).
-  const activeId = activeQuery.data ?? null;
-  const orderedPlans = [...(plansQuery.data ?? [])].sort(
-    (a, b) => Number(b.id === activeId) - Number(a.id === activeId),
-  );
-  const todaysDay = orderedPlans
-    .filter((plan) => activeId === null || plan.id === activeId)
-    .flatMap((plan) =>
-      plan.days
-        .filter((d) => d.dayOfWeek === today)
-        .map((d) => ({
-          plan,
-          isRestDay: d.isRestDay,
-          workout: d.workoutId ? workoutsById.get(d.workoutId) : undefined,
-        })),
-    )
-    .find((d) => d.isRestDay || d.workout);
+  // The ACTIVE plan decides; without one, the first plan with a workout in it.
+  const plans = plansQuery.data ?? [];
+  const usable = (p: TrainingPlan) =>
+    p.days.some((d) => !d.isRestDay && d.workoutId && workoutsById.has(d.workoutId));
+  const plan = plans.find((p) => p.id === activeQuery.data && usable(p)) ?? plans.find(usable);
+
+  let nextUp: NextUp | undefined;
+  if (plan) {
+    const days = plan.days
+      .filter((d) => !d.isRestDay && d.workoutId && workoutsById.has(d.workoutId))
+      .map((d) => ({ dayOfWeek: d.dayOfWeek, workoutId: d.workoutId! }))
+      .sort((a, b) => a.dayOfWeek - b.dayOfWeek);
+    const finished = history.data ?? [];
+    const next = pickNextUp(days, finished, localDayOfWeek());
+    if (next) {
+      const inPlan = new Set(days.map((d) => d.workoutId));
+      const todayKey = localIsoDate();
+      nextUp = {
+        plan,
+        workout: workoutsById.get(next.workoutId)!,
+        dayOfWeek: next.dayOfWeek,
+        doneToday: finished.some(
+          (s) =>
+            s.workoutId !== null &&
+            inPlan.has(s.workoutId) &&
+            localIsoDate(new Date(s.startedAt)) === todayKey,
+        ),
+      };
+    }
+  }
 
   const start = useMutation({
     mutationFn: startSession,
@@ -59,84 +86,25 @@ export function useTodayWorkout(): {
 
   return {
     openSession: openSession.data,
-    todaysDay,
-    loaded: plansQuery.isSuccess && workoutsQuery.isSuccess && openSession.isSuccess,
+    nextUp,
+    hasPlan: Boolean(plan),
+    restToday:
+      Boolean(plan) &&
+      !plan!.days.some(
+        (d) => d.dayOfWeek === localDayOfWeek() && !d.isRestDay && Boolean(d.workoutId),
+      ),
+    lastSession: history.data?.[0],
+    loaded:
+      plansQuery.isSuccess && workoutsQuery.isSuccess && openSession.isSuccess && history.isSuccess,
     start: (w) => start.mutate(w),
     starting: start.isPending,
   };
 }
 
-/** Today's planned workout, startable in one tap, with an abandoned session
- * surfaced first wherever the card renders. */
-export function TodayCard() {
-  const { openSession, todaysDay, start, starting } = useTodayWorkout();
-
-  if (openSession) {
-    return (
-      <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="font-semibold">
-            <TimerReset size={16} className="mr-1.5 inline text-amber-600" aria-hidden />
-            Workout in progress: {openSession.workoutName}
-            <span className="ml-2 text-sm font-normal text-muted">
-              {openSession.sets.length} sets logged
-            </span>
-          </p>
-          <Link
-            to={`/workouts/session/${openSession.id}`}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90"
-          >
-            Resume
-            <ArrowRight size={14} aria-hidden />
-          </Link>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-      <p className="text-xs font-semibold tracking-wide text-muted uppercase">Today</p>
-      {todaysDay ? (
-        todaysDay.isRestDay ? (
-          <p className="mt-1 flex items-center gap-2 font-semibold">
-            <BedDouble size={17} className="text-accent" aria-hidden />
-            Rest day — recovery counts as training.
-          </p>
-        ) : (
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-            <p className="font-semibold">
-              <Link to={`/workouts/${todaysDay.workout!.id}`} className="hover:underline">
-                {todaysDay.workout!.name}
-              </Link>
-              <span className="ml-2 text-sm font-normal text-muted">
-                from “{todaysDay.plan.name}” · {todaysDay.workout!.exercises.length} exercises
-              </span>
-            </p>
-            <button
-              type="button"
-              disabled={starting}
-              onClick={() => start(todaysDay.workout!)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              <Play size={14} aria-hidden />
-              Start workout
-            </button>
-          </div>
-        )
-      ) : (
-        <p className="mt-1 text-sm text-muted">
-          Nothing planned for today —{' '}
-          <Link to="/train/explore" className="font-medium text-accent hover:underline">
-            get a recommended plan
-          </Link>{' '}
-          or{' '}
-          <Link to="/train/schedule" className="font-medium text-accent hover:underline">
-            build your own
-          </Link>
-          .
-        </p>
-      )}
-    </section>
-  );
+/** "Today", "Tomorrow" or the weekday the plan has this workout on. */
+export function scheduledLabel(dayOfWeek: number): string {
+  const today = localDayOfWeek();
+  if (dayOfWeek === today) return 'today';
+  if (dayOfWeek === (today + 1) % 7) return 'tomorrow';
+  return DAY_NAMES[dayOfWeek]!;
 }
