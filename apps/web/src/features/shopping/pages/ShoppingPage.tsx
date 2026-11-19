@@ -1,28 +1,35 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react';
-import type { ShoppingItem } from '@arcadia/shared';
+import { ChevronDown, Plus } from 'lucide-react';
+import { Button, Card, ConfirmSheet, SectionLabel, buttonClasses } from '@/components/ui';
 import {
   addNeededItem,
+  clearBoughtItems,
   deleteShoppingItem,
   listShoppingItems,
   markBought,
   rebuyItem,
 } from '../repository';
-import { formatDate } from '@/lib/dates';
+import { BoughtRow, NeededRow } from '../components/ShoppingRows';
 
-function lastBoughtLabel(iso: string | null): string {
-  if (!iso) return '';
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return `${days} days ago`;
-  return formatDate(iso);
-}
+// 44px on phones, tighter with a mouse. text-base (16px) on phones stops iOS
+// Safari zooming the page when the field is focused.
+const fieldClasses =
+  'min-h-11 min-w-0 rounded-xl border border-line bg-surface px-3 text-base outline-none placeholder:text-muted/70 focus:border-accent md:min-h-9 md:text-sm';
 
+/** One living list: ticked-off items move to "Bought", where a tap puts them
+ * back on the list for the next trip. */
 export function ShoppingPage() {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
+  // "Bought" is secondary: closed on phones so the list to buy owns the
+  // screen, open on desktop where it has its own column. Read once on mount;
+  // after that the header button is in charge.
+  const [showBought, setShowBought] = useState(
+    () => window.matchMedia('(min-width: 1024px)').matches,
+  );
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const queryClient = useQueryClient();
 
   const itemsQuery = useQuery({ queryKey: ['shopping'], queryFn: listShoppingItems });
@@ -35,11 +42,19 @@ export function ShoppingPage() {
   const boughtMutation = useMutation({ mutationFn: markBought, onSuccess: invalidate });
   const rebuyMutation = useMutation({ mutationFn: rebuyItem, onSuccess: invalidate });
   const deleteMutation = useMutation({ mutationFn: deleteShoppingItem, onSuccess: invalidate });
+  const clearMutation = useMutation({
+    mutationFn: clearBoughtItems,
+    onSuccess: invalidate,
+    // Close whether it worked or not, so a failure never leaves the sheet stuck.
+    onSettled: () => setConfirmingClear(false),
+  });
 
   const needed = (itemsQuery.data ?? []).filter((i) => i.status === 'needed');
   const bought = (itemsQuery.data ?? []).filter((i) => i.status === 'bought');
 
-  const handleAdd = () => {
+  // A real <form>, so Enter in either field adds the item without a key handler.
+  const handleAdd = (e: FormEvent) => {
+    e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
     addMutation.mutate({ itemName: trimmed, qty: quantity.trim() || undefined });
@@ -48,131 +63,120 @@ export function ShoppingPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Shopping</h1>
-        <p className="text-sm text-muted">
-          One living list — checked-off items move to history so you can re-add them next trip
-          instead of starting a new list.
-        </p>
-      </header>
+    <div className="mx-auto max-w-5xl p-4 md:p-6">
+      {/* The pill bar above already says "Shopping". */}
+      <h1 className="sr-only">Shopping list</h1>
 
-      <div className="flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="Add an item — e.g. Chicken breast…"
-          className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
-        />
-        <input
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="Qty"
-          aria-label="Quantity (optional)"
-          className="w-24 rounded-xl border border-line bg-surface px-3 py-2.5 shadow-sm outline-none placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/20"
-        />
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-5 py-2.5 font-semibold text-accent-ink shadow-sm transition-opacity hover:opacity-90"
-        >
-          Add
-        </button>
+      <div className="grid items-start gap-4 lg:grid-cols-5">
+        <section className="min-w-0 space-y-2 lg:col-span-3">
+          <form onSubmit={handleAdd} className="flex gap-2">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Add an item, e.g. chicken breast"
+              aria-label="Item to add"
+              enterKeyHint="done"
+              className={`${fieldClasses} flex-1`}
+            />
+            <input
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder="Qty"
+              aria-label="Quantity (optional)"
+              enterKeyHint="done"
+              className={`${fieldClasses} w-20`}
+            />
+            <Button type="submit" className="shrink-0" disabled={!name.trim()}>
+              <Plus size={18} aria-hidden />
+              Add
+            </Button>
+          </form>
+
+          <SectionLabel>To buy{needed.length > 0 && ` · ${needed.length}`}</SectionLabel>
+          {needed.length === 0 ? (
+            // Wait for the first load, so the empty state does not flash up
+            // before the list arrives.
+            itemsQuery.isSuccess && (
+              <div className="rounded-2xl border border-dashed border-line p-6 text-center">
+                <p className="text-sm text-muted">
+                  Nothing to buy. Add items above, rebuy something you bought before, or fill the
+                  list from your meal plan.
+                </p>
+                <Link to="/eat/meal-plan" className={buttonClasses('soft', 'md', 'mt-3')}>
+                  Open meal plan
+                </Link>
+              </div>
+            )
+          ) : (
+            <Card className="overflow-hidden">
+              <ul>
+                {needed.map((item) => (
+                  <NeededRow
+                    key={item.id}
+                    item={item}
+                    onBought={() => boughtMutation.mutate(item.id)}
+                    onRemove={() => deleteMutation.mutate(item.id)}
+                  />
+                ))}
+              </ul>
+            </Card>
+          )}
+        </section>
+
+        <section className="min-w-0 space-y-2 lg:col-span-2">
+          <div className="flex min-h-11 items-center justify-between gap-2 md:min-h-9">
+            <button
+              type="button"
+              aria-expanded={showBought}
+              onClick={() => setShowBought((open) => !open)}
+              className="flex min-h-11 flex-1 items-center gap-1.5 rounded-xl px-1 text-left text-xs font-semibold tracking-wide text-muted uppercase hover:text-ink md:min-h-9"
+            >
+              <ChevronDown
+                size={16}
+                className={`shrink-0 transition-transform ${showBought ? '' : '-rotate-90'}`}
+                aria-hidden
+              />
+              Bought{bought.length > 0 && ` · ${bought.length}`}
+            </button>
+            {showBought && bought.length > 0 && (
+              <Button variant="ghost" onClick={() => setConfirmingClear(true)}>
+                Clear
+              </Button>
+            )}
+          </div>
+
+          {showBought &&
+            (bought.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
+                Tick items off the list and they collect here, ready to rebuy with one tap.
+              </p>
+            ) : (
+              <Card className="overflow-hidden">
+                <ul>
+                  {bought.map((item) => (
+                    <BoughtRow
+                      key={item.id}
+                      item={item}
+                      onRebuy={() => rebuyMutation.mutate(item.id)}
+                      onRemove={() => deleteMutation.mutate(item.id)}
+                    />
+                  ))}
+                </ul>
+              </Card>
+            ))}
+        </section>
       </div>
 
-      <section className="space-y-2">
-        <h2 className="flex items-center gap-2 text-lg font-bold">
-          <ShoppingCart size={18} className="text-accent" aria-hidden />
-          To buy
-          {needed.length > 0 && (
-            <span className="text-sm font-normal text-muted tabular-nums">({needed.length})</span>
-          )}
-        </h2>
-        {needed.length === 0 && (
-          <p className="text-sm text-muted">
-            Nothing on the list. Add items above, rebuy from history below, or generate
-            ingredients from your meal plan.
-          </p>
-        )}
-        <ul className="space-y-1.5">
-          {needed.map((item: ShoppingItem) => (
-            <li
-              key={item.id}
-              className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-sm"
-            >
-              <input
-                type="checkbox"
-                checked={false}
-                onChange={() => boughtMutation.mutate(item.id)}
-                aria-label={`Mark ${item.name} as bought`}
-                className="h-4 w-4 shrink-0 rounded accent-(--accent)"
-              />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                {item.name}
-                {item.quantity && <span className="text-muted"> — {item.quantity}</span>}
-              </span>
-              {item.timesBought > 0 && (
-                <span className="shrink-0 text-xs text-muted tabular-nums">
-                  bought ×{item.timesBought}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => deleteMutation.mutate(item.id)}
-                aria-label={`Remove ${item.name}`}
-                className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
-              >
-                <Trash2 size={14} aria-hidden />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="flex items-center gap-2 text-lg font-bold">
-          <History size={18} className="text-muted" aria-hidden />
-          Previously bought
-        </h2>
-        {bought.length === 0 && (
-          <p className="text-sm text-muted">
-            Check items off the list and they'll collect here for one-tap rebuying.
-          </p>
-        )}
-        <ul className="grid gap-1.5 md:grid-cols-2">
-          {bought.map((item: ShoppingItem) => (
-            <li
-              key={item.id}
-              className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-sm"
-            >
-              <span className="min-w-0 flex-1 truncate text-sm">
-                <span className="font-medium">{item.name}</span>
-                <span className="block text-xs text-muted tabular-nums">
-                  ×{item.timesBought} · last {lastBoughtLabel(item.lastBoughtAt)}
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => rebuyMutation.mutate(item.id)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors hover:bg-elev"
-              >
-                <RotateCcw size={13} aria-hidden />
-                Rebuy
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteMutation.mutate(item.id)}
-                aria-label={`Delete ${item.name} from history`}
-                className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-elev hover:text-ink"
-              >
-                <Trash2 size={14} aria-hidden />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {confirmingClear && (
+        <ConfirmSheet
+          title="Clear bought items?"
+          body={`This deletes ${bought.length === 1 ? 'the 1 item' : `all ${bought.length} items`} under Bought, along with how often you bought them. Your "To buy" list is not affected.`}
+          confirmLabel="Clear bought"
+          pending={clearMutation.isPending}
+          onConfirm={() => clearMutation.mutate()}
+          onClose={() => setConfirmingClear(false)}
+        />
+      )}
     </div>
   );
 }

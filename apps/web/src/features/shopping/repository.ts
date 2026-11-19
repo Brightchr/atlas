@@ -113,3 +113,12 @@ export async function deleteShoppingItem(id: string): Promise<void> {
   await db.run('DELETE FROM shopping_items WHERE id = ?', [id]);
   await persist();
 }
+
+/** Wipe the purchase history in one go. The needed list is untouched. One
+ * statement rather than a loop of deletes, so it is a single write to disk;
+ * the sync delete trigger still fires once per removed row. */
+export async function clearBoughtItems(): Promise<void> {
+  const db = await getDb();
+  await db.run(`DELETE FROM shopping_items WHERE status = 'bought'`);
+  await persist();
+}
