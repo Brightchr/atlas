@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router';
+import { Card, PageHeader } from '@/components/ui';
 import { CalendarDays, Dumbbell, MessageSquare, Star, TrendingUp } from 'lucide-react';
 import { SharedWorkoutCard } from '@/features/social/components/SharedWorkoutCard';
 import { bannerCss, usePublicProfile } from '../api';
@@ -15,7 +16,7 @@ function Stars({ rating }: { rating: number }) {
         <Star
           key={i}
           size={13}
-          className={i <= Math.round(rating) ? 'fill-amber-400 text-amber-400' : 'text-line'}
+          className={i <= Math.round(rating) ? 'fill-accent text-accent' : 'text-line'}
           aria-hidden
         />
       ))}
@@ -34,11 +35,9 @@ export function PublicProfilePage() {
 
   if (profile.isError) {
     return (
-      <div className="mx-auto max-w-2xl p-6 text-center text-sm text-muted">
-        No user called “{username}”.{' '}
-        <Link to="/train/schedule" className="text-accent hover:underline">
-          Back to plans
-        </Link>
+      <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
+        <PageHeader title="Profile" back="/friends" />
+        <p className="text-sm text-muted">No user called “{username}”.</p>
       </div>
     );
   }
@@ -47,8 +46,12 @@ export function PublicProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
+      {/* The page title is the @handle; the display name sits on the banner
+          card below as an h2, so there is still exactly one h1. */}
+      <PageHeader title={`@${p.username}`} back="/friends" />
+
       {/* Banner + identity */}
-      <header className="overflow-hidden rounded-2xl border border-line bg-surface shadow-sm">
+      <Card className="overflow-hidden">
         <div className="h-28 md:h-36" style={{ background: bannerCss(p.bannerId) }} />
         <div className="relative px-5 pt-0 pb-4">
           <span className="absolute -top-7 rounded-2xl border-4 border-surface bg-elev p-1 shadow-md">
@@ -61,26 +64,26 @@ export function PublicProfilePage() {
             />
           </span>
           <div className="pt-11">
-            <h1 className="text-2xl font-bold">{p.displayName ?? p.username}</h1>
+            <h2 className="text-2xl font-bold">{p.displayName ?? p.username}</h2>
             <p className="text-sm text-muted">
-              @{p.username} · member since{' '}
+              Member since{' '}
               {new Date(p.memberSince).toLocaleDateString([], { month: 'long', year: 'numeric' })}
               {p.online === true && (
-                <span className="ml-1.5 font-medium text-emerald-500">· online</span>
+                <span className="ml-1.5 font-medium text-accent">· online</span>
               )}
             </p>
             {p.bio && <p className="mt-2 text-sm">{p.bio}</p>}
           </div>
           {p.stats && (
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-elev px-3 py-1.5 text-xs font-semibold">
-                <Star size={12} className="fill-amber-400 text-amber-400" aria-hidden />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-elev px-3 py-1.5 text-sm font-semibold">
+                <Star size={14} className="fill-accent text-accent" aria-hidden />
                 {p.stats.rating !== null ? `${p.stats.rating} overall` : 'No ratings yet'}
               </span>
-              <span className="rounded-full bg-elev px-3 py-1.5 text-xs font-semibold tabular-nums">
+              <span className="rounded-full bg-elev px-3 py-1.5 text-sm font-semibold tabular-nums">
                 {p.stats.planCount} plan{p.stats.planCount === 1 ? '' : 's'}
               </span>
-              <span className="rounded-full bg-elev px-3 py-1.5 text-xs font-semibold tabular-nums">
+              <span className="rounded-full bg-elev px-3 py-1.5 text-sm font-semibold tabular-nums">
                 {p.stats.reviewCount} review{p.stats.reviewCount === 1 ? '' : 's'} received
               </span>
             </div>
@@ -91,11 +94,11 @@ export function PublicProfilePage() {
             </div>
           )}
         </div>
-      </header>
+      </Card>
 
       {/* Shared goals */}
       {p.goals.length > 0 && (
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+        <Card className="p-4">
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
             <TrendingUp size={15} className="text-accent" aria-hidden />
             Training goals
@@ -105,11 +108,11 @@ export function PublicProfilePage() {
               <li key={g.title} className="rounded-xl bg-elev p-3">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="truncate text-sm font-medium">{g.title}</p>
-                  <span className="shrink-0 text-xs font-bold text-accent tabular-nums">
+                  <span className="shrink-0 text-sm font-bold text-accent tabular-nums">
                     {g.pct}%
                   </span>
                 </div>
-                {g.label && <p className="mt-0.5 text-xs text-muted">{g.label}</p>}
+                {g.label && <p className="mt-0.5 text-sm text-muted">{g.label}</p>}
                 <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-surface">
                   <span
                     className="block h-full rounded-full bg-linear-to-r from-accent to-accent-2"
@@ -119,7 +122,7 @@ export function PublicProfilePage() {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {/* Shared workouts */}
@@ -148,27 +151,27 @@ export function PublicProfilePage() {
               <li key={plan.id}>
                 <Link
                   to={`/plans/community/${plan.id}`}
-                  className="springy block rounded-2xl border border-line bg-surface p-4 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+                  className="springy block h-full rounded-2xl border border-line bg-surface p-4 shadow-sm hover:bg-elev"
                 >
                   <div className="mb-1.5 flex flex-wrap gap-1">
-                    <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
                       {GOAL_LABELS[plan.goal as keyof typeof GOAL_LABELS] ?? plan.goal}
                     </span>
-                    <span className="rounded-full bg-elev px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                    <span className="rounded-full bg-elev px-2 py-0.5 text-xs font-semibold text-muted">
                       {LEVEL_LABELS[plan.difficulty as keyof typeof LEVEL_LABELS] ??
                         plan.difficulty}
                     </span>
                     {plan.diet && (
-                      <span className="rounded-full bg-elev px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+                      <span className="rounded-full bg-elev px-2 py-0.5 text-xs font-semibold text-muted">
                         {DIET_LABELS[plan.diet] ?? plan.diet}
                       </span>
                     )}
                   </div>
                   <p className="text-sm font-semibold">{plan.name}</p>
                   {plan.description && (
-                    <p className="mt-0.5 line-clamp-2 text-xs text-muted">{plan.description}</p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-muted">{plan.description}</p>
                   )}
-                  <p className="mt-1.5 flex items-center gap-1.5 text-xs">
+                  <p className="mt-1.5 flex items-center gap-1.5 text-sm">
                     {plan.rating !== null ? (
                       <>
                         <Stars rating={plan.rating} />
@@ -189,7 +192,7 @@ export function PublicProfilePage() {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Reviews they wrote */}
         {p.reviews.length > 0 && (
-          <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+          <Card className="p-4">
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <MessageSquare size={15} className="text-accent" aria-hidden />
               Reviews by {p.displayName ?? p.username}
@@ -197,33 +200,33 @@ export function PublicProfilePage() {
             <ul className="space-y-2.5">
               {p.reviews.map((r) => (
                 <li key={r.id} className="border-b border-line pb-2 last:border-none last:pb-0">
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex min-h-11 items-center gap-2 text-sm">
                     <Stars rating={r.rating} />
                     <Link
                       to={`/plans/community/${r.planId}`}
-                      className="truncate font-semibold text-accent hover:underline"
+                      className="flex min-h-11 min-w-0 items-center font-semibold text-accent hover:underline"
                     >
-                      {r.planName}
+                      <span className="truncate">{r.planName}</span>
                     </Link>
                   </div>
-                  {r.comment && <p className="mt-0.5 text-xs text-muted">{r.comment}</p>}
+                  {r.comment && <p className="text-sm text-muted">{r.comment}</p>}
                 </li>
               ))}
             </ul>
-          </section>
+          </Card>
         )}
 
         {/* Activity */}
         {p.activity.length > 0 && (
-          <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+          <Card className="p-4">
             <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <CalendarDays size={15} className="text-accent" aria-hidden />
               Activity
             </h2>
             <ul className="space-y-2">
               {p.activity.map((a, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-xs">
-                  <span className="w-16 shrink-0 text-muted tabular-nums">{formatDate(a.at)}</span>
+                <li key={i} className="flex items-baseline gap-3 text-sm">
+                  <span className="w-20 shrink-0 text-muted tabular-nums">{formatDate(a.at)}</span>
                   <span className="min-w-0 flex-1">
                     {a.kind === 'plan' ? (
                       <>
@@ -238,7 +241,7 @@ export function PublicProfilePage() {
                 </li>
               ))}
             </ul>
-          </section>
+          </Card>
         )}
       </div>
 
@@ -247,10 +250,10 @@ export function PublicProfilePage() {
         p.activity.length === 0 &&
         p.goals.length === 0 &&
         (p.recentWorkouts ?? []).length === 0 && (
-          <p className="rounded-2xl border border-line bg-surface p-6 text-center text-sm text-muted">
+          <Card className="p-6 text-center text-sm text-muted">
             {p.displayName ?? p.username} keeps their page private, or hasn't published anything
             yet.
-          </p>
+          </Card>
         )}
     </div>
   );

@@ -1,7 +1,19 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, CloudUpload, Dumbbell, RefreshCw, Ruler, TriangleAlert } from 'lucide-react';
+import {
+  Check,
+  CloudUpload,
+  Dumbbell,
+  Palette,
+  RefreshCw,
+  Ruler,
+  TriangleAlert,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { THEMES, useTheme } from '@/app/theme';
+import { Button, Card, ConfirmSheet, PageHeader, Sheet } from '@/components/ui';
 import { EQUIPMENT_OPTIONS } from '@/lib/exercise-db/client';
 import {
   adoptCurrentAccount,
@@ -28,6 +40,104 @@ const LOCATION_OPTIONS: { id: TrainingLocation; label: string; hint: string }[] 
   { id: 'both', label: 'Both', hint: 'Gym and a home setup' },
 ];
 
+/** The card every settings group sits in: icon, title, one line of
+ * explanation, then the controls. */
+function SettingsCard({
+  title,
+  hint,
+  Icon,
+  children,
+}: {
+  title: string;
+  hint: ReactNode;
+  Icon: LucideIcon;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+          <Icon size={20} strokeWidth={1.8} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="text-sm text-muted">{hint}</p>
+        </div>
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+/** One choice in a pick-one group (units, location, sync mode, theme): a
+ * 56px row with a check on the selected one. `aria-pressed` tells screen
+ * readers which is active. */
+function OptionButton({
+  selected,
+  onClick,
+  label,
+  hint,
+  leading,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  label: string;
+  hint?: string;
+  /** Optional element before the label (the theme swatch). */
+  leading?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`flex min-h-14 items-center gap-3 rounded-xl border px-4 py-2 text-left transition-colors ${
+        selected ? 'border-accent bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
+      }`}
+    >
+      {leading}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        {hint && <span className="block text-sm text-muted">{hint}</span>}
+      </span>
+      {selected && <Check size={18} className="shrink-0 text-accent" aria-hidden />}
+    </button>
+  );
+}
+
+/** Theme picker. It used to live in the top bar; on phones that menu is gone,
+ * so this is now the one place to change it. The swatch colors come from the
+ * THEMES list itself (each theme's own background + accent), which is why
+ * they are inline styles rather than theme-token classes: a swatch has to
+ * show a theme that is NOT the active one. */
+function ThemeSection() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <SettingsCard title="Theme" hint="Saved on this device." Icon={Palette}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {THEMES.map((t) => (
+          <OptionButton
+            key={t.id}
+            selected={theme === t.id}
+            onClick={() => setTheme(t.id)}
+            label={t.label}
+            hint={t.mode === 'dark' ? 'Dark' : 'Light'}
+            leading={
+              <span
+                aria-hidden
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line"
+                style={{ background: t.swatch[0] }}
+              >
+                <span className="h-3.5 w-3.5 rounded-full" style={{ background: t.swatch[1] }} />
+              </span>
+            }
+          />
+        ))}
+      </div>
+    </SettingsCard>
+  );
+}
+
 /** Sync & backup: on by default; local-only is an explicit, warned choice.
  * Turning sync off offers to also erase the server copy (the privacy case). */
 function SyncSection() {
@@ -35,13 +145,16 @@ function SyncSection() {
   const sync = useSyncState();
   const enabledQuery = useQuery({ queryKey: ['sync', 'enabled'], queryFn: isSyncEnabled });
   const enabled = enabledQuery.data ?? true;
-  const [confirming, setConfirming] = useState(false);
+  // Going local is a two-step conversation: 'choose' asks what to do with the
+  // server copy; picking "delete it" moves to 'delete', a second, explicit
+  // confirmation, because that one cannot be undone.
+  const [confirming, setConfirming] = useState<'choose' | 'delete' | null>(null);
 
   const toggle = useMutation({
     mutationFn: (args: { enabled: boolean; deleteServerCopy?: boolean }) =>
       setSyncEnabled(args.enabled, { deleteServerCopy: args.deleteServerCopy }),
     onSuccess: () => {
-      setConfirming(false);
+      setConfirming(null);
       void queryClient.invalidateQueries({ queryKey: ['sync', 'enabled'] });
     },
   });
@@ -61,75 +174,52 @@ function SyncSection() {
     : null;
 
   return (
-    <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-      <div className="mb-3 flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-          <CloudUpload size={17} strokeWidth={1.8} aria-hidden />
-        </span>
-        <div>
-          <p className="text-sm font-semibold">Sync &amp; backup</p>
-          <p className="text-xs text-muted">
-            Keeps your diet, recipes, meal plan and shopping list
-            {trainingOn ? ' — plus your workouts and training plans —' : ''} the same on every
-            device you sign in on, syncing whenever you're online. Health data from watches never
-            syncs — it stays on the device that recorded it.
-          </p>
-        </div>
-      </div>
-
+    <SettingsCard
+      title="Sync & backup"
+      Icon={CloudUpload}
+      hint={
+        <>
+          Keeps your diet, recipes, meal plan and shopping list
+          {trainingOn ? ' — plus your workouts and training plans —' : ''} the same on every device
+          you sign in on, syncing whenever you're online. Health data from watches never syncs — it
+          stays on the device that recorded it.
+        </>
+      }
+    >
       <div className="grid gap-2 sm:grid-cols-2">
-        <button
-          type="button"
-          aria-pressed={enabled}
+        <OptionButton
+          selected={enabled}
           onClick={() => {
             if (!enabled) toggle.mutate({ enabled: true });
           }}
-          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-            enabled ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
-          }`}
-        >
-          <span>
-            <span className="block text-sm font-semibold">Sync on</span>
-            <span className="block text-xs text-muted">Backed up and shared across devices</span>
-          </span>
-          {enabled && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
-        </button>
-        <button
-          type="button"
-          aria-pressed={!enabled}
+          label="Sync on"
+          hint="Backed up and shared across devices"
+        />
+        <OptionButton
+          selected={!enabled}
           onClick={() => {
-            if (enabled) setConfirming(true);
+            if (enabled) setConfirming('choose');
           }}
-          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-            !enabled ? 'border-accent/40 bg-accent-soft' : 'border-line bg-surface hover:bg-elev'
-          }`}
-        >
-          <span>
-            <span className="block text-sm font-semibold">Local only</span>
-            <span className="block text-xs text-muted">Data never leaves this device</span>
-          </span>
-          {!enabled && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
-        </button>
+          label="Local only"
+          hint="Data never leaves this device"
+        />
       </div>
 
       {enabled && (
         <div className="mt-3 rounded-xl border border-line bg-elev/40 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Sync training data</p>
-              <p className="text-xs text-muted">
-                On by default — workout plans, workouts and logged sessions follow you across
-                devices, private to your account. Turn it off to keep training on this device only;
-                individual plans can also be pinned per-plan from the Plans page.
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={trainingOn}
-              aria-label="Sync training data"
-              disabled={toggleTraining.isPending || trainingQuery.isLoading}
-              onClick={() => toggleTraining.mutate(!trainingOn)}
+          {/* The whole row is the switch, so the tap target is the full width
+              rather than just the 44px-wide track. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={trainingOn}
+            disabled={toggleTraining.isPending || trainingQuery.isLoading}
+            onClick={() => toggleTraining.mutate(!trainingOn)}
+            className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+          >
+            <span className="text-sm font-semibold">Sync training data</span>
+            <span
+              aria-hidden
               className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
                 trainingOn ? 'bg-accent' : 'bg-line'
               }`}
@@ -139,10 +229,15 @@ function SyncSection() {
                   trainingOn ? 'left-[22px]' : 'left-0.5'
                 }`}
               />
-            </button>
-          </div>
+            </span>
+          </button>
+          <p className="text-sm text-muted">
+            On by default — workout plans, workouts and logged sessions follow you across devices,
+            private to your account. Turn it off to keep training on this device only; individual
+            plans can also be pinned per-plan from the Plans page.
+          </p>
           {!trainingOn && (
-            <p className="mt-2 text-xs text-amber-600">
+            <p className="mt-2 text-sm text-amber-500">
               Training sync is off — new workouts, plans and sessions stay on this device. What's
               already backed up stays on the server.
             </p>
@@ -150,62 +245,21 @@ function SyncSection() {
         </div>
       )}
 
-      {confirming && (
-        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-          <div className="flex items-start gap-2">
-            <TriangleAlert size={16} className="mt-0.5 shrink-0 text-amber-600" aria-hidden />
-            <p className="text-xs">
-              Your diet, recipes, meal plan and shopping list will exist only on this device. If you
-              lose it, they're gone — and your other devices will stop getting updates.
-            </p>
-          </div>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={toggle.isPending}
-              onClick={() => toggle.mutate({ enabled: false })}
-              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold hover:bg-elev"
-            >
-              Go local, keep server backup
-            </button>
-            <button
-              type="button"
-              disabled={toggle.isPending}
-              onClick={() => toggle.mutate({ enabled: false, deleteServerCopy: true })}
-              className="rounded-lg border border-rose-500/40 bg-surface px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-elev"
-            >
-              Go local and delete server copy
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-ink"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {sync.accountMismatch && (
-        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+        <div className="mt-3 space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
           <p>
             The data on this device was synced by a different account, so syncing is paused to keep
             accounts separate.
           </p>
-          <button
-            type="button"
-            onClick={() => void adoptCurrentAccount()}
-            className="mt-2 rounded-lg border border-line bg-surface px-3 py-1.5 font-semibold hover:bg-elev"
-          >
+          <Button variant="secondary" block onClick={() => void adoptCurrentAccount()}>
             Sync this device with the current account
-          </button>
+          </Button>
         </div>
       )}
 
       {enabled && !sync.accountMismatch && (
-        <div className="mt-3 flex items-center justify-between text-xs text-muted">
-          <span aria-live="polite">
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted">
+          <span aria-live="polite" className="min-w-0">
             {sync.status === 'syncing' && 'Syncing…'}
             {sync.status === 'error' &&
               `Sync problem: ${sync.error ?? 'unknown error'} — will retry`}
@@ -213,28 +267,66 @@ function SyncSection() {
               sync.status !== 'error' &&
               (lastSynced ? `Last synced ${lastSynced}` : 'Waiting for first sync')}
           </span>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            className="shrink-0"
             onClick={() => void syncNow()}
             disabled={sync.status === 'syncing'}
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 font-semibold text-ink hover:bg-elev disabled:opacity-50"
           >
             <RefreshCw
-              size={13}
+              size={18}
               className={sync.status === 'syncing' ? 'animate-spin' : ''}
               aria-hidden
             />
             Sync now
-          </button>
+          </Button>
         </div>
       )}
       {!enabled && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-amber-600">
-          <TriangleAlert size={14} aria-hidden />
+        <p className="mt-3 flex items-center gap-2 text-sm text-amber-500">
+          <TriangleAlert size={18} className="shrink-0" aria-hidden />
           Local only — this device's data isn't backed up.
         </p>
       )}
-    </section>
+
+      {confirming === 'choose' && (
+        <Sheet title="Go local only?" onClose={() => setConfirming(null)}>
+          <p className="text-sm text-muted">
+            Your diet, recipes, meal plan and shopping list will exist only on this device. If you
+            lose it, they're gone — and your other devices will stop getting updates.
+          </p>
+          <div className="mt-5 grid gap-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ enabled: false })}
+            >
+              Go local, keep server backup
+            </Button>
+            <Button variant="danger" size="lg" onClick={() => setConfirming('delete')}>
+              Go local and delete server copy…
+            </Button>
+            <Button variant="ghost" size="lg" onClick={() => setConfirming(null)}>
+              Cancel
+            </Button>
+          </div>
+          {toggle.isError && (
+            <p className="mt-3 text-sm text-rose-500">Couldn't change sync — try again.</p>
+          )}
+        </Sheet>
+      )}
+      {confirming === 'delete' && (
+        <ConfirmSheet
+          title="Delete the server copy?"
+          body="Sync turns off and the backup on the server is erased. This device will hold the only copy of your data, and the deletion can't be undone."
+          confirmLabel="Go local and delete server copy"
+          pending={toggle.isPending}
+          onConfirm={() => toggle.mutate({ enabled: false, deleteServerCopy: true })}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+    </SettingsCard>
   );
 }
 
@@ -255,94 +347,54 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-sm text-muted">Preferences for how the app displays your data.</p>
-      </header>
+    <div className="mx-auto max-w-2xl space-y-4 p-4 md:p-6">
+      <PageHeader title="Settings" back="/you" />
 
       <BillingSection />
 
       <SyncSection />
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Ruler size={17} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">Units</p>
-            <p className="text-xs text-muted">
-              Applies to body weight, height and workout weights. Your data is stored the same
-              either way — switching converts what you see, not what's saved.
-            </p>
-          </div>
-        </div>
+      <ThemeSection />
+
+      <SettingsCard
+        title="Units"
+        Icon={Ruler}
+        hint="Applies to body weight, height and workout weights. Your data is stored the same either way — switching converts what you see, not what's saved."
+      >
         <div className="grid gap-2 sm:grid-cols-2">
           {UNIT_OPTIONS.map(({ id, label, hint }) => (
-            <button
+            <OptionButton
               key={id}
-              type="button"
-              aria-pressed={units === id}
+              selected={units === id}
               onClick={() => setUnits.mutate(id)}
-              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                units === id
-                  ? 'border-accent/40 bg-accent-soft'
-                  : 'border-line bg-surface hover:bg-elev'
-              }`}
-            >
-              <span>
-                <span className="block text-sm font-semibold">{label}</span>
-                <span className="block text-xs text-muted">{hint}</span>
-              </span>
-              {units === id && <Check size={16} className="shrink-0 text-accent" aria-hidden />}
-            </button>
+              label={label}
+              hint={hint}
+            />
           ))}
         </div>
-      </section>
+      </SettingsCard>
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Dumbbell size={17} strokeWidth={1.8} aria-hidden />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">Where you train</p>
-            <p className="text-xs text-muted">
-              Training at home? Tell us what your setup has and the exercise search can filter to
-              just what you own (bodyweight always counts).
-            </p>
-          </div>
-        </div>
-
+      <SettingsCard
+        title="Where you train"
+        Icon={Dumbbell}
+        hint="Training at home? Tell us what your setup has and the exercise search can filter to just what you own (bodyweight always counts)."
+      >
         <div className="grid gap-2 sm:grid-cols-3">
           {LOCATION_OPTIONS.map(({ id, label, hint }) => (
-            <button
+            <OptionButton
               key={id}
-              type="button"
-              aria-pressed={setup.location === id}
+              selected={setup.location === id}
               onClick={() => saveSetup.mutate({ ...setup, location: id })}
-              className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
-                setup.location === id
-                  ? 'border-accent/40 bg-accent-soft'
-                  : 'border-line bg-surface hover:bg-elev'
-              }`}
-            >
-              <span>
-                <span className="block text-sm font-semibold">{label}</span>
-                <span className="block text-xs text-muted">{hint}</span>
-              </span>
-              {setup.location === id && (
-                <Check size={16} className="shrink-0 text-accent" aria-hidden />
-              )}
-            </button>
+              label={label}
+              hint={hint}
+            />
           ))}
         </div>
 
         {setup.location !== 'gym' && (
-          <div className="mt-3">
-            <p className="mb-2 text-xs font-medium text-muted">Home equipment</p>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-muted">Home equipment</p>
+            <div className="flex flex-wrap gap-2">
               {EQUIPMENT_OPTIONS.filter((e) => e.name !== 'Body only').map(({ id, name }) => {
                 const active = setup.homeEquipmentIds.includes(id);
                 return (
@@ -351,7 +403,7 @@ export function SettingsPage() {
                     type="button"
                     aria-pressed={active}
                     onClick={() => toggleEquipment(id)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`min-h-11 rounded-full border px-4 text-sm font-medium transition-colors ${
                       active
                         ? 'border-transparent bg-accent text-accent-ink shadow-sm'
                         : 'border-line bg-surface text-muted hover:text-ink'
@@ -364,12 +416,11 @@ export function SettingsPage() {
             </div>
           </div>
         )}
-      </section>
+      </SettingsCard>
 
       <DangerZoneSection />
 
-      <p className="text-xs text-muted/70">
-        Theme lives in the top bar.{' '}
+      <p className="px-1 text-sm text-muted">
         <Link to="/welcome" className="text-accent hover:underline">
           Training profile
         </Link>{' '}

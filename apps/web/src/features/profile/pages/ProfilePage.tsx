@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import { Card, PageHeader, buttonClasses } from '@/components/ui';
 import { Eye, EyeOff, KeyRound, Palette, Target, UserRound } from 'lucide-react';
 import { BANNERS, useChangePassword, useMyProfile, useUpdateProfile, type ProfileDoc } from '../api';
 import { AVATAR_ICONS, AVATAR_TONES, AvatarIcon } from '../avatars';
 import { GOAL_LABELS, LEVEL_LABELS, useTrainingProfile } from '@/features/training/profile';
 import { useExerciseCatalog } from '@/features/exercises/api';
 import { useGoalProgress } from '@/features/goals/api';
+
+// 44px tall; text-base (16px) stops iOS Safari zooming in when a field is
+// focused. py-2.5 only matters for the multi-line bio.
+const fieldClasses =
+  'min-h-11 w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-base outline-none placeholder:text-muted/70 focus:border-accent';
 
 const SECTION_LABELS: { key: keyof ProfileDoc['show']; label: string; hint: string }[] = [
   { key: 'online', label: 'Online status', hint: 'Green dot and last-seen, shown to visitors and friends' },
@@ -56,33 +62,33 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold">Your profile</h1>
-        <p className="text-sm text-muted">
-          {profile.data && (
-            <>
-              @{profile.data.username} · member since{' '}
-              {new Date(profile.data.memberSince).toLocaleDateString([], {
-                month: 'long',
-                year: 'numeric',
-              })}{' '}
-              ·{' '}
-              <Link to={`/users/${profile.data.username}`} className="text-accent hover:underline">
-                view public page
-              </Link>
-            </>
-          )}
-        </p>
-      </header>
+      <PageHeader
+        title="Your profile"
+        back="/you"
+        subtitle={
+          profile.data &&
+          `@${profile.data.username} · member since ${new Date(
+            profile.data.memberSince,
+          ).toLocaleDateString([], { month: 'long', year: 'numeric' })}`
+        }
+      />
+      {profile.data && (
+        <Link
+          to={`/users/${profile.data.username}`}
+          className={buttonClasses('secondary', 'md', 'w-full')}
+        >
+          View your public page
+        </Link>
+      )}
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <UserRound size={17} strokeWidth={1.8} aria-hidden />
+      <Card className="p-4">
+        <div className="mb-3 flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <UserRound size={20} strokeWidth={1.8} aria-hidden />
           </span>
           <div>
             <p className="text-sm font-semibold">Public identity</p>
-            <p className="text-xs text-muted">
+            <p className="text-sm text-muted">
               Shown on your public page and next to plans you publish. Your email is never public.
             </p>
           </div>
@@ -93,7 +99,7 @@ export function ProfilePage() {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Display name (optional — otherwise your username shows)"
             maxLength={60}
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className={fieldClasses}
           />
           <textarea
             value={bio}
@@ -101,34 +107,34 @@ export function ProfilePage() {
             placeholder="A line about how you train…"
             maxLength={500}
             rows={3}
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className={fieldClasses}
           />
           <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={update.isPending}
               onClick={() => update.mutate({ displayName: displayName.trim() || null, bio })}
-              className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
+              className={buttonClasses('primary')}
             >
               Save profile
             </button>
             {update.isSuccess && !update.isPending && (
-              <span className="text-xs text-accent">Saved ✓</span>
+              <span className="text-sm text-accent">Saved</span>
             )}
-            {update.isError && <span className="text-xs text-rose-500">{update.error.message}</span>}
+            {update.isError && <span className="text-sm text-rose-500">{update.error.message}</span>}
           </div>
         </div>
-      </section>
+      </Card>
 
       {doc && (
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <Palette size={17} strokeWidth={1.8} aria-hidden />
+        <Card className="p-4">
+          <div className="mb-3 flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <Palette size={20} strokeWidth={1.8} aria-hidden />
             </span>
             <div>
               <p className="text-sm font-semibold">Public page</p>
-              <p className="text-xs text-muted">
+              <p className="text-sm text-muted">
                 Your banner, avatar, and exactly what visitors get to see — anything can be
                 switched off.
               </p>
@@ -148,55 +154,58 @@ export function ProfilePage() {
           </div>
 
           <p className="mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Banner</p>
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="mb-3 flex flex-wrap gap-2">
             {BANNERS.map((b) => (
               <button
                 key={b.id}
                 type="button"
                 title={b.label}
+                aria-label={`${b.label} banner`}
                 aria-pressed={doc.bannerId === b.id}
                 onClick={() => setDoc({ ...doc, bannerId: b.id })}
-                className={`springy h-9 w-14 rounded-lg border-2 ${doc.bannerId === b.id ? 'border-accent' : 'border-transparent'}`}
+                className={`springy h-11 w-16 rounded-xl border-2 ${doc.bannerId === b.id ? 'border-accent' : 'border-transparent'}`}
                 style={{ background: b.css }}
               />
             ))}
           </div>
 
           <p className="mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Avatar</p>
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             {AVATAR_ICONS.map(({ id, Icon, label }) => (
               <button
                 key={id}
                 type="button"
                 title={label}
+                aria-label={`${label} avatar`}
                 aria-pressed={doc.avatarIcon === id}
                 onClick={() => setDoc({ ...doc, avatarIcon: id })}
-                className={`springy flex h-9 w-9 items-center justify-center rounded-lg border ${
+                className={`springy flex h-11 w-11 items-center justify-center rounded-xl border ${
                   doc.avatarIcon === id
                     ? 'border-accent bg-accent-soft text-accent'
                     : 'border-line bg-surface text-muted hover:text-ink'
                 }`}
               >
-                <Icon size={17} strokeWidth={1.8} aria-hidden />
+                <Icon size={20} strokeWidth={1.8} aria-hidden />
               </button>
             ))}
             <button
               type="button"
               onClick={() => setDoc({ ...doc, avatarIcon: '' })}
-              className="text-xs text-muted hover:text-ink"
+              className={buttonClasses('ghost')}
             >
               Use initial
             </button>
           </div>
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             {AVATAR_TONES.map(({ id, swatch }) => (
               <button
                 key={id}
                 type="button"
                 title={id}
+                aria-label={`${id} avatar color`}
                 aria-pressed={doc.avatarTone === id}
                 onClick={() => setDoc({ ...doc, avatarTone: id })}
-                className={`springy h-7 w-7 rounded-full border-2 ${swatch} ${
+                className={`springy h-11 w-11 rounded-full border-2 ${swatch} ${
                   doc.avatarTone === id ? 'border-ink' : 'border-transparent'
                 }`}
               />
@@ -206,7 +215,7 @@ export function ProfilePage() {
           <p className="mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">
             What visitors can see
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {SECTION_LABELS.map(({ key, label, hint }) => {
               const on = doc.show[key];
               return (
@@ -215,18 +224,18 @@ export function ProfilePage() {
                   type="button"
                   aria-pressed={on}
                   onClick={() => setDoc({ ...doc, show: { ...doc.show, [key]: !on } })}
-                  className="springy flex w-full items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left hover:bg-elev"
+                  className="springy flex min-h-14 w-full items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left hover:bg-elev"
                 >
                   {on ? (
-                    <Eye size={15} className="shrink-0 text-accent" aria-hidden />
+                    <Eye size={18} className="shrink-0 text-accent" aria-hidden />
                   ) : (
-                    <EyeOff size={15} className="shrink-0 text-muted" aria-hidden />
+                    <EyeOff size={18} className="shrink-0 text-muted" aria-hidden />
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">{label}</span>
-                    <span className="block text-xs text-muted">{hint}</span>
+                    <span className="block text-sm text-muted">{hint}</span>
                   </span>
-                  <span className={`text-xs font-bold ${on ? 'text-accent' : 'text-muted'}`}>
+                  <span className={`shrink-0 text-sm font-bold ${on ? 'text-accent' : 'text-muted'}`}>
                     {on ? 'Public' : 'Private'}
                   </span>
                 </button>
@@ -234,44 +243,44 @@ export function ProfilePage() {
             })}
           </div>
           {doc.show.goals && (
-            <p className="mt-2 text-xs text-muted">
+            <p className="mt-2 text-sm text-muted">
               Sharing {goalSnapshot.length} goal{goalSnapshot.length === 1 ? '' : 's'} as a
               snapshot — saved when you save this card, refreshed each time you save again.
             </p>
           )}
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={update.isPending}
               onClick={savePublicPage}
-              className="springy rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
+              className={buttonClasses('primary')}
             >
               Save public page
             </button>
             {update.isSuccess && !update.isPending && (
-              <span className="text-xs text-accent">Saved ✓</span>
+              <span className="text-sm text-accent">Saved</span>
             )}
             {profile.data && (
               <Link
                 to={`/users/${profile.data.username}`}
-                className="ml-auto text-xs font-medium text-accent hover:underline"
+                className="ml-auto flex min-h-11 items-center text-sm font-medium text-accent hover:underline"
               >
-                Preview your page →
+                Preview your page
               </Link>
             )}
           </div>
-        </section>
+        </Card>
       )}
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Target size={17} strokeWidth={1.8} aria-hidden />
+      <Card className="p-4">
+        <div className="mb-3 flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <Target size={20} strokeWidth={1.8} aria-hidden />
           </span>
           <div>
             <p className="text-sm font-semibold">Training goals</p>
-            <p className="text-xs text-muted">
+            <p className="text-sm text-muted">
               {training.data
                 ? `${GOAL_LABELS[training.data.goal]} · ${LEVEL_LABELS[training.data.level]} · ${training.data.daysPerWeek} days/week`
                 : 'Not set yet.'}
@@ -280,20 +289,20 @@ export function ProfilePage() {
         </div>
         <Link
           to="/welcome"
-          className="inline-block rounded-xl border border-line bg-surface px-4 py-2 text-sm font-semibold shadow-sm hover:bg-elev"
+          className={buttonClasses('secondary')}
         >
           Change goals
         </Link>
-      </section>
+      </Card>
 
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <KeyRound size={17} strokeWidth={1.8} aria-hidden />
+      <Card className="p-4">
+        <div className="mb-3 flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <KeyRound size={20} strokeWidth={1.8} aria-hidden />
           </span>
           <div>
             <p className="text-sm font-semibold">Change password</p>
-            <p className="text-xs text-muted">
+            <p className="text-sm text-muted">
               Changing it signs out every other device you're logged in on.
             </p>
           </div>
@@ -305,7 +314,7 @@ export function ProfilePage() {
             onChange={(e) => setCurrentPassword(e.target.value)}
             placeholder="Current password"
             autoComplete="current-password"
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className={fieldClasses}
           />
           <input
             type="password"
@@ -313,7 +322,7 @@ export function ProfilePage() {
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password (8+ characters)"
             autoComplete="new-password"
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none placeholder:text-muted/70 focus:border-accent"
+            className={fieldClasses}
           />
           <div className="flex items-center gap-2">
             <button
@@ -332,19 +341,19 @@ export function ProfilePage() {
                   },
                 )
               }
-              className="rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
+              className={buttonClasses('primary')}
             >
               Change password
             </button>
             {changePassword.isSuccess && !changePassword.isPending && (
-              <span className="text-xs text-accent">Changed — other devices signed out ✓</span>
+              <span className="text-sm text-accent">Changed — other devices signed out</span>
             )}
             {changePassword.isError && (
-              <span className="text-xs text-rose-500">{changePassword.error.message}</span>
+              <span className="text-sm text-rose-500">{changePassword.error.message}</span>
             )}
           </div>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }
