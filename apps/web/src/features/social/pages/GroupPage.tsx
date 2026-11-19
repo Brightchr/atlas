@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
-import { ChevronLeft, Crown, Trash2, UserPlus } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router';
+import { Crown, LogOut, Trash2, UserPlus } from 'lucide-react';
 import type { GroupMemberEntry } from '@arcadia/shared';
-import { displayWeight, useUnits } from '@/lib/units';
+import { Button, Card, ConfirmSheet, IconButton, PageHeader, SectionLabel } from '@/components/ui';
+import { displayWeight, useUnits, weightUnit } from '@/lib/units';
 import {
   useDeleteGroup,
   useGroup,
@@ -33,19 +34,23 @@ export function GroupPage() {
   const deleteGroup = useDeleteGroup();
   const setSharing = useSetGroupSharing();
   const [username, setUsername] = useState('');
-  const [confirming, setConfirming] = useState(false);
+  // Which confirmation sheet is open, if any.
+  const [confirming, setConfirming] = useState<'delete' | 'leave' | null>(null);
 
   const group = groupQuery.data;
   if (groupQuery.isLoading) {
-    return <div className="mx-auto max-w-3xl p-4 text-sm text-muted md:p-6">Loading…</div>;
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
+        <PageHeader title="Group" back="/friends" />
+        <p className="text-sm text-muted">Loading…</p>
+      </div>
+    );
   }
   if (!group) {
     return (
-      <div className="mx-auto max-w-3xl space-y-3 p-4 md:p-6">
+      <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
+        <PageHeader title="Group" back="/friends" />
         <p className="text-sm text-muted">Group not found — it may have been deleted.</p>
-        <Link to="/friends" className="text-sm font-medium text-accent hover:underline">
-          ← Back to friends
-        </Link>
       </div>
     );
   }
@@ -60,119 +65,111 @@ export function GroupPage() {
     { workouts: 0, volumeKg: 0, cardioMin: 0 },
   );
 
+  const submitInvite = () => {
+    const name = username.trim();
+    if (!name) return;
+    invite.mutate({ groupId: group.id, username: name }, { onSuccess: () => setUsername('') });
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 md:p-6">
-      <div className="flex items-center gap-2">
-        <Link
-          to="/friends"
-          className="flex items-center gap-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-elev"
-        >
-          <ChevronLeft size={14} aria-hidden />
-          Friends
-        </Link>
-      </div>
-
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{group.name}</h1>
-          <p className="text-sm text-muted">
-            {group.memberCount} member{group.memberCount === 1 ? '' : 's'} · run by {group.owner}
-          </p>
-        </div>
-        {group.membership === 'owner' &&
-          (confirming ? (
-            <span className="flex shrink-0 items-center gap-1.5 text-xs">
-              <button
-                type="button"
-                onClick={() =>
-                  deleteGroup.mutate(group.id, { onSuccess: () => void navigate('/friends') })
-                }
-                className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 font-semibold text-rose-600"
-              >
-                Delete group
-              </button>
-              <button type="button" onClick={() => setConfirming(false)} className="rounded-lg px-2 py-1.5 text-muted hover:text-ink">
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              aria-label="Delete group"
-              className="shrink-0 rounded-lg p-2 text-muted transition-colors hover:bg-elev hover:text-ink"
+      <PageHeader
+        title={group.name}
+        subtitle={`${group.memberCount} member${group.memberCount === 1 ? '' : 's'} · run by ${group.owner}`}
+        back="/friends"
+        actions={
+          group.membership === 'owner' && (
+            <IconButton
+              label="Delete group"
+              variant="danger"
+              onClick={() => setConfirming('delete')}
             >
-              <Trash2 size={16} aria-hidden />
-            </button>
-          ))}
-      </header>
+              <Trash2 size={18} aria-hidden />
+            </IconButton>
+          )
+        }
+      />
 
       {/* Co-op aggregate — the number everyone contributed to. */}
-      <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <Card className="p-4">
         <p className="text-sm">
           This week the crew logged{' '}
           <span className="font-bold tabular-nums">{totals.workouts}</span> workout
           {totals.workouts === 1 ? '' : 's'}
           {totals.volumeKg > 0 && (
             <>
-              {' '}and lifted{' '}
+              {' '}
+              and lifted{' '}
               <span className="font-bold tabular-nums">
-                {Math.round(displayWeight(totals.volumeKg, units)).toLocaleString()}
+                {Math.round(displayWeight(totals.volumeKg, units)).toLocaleString()}{' '}
+                {weightUnit(units)}
               </span>{' '}
               total
             </>
           )}
           {totals.cardioMin > 0 && (
             <>
-              {' '}with <span className="font-bold tabular-nums">{totals.cardioMin}</span> cardio
-              minutes
+              {' '}
+              with <span className="font-bold tabular-nums">{totals.cardioMin}</span> cardio minutes
             </>
           )}
           .
         </p>
-      </section>
+      </Card>
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold">This week</h2>
+      <section className="space-y-2">
+        <SectionLabel>This week</SectionLabel>
         <ul className="space-y-2">
           {ranked.map((m, i) => {
             const pct = effortPct(m);
             return (
-              <li key={m.user.id} className="rounded-2xl border border-line bg-surface p-3.5 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <span className="w-5 shrink-0 text-center text-sm font-bold text-muted tabular-nums">
-                    {pct >= 0 ? i + 1 : '·'}
-                  </span>
-                  <AvatarIcon name={m.user.username} icon={m.user.avatarIcon} tone={m.user.avatarTone} online={m.online} size="sm" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                    {m.user.displayName ?? m.user.username}
-                    {m.role === 'owner' && (
-                      <Crown size={12} aria-hidden className="mb-0.5 ml-1.5 inline text-amber-500" />
-                    )}
-                  </span>
-                  {pct >= 1 && (
-                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent">
-                      goal hit
+              <li key={m.user.id}>
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-5 shrink-0 text-center text-sm font-bold text-muted tabular-nums">
+                      {pct >= 0 ? i + 1 : '·'}
                     </span>
-                  )}
-                </div>
-                {m.stats ? (
-                  <>
-                    <div className="mt-2 ml-8">
-                      <StatChips stats={m.stats} updatedAt={m.statsUpdatedAt} />
-                    </div>
-                    {m.stats.weeklyTargetDays ? (
-                      <div className="mt-2 ml-8 h-1.5 overflow-hidden rounded-full bg-elev">
-                        <div
-                          className="h-full rounded-full bg-linear-to-r from-accent to-accent-2 transition-[width] duration-500"
-                          style={{ width: `${Math.min(100, Math.round(pct * 100))}%` }}
+                    <AvatarIcon
+                      name={m.user.username}
+                      icon={m.user.avatarIcon}
+                      tone={m.user.avatarTone}
+                      online={m.online}
+                      size="sm"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                      {m.user.displayName ?? m.user.username}
+                      {m.role === 'owner' && (
+                        <Crown
+                          size={14}
+                          aria-label="Group owner"
+                          className="mb-0.5 ml-1.5 inline text-accent"
                         />
+                      )}
+                    </span>
+                    {pct >= 1 && (
+                      <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent">
+                        Goal hit
+                      </span>
+                    )}
+                  </div>
+                  {m.stats ? (
+                    <>
+                      <div className="mt-2 ml-8">
+                        <StatChips stats={m.stats} updatedAt={m.statsUpdatedAt} />
                       </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className="mt-1.5 ml-8 text-xs text-muted/80">Not sharing stats.</p>
-                )}
+                      {m.stats.weeklyTargetDays ? (
+                        <div className="mt-2 ml-8 h-2 overflow-hidden rounded-full bg-elev">
+                          <div
+                            className="h-full rounded-full bg-linear-to-r from-accent to-accent-2 transition-[width] duration-500"
+                            style={{ width: `${Math.min(100, Math.round(pct * 100))}%` }}
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="mt-1.5 ml-8 text-sm text-muted">Not sharing stats.</p>
+                  )}
+                </Card>
               </li>
             );
           })}
@@ -180,67 +177,86 @@ export function GroupPage() {
       </section>
 
       {group.invited.length > 0 && (
-        <p className="text-xs text-muted">
-          Invited, not joined yet: {group.invited.map((u) => u.displayName ?? u.username).join(', ')}
+        <p className="text-sm text-muted">
+          Invited, not joined yet:{' '}
+          {group.invited.map((u) => u.displayName ?? u.username).join(', ')}
         </p>
       )}
 
       {group.membership !== 'invited' && (
         <section className="space-y-3">
-          <div className="relative">
-            <UserPlus size={15} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted" aria-hidden />
+          <SectionLabel>Invite</SectionLabel>
+          {/* A real <form> so the phone keyboard's Go/Enter key submits. */}
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitInvite();
+            }}
+          >
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && username.trim()) {
-                  invite.mutate(
-                    { groupId: group.id, username: username.trim() },
-                    { onSuccess: () => setUsername('') },
-                  );
-                }
-              }}
-              placeholder="Invite by username…"
+              placeholder="Invite by username"
               aria-label="Invite by username"
-              className="w-full rounded-2xl border border-line bg-surface py-2.5 pr-24 pl-10 text-sm shadow-sm outline-none placeholder:text-muted/70 focus:border-accent"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="min-h-11 w-full min-w-0 rounded-xl border border-line bg-surface px-3 text-base outline-none placeholder:text-muted/70 focus:border-accent"
             />
-            <button
-              type="button"
+            <Button
+              type="submit"
+              className="shrink-0"
               disabled={!username.trim() || invite.isPending}
-              onClick={() =>
-                invite.mutate(
-                  { groupId: group.id, username: username.trim() },
-                  { onSuccess: () => setUsername('') },
-                )
-              }
-              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-xl bg-linear-to-r from-accent to-accent-2 px-3 py-1.5 text-xs font-semibold text-accent-ink shadow-sm hover:opacity-90 disabled:opacity-50"
             >
+              <UserPlus size={18} aria-hidden />
               Invite
-            </button>
-          </div>
-          {invite.isError && <p className="text-xs text-rose-500">{invite.error.message}</p>}
+            </Button>
+          </form>
+          {invite.isError && <p className="text-sm text-rose-500">{invite.error.message}</p>}
 
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted">
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 px-1 text-sm text-muted">
             <input
               type="checkbox"
               checked={group.sharingStats}
               disabled={setSharing.isPending}
               onChange={(e) => setSharing.mutate({ groupId: group.id, enabled: e.target.checked })}
-              className="h-3.5 w-3.5"
+              className="h-5 w-5 shrink-0 accent-accent"
             />
             Share my stats with this group
           </label>
 
           {group.membership === 'member' && (
-            <button
-              type="button"
-              onClick={() => leave.mutate(group.id, { onSuccess: () => void navigate('/friends') })}
-              className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline"
-            >
+            <Button variant="danger" block onClick={() => setConfirming('leave')}>
+              <LogOut size={18} aria-hidden />
               Leave group
-            </button>
+            </Button>
           )}
         </section>
+      )}
+
+      {confirming === 'delete' && (
+        <ConfirmSheet
+          title="Delete this group?"
+          body={`"${group.name}" will be removed for all ${group.memberCount} member${
+            group.memberCount === 1 ? '' : 's'
+          }. This can't be undone.`}
+          confirmLabel="Delete group"
+          pending={deleteGroup.isPending}
+          onConfirm={() =>
+            deleteGroup.mutate(group.id, { onSuccess: () => void navigate('/friends') })
+          }
+          onClose={() => setConfirming(null)}
+        />
+      )}
+      {confirming === 'leave' && (
+        <ConfirmSheet
+          title="Leave this group?"
+          body={`You'll stop seeing "${group.name}" and its members' stats.`}
+          confirmLabel="Leave group"
+          pending={leave.isPending}
+          onConfirm={() => leave.mutate(group.id, { onSuccess: () => void navigate('/friends') })}
+          onClose={() => setConfirming(null)}
+        />
       )}
     </div>
   );

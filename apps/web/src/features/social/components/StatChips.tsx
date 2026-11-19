@@ -16,7 +16,7 @@ function timeAgo(iso: string): string {
  * and no red/negative styling anywhere — quiet beats shaming. */
 export function StatChips({ stats, updatedAt }: { stats: FriendStats; updatedAt: string | null }) {
   const units = useUnits();
-  const chip = 'inline-flex items-center gap-1 rounded-full bg-elev px-2 py-0.5 text-[11px] font-semibold tabular-nums';
+  const chip = 'inline-flex items-center gap-1 rounded-full bg-elev px-2 py-0.5 text-xs font-semibold tabular-nums';
   const delta = stats.weightDeltaKg;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -51,12 +51,12 @@ export function StatChips({ stats, updatedAt }: { stats: FriendStats; updatedAt:
         </span>
       )}
       {stats.lastWorkout && (
-        <span className="text-[11px] text-muted">
+        <span className="text-xs text-muted">
           {stats.lastWorkout.name} · {timeAgo(stats.lastWorkout.at)}
         </span>
       )}
       {updatedAt && Date.now() - Date.parse(updatedAt) > 3 * 86_400_000 && (
-        <span className="text-[11px] text-muted/70">updated {timeAgo(updatedAt)}</span>
+        <span className="text-xs text-muted/70">updated {timeAgo(updatedAt)}</span>
       )}
     </div>
   );
