@@ -7,7 +7,6 @@ import {
   ChevronDown,
   LogIn,
   LogOut,
-  MessageSquare,
   Settings,
   Sparkles,
   User,
@@ -17,12 +16,12 @@ import { THEMES, useTheme } from '@/app/theme';
 import { useCurrentUser, useLogout } from '@/features/auth/api';
 import { useMarkAllRead, useNotifications } from '@/features/notifications/api';
 
-type MenuId = 'theme' | 'notifications' | 'messages' | 'profile';
+type MenuId = 'theme' | 'notifications' | 'profile';
 
-/** Top bar: brand (mobile only) + theme selector, notifications, messages, profile.
- * All menus are UI-only for now — the backend (notifications, DMs, friends, auth)
- * plugs into these panels later. */
-export function TopBar() {
+/** Top bar. Phones get the brand, membership status and notifications and
+ * nothing else, so the bar stays quiet. Desktop adds the theme picker and
+ * the account menu (on phones both live on the You tab). */
+export function TopBar({ nav }: { nav?: ReactNode }) {
   const [open, setOpen] = useState<MenuId | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -50,22 +49,26 @@ export function TopBar() {
       // relative z-40 lifts the whole bar (and its dropdown panels) above the
       // page content — backdrop-blur alone creates a stacking context that
       // would otherwise paint BELOW positioned elements in <main>.
-      className="relative z-40 flex items-center justify-between gap-3 border-b border-line bg-surface/70 px-4 py-2.5 backdrop-blur-sm md:justify-end"
+      className="relative z-40 flex items-center justify-between gap-3 border-b border-line bg-bg/60 px-4 py-1.5 backdrop-blur-xl"
     >
-      {/* Brand — mobile only (desktop shows it in the sidebar) */}
-      <div className="flex items-center md:hidden">
+      <div className="flex items-center gap-6">
         <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-8 w-auto" />
+        {/* The primary tabs, on screens wide enough to hold them here. */}
+        {nav}
       </div>
 
       <div className="flex items-center gap-1.5">
         <MembershipChip />
-        <ThemeMenu open={open === 'theme'} onToggle={() => toggle('theme')} />
         <NotificationsMenu
           open={open === 'notifications'}
           onToggle={() => toggle('notifications')}
         />
-        <MessagesMenu open={open === 'messages'} onToggle={() => toggle('messages')} />
-        <ProfileMenu open={open === 'profile'} onToggle={() => toggle('profile')} />
+        {/* Theme and account live on the You tab on phones; the top bar keeps
+            them only where there is room. */}
+        <div className="hidden items-center gap-1.5 md:flex">
+          <ThemeMenu open={open === 'theme'} onToggle={() => toggle('theme')} />
+          <ProfileMenu open={open === 'profile'} onToggle={() => toggle('profile')} />
+        </div>
       </div>
     </header>
   );
@@ -121,7 +124,7 @@ function IconButton({
       aria-haspopup="menu"
       aria-expanded={open}
       onClick={onClick}
-      className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
+      className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
         open ? 'bg-elev text-ink' : 'text-muted hover:bg-elev hover:text-ink'
       }`}
     >
@@ -272,25 +275,6 @@ function NotificationsMenu({ open, onToggle }: { open: boolean; onToggle: () => 
               Mark all as read
             </button>
           )}
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-function MessagesMenu({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <div className="relative">
-      <IconButton label="Messages" open={open} onClick={onToggle}>
-        <MessageSquare size={18} strokeWidth={1.8} aria-hidden />
-      </IconButton>
-      {open && (
-        <Panel title="Messages">
-          <EmptyState
-            Icon={MessageSquare}
-            title="No messages yet"
-            hint="Direct messages with friends will show up here."
-          />
         </Panel>
       )}
     </div>

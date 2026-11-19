@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { useEffect, useRef } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router';
 import {
   Apple,
-  Dumbbell,
-  History,
-  House,
-  PanelLeftClose,
-  PanelLeftOpen,
-  ShieldCheck,
+  ClipboardList,
+  LineChart,
   UserRound,
   VenetianMask,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import { TopBar } from '@/app/layout/TopBar';
 import { DbStatusBanner } from '@/components/DbStatusBanner';
@@ -17,37 +15,46 @@ import { useStopImpersonation } from '@/features/admin/api';
 import { TrialBanner } from '@/features/billing/components/TrialBanner';
 import { VerifyEmailBanner } from '@/features/auth/components/VerifyEmailBanner';
 import { useCurrentUser, useSession } from '@/features/auth/api';
-import { FriendsRail } from '@/features/social/components/FriendsRail';
+import { useIncomingRequestCount } from '@/features/social/components/FriendsCard';
+import { ActiveWorkoutBar, useOpenSession } from '@/features/workouts/components/ActiveWorkoutBar';
+import { useRestAlarm } from '@/features/workouts/restTimer';
 import { startStatsPublisher } from '@/features/social/stats';
 import { startSync } from '@/lib/sync/engine';
 import { useSyncState } from '@/lib/sync/useSync';
 import { useOnboardingState, useTrainingProfile } from '@/features/training/profile';
 
-// The 5-tab shell: Home, Workout, History, Eat, You — the shape every
-// workout app converges on, so starting or reviewing a workout is one tap
-// from anywhere. `match` lists extra path prefixes (detail and legacy
-// routes) that keep the tab lit.
+// The 5-tab shell: Today, Plan, Eat, Progress, You.
+//   Today    — what the plan says to do now, and what is left to eat.
+//   Plan     — the week, its routines, building or picking a plan.
+//   Eat      — the food diary, meal plan, recipes, shopping.
+//   Progress — everything you look back on: charts, history, goals.
+//   You      — the account.
+// `match` lists extra path prefixes (detail and legacy routes) that keep a
+// tab lit.
 interface NavItem {
   to: string;
   label: string;
-  Icon: typeof House;
+  Icon: LucideIcon;
   end?: boolean;
   match?: string[];
 }
 
 const navItems: NavItem[] = [
-  { to: '/', label: 'Home', Icon: House, end: true },
+  { to: '/', label: 'Today', Icon: Zap, end: true },
   {
     to: '/train',
-    label: 'Workout',
-    Icon: Dumbbell,
+    label: 'Plan',
+    Icon: ClipboardList,
     match: ['/workouts', '/exercises', '/plans', '/training'],
   },
-  { to: '/history', label: 'History', Icon: History },
   { to: '/eat', label: 'Eat', Icon: Apple, match: ['/nutrition', '/shopping'] },
-  // Profile and Settings are account pages under the top-bar avatar menu,
-  // so they deliberately don't light this tab. Friends lives in You.
-  { to: '/you', label: 'You', Icon: UserRound, match: ['/goals', '/friends', '/groups'] },
+  { to: '/progress', label: 'Progress', Icon: LineChart, match: ['/history'] },
+  {
+    to: '/you',
+    label: 'You',
+    Icon: UserRound,
+    match: ['/profile', '/settings', '/friends', '/groups', '/users', '/upgrade', '/admin'],
+  },
 ];
 
 /** Shown while a fresh device waits for its first pull to decide whether the
@@ -68,8 +75,6 @@ function isItemActive(item: NavItem, pathname: string): boolean {
   );
 }
 
-const COLLAPSE_KEY = 'arcadia-sidebar';
-
 /** Amber bar shown while an admin views the app as another user. */
 function ImpersonationBanner() {
   const session = useSession();
@@ -86,7 +91,7 @@ function ImpersonationBanner() {
       <button
         type="button"
         onClick={() => stop.mutate(undefined, { onSuccess: () => navigate('/admin') })}
-        className="rounded-lg border border-amber-500/40 px-2.5 py-1 text-xs font-semibold transition-colors hover:bg-amber-500/20"
+        className="min-h-11 rounded-lg border border-amber-500/40 px-3 text-sm font-semibold transition-colors hover:bg-amber-500/20"
       >
         Return to admin
       </button>
@@ -94,20 +99,37 @@ function ImpersonationBanner() {
   );
 }
 
-/** App shell: collapsible sidebar on md+ screens, floating glass tab bar on mobile,
- * top bar with theme/notifications/messages/profile on all breakpoints.
- * All colors come from theme tokens — see index.css. */
+/** App shell: a top bar and one column of content. The five tabs are a
+ * bottom bar on phones (thumb reach) and move into the top bar on wider
+ * screens (where the pointer already is). There is no sidebar.
+ *
+ * The live workout screen is the one exception: it hides the tabs so a stray
+ * thumb cannot navigate away mid-set. All colors come from theme tokens —
+ * see index.css. */
 export function AppLayout() {
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(COLLAPSE_KEY) === 'collapsed',
-  );
   const { data: user } = useCurrentUser();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const items: NavItem[] =
-    user?.role === 'admin'
-      ? [...navItems, { to: '/admin', label: 'Admin', Icon: ShieldCheck }]
-      : navItems;
+  const navigationType = useNavigationType();
+  const mainRef = useRef<HTMLElement>(null);
+  const { data: openSession } = useOpenSession();
+  // Workout mode: the live session screen owns the screen.
+  const inWorkout = pathname.startsWith('/workouts/session/');
+  const showWorkoutBar = Boolean(openSession) && !inWorkout;
+
+  // Waiting friend requests put a dot on the You tab (the old friends rail
+  // used to carry this badge).
+  const friendRequests = useIncomingRequestCount();
+
+  // Sounds the end-of-rest alarm on whatever screen the user is on.
+  useRestAlarm();
+
+  // <main> is the scroll container, so the browser's own "scroll to top on
+  // navigation" never happens. Do it here for forward navigation; on Back
+  // (POP) leave the position alone.
+  useEffect(() => {
+    if (navigationType !== 'POP') mainRef.current?.scrollTo({ top: 0 });
+  }, [pathname, navigationType]);
 
   // Sync runs for the whole signed-in session: pull/push on start, then on
   // reconnect, tab focus, after writes (debounced), and on a slow interval.
@@ -149,118 +171,97 @@ export function AppLayout() {
   const settingUp =
     !onWelcome && !sync.firstSyncDone && noEvidence && !profile.isError && !onboarding.isError;
 
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      localStorage.setItem(COLLAPSE_KEY, prev ? 'expanded' : 'collapsed');
-      return !prev;
-    });
-  };
-
   return (
     <div className="flex h-full flex-col">
       {/* System banners span the full width, above everything — they push the
-          layout down instead of covering the sidebar or top bar. */}
+          layout down instead of covering the top bar. */}
       <DbStatusBanner />
       <ImpersonationBanner />
       <TrialBanner />
       <VerifyEmailBanner />
 
-      <div className="flex min-h-0 flex-1">
-        {/* Sidebar — desktop only */}
-        <aside
-          className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 md:flex ${
-            collapsed ? 'w-[76px]' : 'w-64'
-          }`}
-        >
-          <div className={`flex items-center py-6 ${collapsed ? 'justify-center px-0' : 'px-5'}`}>
-            {collapsed ? (
-              <img
-                src="/favicon/android-chrome-192x192.png"
-                alt="Arcadia Atlas"
-                className="h-9 w-9 shrink-0"
-              />
-            ) : (
-              <img src="/assets/logo/atlas_logo.png" alt="Arcadia Atlas" className="h-10 w-auto" />
-            )}
-          </div>
+      <div className={inWorkout ? 'hidden md:block' : ''}>
+        <TopBar
+          nav={
+            <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+              {navItems.map((item) => {
+                const active = isItemActive(item, pathname);
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
+                      active ? 'bg-elev text-ink' : 'text-muted hover:bg-elev/60 hover:text-ink'
+                    }`}
+                  >
+                    <item.Icon size={16} strokeWidth={active ? 2.2 : 1.8} aria-hidden />
+                    {item.label}
+                    {item.to === '/you' && friendRequests > 0 && (
+                      <span
+                        aria-label={`${friendRequests} friend requests`}
+                        className="h-2 w-2 rounded-full bg-accent"
+                      />
+                    )}
+                  </NavLink>
+                );
+              })}
+            </nav>
+          }
+        />
+      </div>
 
-          <nav className="flex flex-1 flex-col gap-1 px-3">
-            {items.map((item) => (
+      {/* overflow-x-hidden: one over-wide component must never give the whole
+          app a sideways scroll on phones — wide content scrolls inside its
+          own overflow-x-auto container instead. The bottom padding keeps the
+          last card clear of the tab bar (and the workout bar when shown). */}
+      <main
+        ref={mainRef}
+        className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto ${
+          inWorkout ? 'pb-0' : showWorkoutBar ? 'pb-44 md:pb-28' : 'pb-28 md:pb-10'
+        }`}
+      >
+        {settingUp ? <SettingUpSplash /> : <Outlet />}
+      </main>
+
+      {showWorkoutBar && <ActiveWorkoutBar />}
+
+      {/* Phone tab bar: icon AND label, five 64px-tall targets in the thumb
+          zone. The active tab is marked with a beam of light along its top
+          edge (.glow-beam in index.css). From md up the same five tabs sit in
+          the top bar instead (see the `nav` passed to TopBar above). Hidden
+          in workout mode. */}
+      {!inWorkout && (
+        <nav
+          aria-label="Primary"
+          className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+        >
+          {navItems.map((item) => {
+            const active = isItemActive(item, pathname);
+            return (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-                  collapsed ? 'justify-center px-0' : 'px-3.5'
-                } ${
-                  isItemActive(item, pathname)
-                    ? 'bg-linear-to-r from-accent to-accent-2 text-accent-ink shadow-sm'
-                    : 'text-muted hover:bg-elev hover:text-ink'
+                className={`flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold transition-colors ${
+                  active ? 'glow-beam text-accent' : 'text-muted hover:text-ink'
                 }`}
               >
-                <item.Icon size={18} strokeWidth={1.8} className="shrink-0" aria-hidden />
-                {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+                <span className="relative">
+                  <item.Icon size={22} strokeWidth={active ? 2.2 : 1.8} aria-hidden />
+                  {item.to === '/you' && friendRequests > 0 && (
+                    <span
+                      aria-label={`${friendRequests} friend requests`}
+                      className="absolute -top-0.5 -right-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-accent"
+                    />
+                  )}
+                </span>
+                {item.label}
               </NavLink>
-            ))}
-          </nav>
-
-          <div className={`border-t border-line py-3 ${collapsed ? 'px-3' : 'px-3'}`}>
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className={`flex w-full items-center gap-3 rounded-xl py-2 text-sm font-medium text-muted transition-colors hover:bg-elev hover:text-ink ${
-                collapsed ? 'justify-center px-0' : 'px-3.5'
-              }`}
-            >
-              {collapsed ? (
-                <PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden />
-              ) : (
-                <>
-                  <PanelLeftClose size={18} strokeWidth={1.8} aria-hidden />
-                  <span>Collapse</span>
-                </>
-              )}
-            </button>
-          </div>
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar />
-          {/* overflow-x-hidden: one over-wide component must never give the
-              whole app a sideways scroll on phones — wide content scrolls
-              inside its own overflow-x-auto container instead. */}
-          <main className="flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-6">
-            {settingUp ? <SettingUpSplash /> : <Outlet />}
-          </main>
-        </div>
-
-        {/* Friends rail — desktop only, collapsible, presence + last workout. */}
-        <FriendsRail />
-      </div>
-
-      {/* Floating glass tab bar — mobile only */}
-      <nav
-        aria-label="Primary"
-        className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-between rounded-2xl border border-line bg-surface/80 px-3 py-2 shadow-lg shadow-black/10 backdrop-blur-xl md:hidden"
-      >
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            aria-label={item.label}
-            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
-              isItemActive(item, pathname)
-                ? 'bg-linear-to-br from-accent to-accent-2 text-accent-ink shadow-sm'
-                : 'text-muted'
-            }`}
-          >
-            <item.Icon size={20} strokeWidth={1.8} aria-hidden />
-          </NavLink>
-        ))}
-      </nav>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

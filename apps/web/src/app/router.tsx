@@ -1,7 +1,12 @@
 import { createBrowserRouter, Navigate, useParams } from 'react-router';
 import { ErrorPage } from '@/components/ErrorPage';
 import { AppLayout } from '@/app/layout/AppLayout';
-import { EatLayout, TrainLayout, YouLayout } from '@/app/layout/SectionLayouts';
+import {
+  EatLayout,
+  ProgressLayout,
+  TrainLayout,
+  YouLayout,
+} from '@/app/layout/SectionLayouts';
 import { RequireAuth } from '@/features/auth/components/RequireAuth';
 import { RequireMembership } from '@/features/billing/components/RequireMembership';
 import { AdminPage } from '@/features/admin/pages/AdminPage';
@@ -43,6 +48,7 @@ import { LogPastWorkoutPage } from '@/features/training/pages/LogPastWorkoutPage
 import { WelcomePage } from '@/features/training/pages/WelcomePage';
 import { ProfilePage } from '@/features/profile/pages/ProfilePage';
 import { PublicProfilePage } from '@/features/profile/pages/PublicProfilePage';
+import { YouPage } from '@/features/you/pages/YouPage';
 
 /** Param-preserving redirect for the old group URLs. */
 function GroupRedirect() {
@@ -50,16 +56,16 @@ function GroupRedirect() {
   return <Navigate to={`/groups/${id}`} replace />;
 }
 
-/** History moved out of You into its own tab. */
+/** Old session links from when History lived under You. */
 function HistoryRedirect() {
   const { sessionId } = useParams<{ sessionId: string }>();
   return <Navigate to={`/history/${sessionId}`} replace />;
 }
 
-/** The 5-tab shell: Home (/), Workout, History, Eat, You. Every screen lives
- * inside a section layout (or the dashboard / history), so section chrome
- * persists through every drill-down. Old paths redirect so bookmarks,
- * notifications, and muscle memory keep working. */
+/** The 5-tab shell: Home (/), Workout, Eat, Progress, You. Every screen lives
+ * inside a section layout, which decides whether it shows the section's pill
+ * bar (top-level pages) or leaves room for a back header (drill-downs). Old
+ * paths redirect so bookmarks, notifications and muscle memory keep working. */
 export const router = createBrowserRouter([
   // Public: reachable without a session (sign-in and the emailed-link pages).
   // The marketing page lives at the ROOT: RequireAuth renders it in place for
@@ -119,39 +125,45 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // Progress: charts, the workout log and goals behind one pill bar. The
+      // live session editor stays under Train so the Workout tab lights while
+      // you are logging.
       {
-        element: <YouLayout />,
+        element: <ProgressLayout />,
         children: [
-          { path: '/you', element: <ProgressPage /> },
-          { path: '/you/goals', element: <GoalsPage /> },
-          // Friends is a You pill: your people sit next to your progress.
-          { path: '/friends', element: <FriendsPage /> },
-          { path: '/groups/:id', element: <GroupPage /> },
+          { path: '/progress', element: <ProgressPage /> },
+          { path: '/progress/goals', element: <GoalsPage /> },
+          { path: '/history', element: <HistoryPage /> },
+          { path: '/history/log', element: <LogPastWorkoutPage /> },
+          { path: '/history/:sessionId', element: <SessionDetailPage /> },
         ],
       },
 
-      // History: its own tab. The live session editor stays under Train so
-      // the Workout tab lights while you're logging.
-      { path: '/history', element: <HistoryPage /> },
-      { path: '/history/log', element: <LogPastWorkoutPage /> },
-      { path: '/history/:sessionId', element: <SessionDetailPage /> },
-
-      // Account pages live under the top-bar avatar menu, outside any section.
-      { path: '/profile', element: <ProfilePage /> },
-      { path: '/settings', element: <SettingsPage /> },
-      { path: '/users/:username', element: <PublicProfilePage /> },
+      // You: the account hub and its drill-downs.
+      {
+        element: <YouLayout />,
+        children: [
+          { path: '/you', element: <YouPage /> },
+          { path: '/profile', element: <ProfilePage /> },
+          { path: '/settings', element: <SettingsPage /> },
+          { path: '/friends', element: <FriendsPage /> },
+          { path: '/groups/:id', element: <GroupPage /> },
+          { path: '/users/:username', element: <PublicProfilePage /> },
+        ],
+      },
 
       // Legacy paths from the pre-redesign IA.
       { path: '/training', element: <Navigate to="/train" replace /> },
       { path: '/training/explore', element: <Navigate to="/train/explore" replace /> },
-      { path: '/training/progress', element: <Navigate to="/you" replace /> },
+      { path: '/training/progress', element: <Navigate to="/progress" replace /> },
       { path: '/plans', element: <Navigate to="/train/schedule" replace /> },
       { path: '/workouts', element: <Navigate to="/train/library" replace /> },
       { path: '/nutrition', element: <Navigate to="/eat" replace /> },
       { path: '/nutrition/meal-plan', element: <Navigate to="/eat/meal-plan" replace /> },
       { path: '/nutrition/recipes', element: <Navigate to="/eat/recipes" replace /> },
       { path: '/shopping', element: <Navigate to="/eat/shopping" replace /> },
-      { path: '/goals', element: <Navigate to="/you/goals" replace /> },
+      { path: '/goals', element: <Navigate to="/progress/goals" replace /> },
+      { path: '/you/goals', element: <Navigate to="/progress/goals" replace /> },
       { path: '/you/profile', element: <Navigate to="/profile" replace /> },
       { path: '/you/settings', element: <Navigate to="/settings" replace /> },
       { path: '/you/friends', element: <Navigate to="/friends" replace /> },
